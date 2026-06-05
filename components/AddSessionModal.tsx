@@ -40,14 +40,14 @@ export default function AddSessionModal({ date, onClose }: Props) {
 
   useEffect(() => {
     titleRef.current?.focus()
-    // auto-calculate duration when modal opens
-    const interval = setInterval(() => {
+    // update duration every 10s while modal is open
+    const update = () => {
       const mins = Math.round((new Date().getTime() - sessionStart.getTime()) / 60000)
-      if (mins > 0) {
-        const h = Math.floor(mins / 60), m = mins % 60
-        setDuration(h > 0 ? `${h}h ${m > 0 ? m + 'm' : ''}`.trim() : `${m}m`)
-      }
-    }, 30000)
+      const h = Math.floor(mins / 60), m = mins % 60
+      setDuration(h > 0 ? `${h}h ${m > 0 ? m + 'm' : ''}`.trim() : mins > 0 ? `${m}m` : '< 1m')
+    }
+    update()
+    const interval = setInterval(update, 10000)
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -257,9 +257,11 @@ export default function AddSessionModal({ date, onClose }: Props) {
           </div>
 
           {/* Duration indicator */}
-          {duration && (
-            <p className="text-[11px] text-gray-400">⏱ Session berjalan: <span className="font-semibold text-indigo-500">{duration}</span></p>
-          )}
+          <div className="flex items-center gap-2 py-1">
+            <span className="text-[11px] text-gray-400">⏱ Durasi session:</span>
+            <span className="text-[11px] font-bold text-indigo-500 tabular-nums">{duration || '< 1m'}</span>
+            <span className="text-[10px] text-gray-300 dark:text-gray-600">— akan dicatat ke OP</span>
+          </div>
 
           {/* WP Status + % Complete (only when linked to existing) */}
           {wpMode === 'existing' && selectedTaskId && (

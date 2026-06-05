@@ -16,9 +16,11 @@ function inlineMarkdown(text: string) {
 interface Props {
   dayData: SprintDay | null
   projects: Project[]
+  isToday?: boolean
+  onAddSession?: () => void
 }
 
-export default function DailyView({ dayData, projects }: Props) {
+export default function DailyView({ dayData, projects, isToday, onAddSession }: Props) {
   const [detailSession, setDetailSession] = useState<(Session & { date?: string }) | null>(null)
   const detailProject = detailSession
     ? getProjectById(tagSessionToProject(detailSession.title, detailSession.bullets.join(' ')))
@@ -38,9 +40,24 @@ export default function DailyView({ dayData, projects }: Props) {
 
   if (empty) {
     return (
-      <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
-        <span className="text-3xl">🌿</span>
-        <p className="text-sm italic">Tidak ada aktivitas tercatat hari ini.</p>
+      <div className="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
+        <span className="text-4xl">{isToday ? '☀️' : '🌿'}</span>
+        <div className="text-center">
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            {isToday ? 'Belum ada sesi hari ini' : 'Tidak ada aktivitas tercatat'}
+          </p>
+          {isToday && (
+            <p className="text-xs text-gray-400 mt-1">Mulai catat sesi kerja pertamamu hari ini</p>
+          )}
+        </div>
+        {isToday && onAddSession && (
+          <button
+            onClick={onAddSession}
+            className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+          >
+            + Mulai Session
+          </button>
+        )}
       </div>
     )
   }
@@ -48,13 +65,13 @@ export default function DailyView({ dayData, projects }: Props) {
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-        {/* Claude Sessions */}
+        {/* My Sessions */}
         <Column
-          title="Claude Sessions"
+          title="My Sessions"
           count={sessions.length}
           colorClass="bg-indigo-50 dark:bg-indigo-950 border-indigo-100 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400"
           badgeClass="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300"
-          empty="Tidak ada sesi Claude hari ini"
+          empty="Tidak ada sesi hari ini"
         >
           {sessions.map((s, i) => {
             const proj = getProjectById(tagSessionToProject(s.title, s.bullets.join(' ')))

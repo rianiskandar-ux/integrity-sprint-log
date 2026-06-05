@@ -17,6 +17,7 @@ import HelpModal from './HelpModal'
 import ConfirmModal from './ConfirmModal'
 import SetupWizard from './SetupWizard'
 import SprintBanner from './SprintBanner'
+import DraftCard from './DraftCard'
 import { loadSettings, saveSettings, loadAppConfig } from '@/lib/op-config'
 
 interface Props {
@@ -58,6 +59,9 @@ export default function AppShell({
   const [userName, setUserName] = useState('')
   const [nextReviewDate, setNextReviewDate] = useState<string | null>(null)
   const [showSetup, setShowSetup] = useState(false)
+  const [wrapupOpen, setWrapupOpen] = useState(false)
+  const [wrapupText, setWrapupText] = useState('')
+  const [wrapupLoading, setWrapupLoading] = useState(false)
 
   useEffect(() => {
     const s = loadSettings()
@@ -156,8 +160,25 @@ export default function AppShell({
     localStorage.setItem('darkMode', String(next))
   }
 
-  function wrapupCopy() {
-    navigator.clipboard.writeText('wrapup').then(() => showToast('✓ Copied! Paste di Claude Code.'))
+  async function doWrapup() {
+    if (!dayData?.sessions.length) { showToast('Belum ada sesi hari ini'); return }
+    setWrapupLoading(true)
+    setWrapupOpen(true)
+    setWrapupText('')
+    try {
+      const res = await fetch('/api/wrapup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessions: dayData.sessions, date: selectedDate }),
+      })
+      const d = await res.json()
+      if (d.ok) setWrapupText(d.summary)
+      else setWrapupText('⚠ ' + (d.error ?? 'Gagal generate wrapup'))
+    } catch {
+      setWrapupText('⚠ Tidak bisa generate — cek koneksi.')
+    } finally {
+      setWrapupLoading(false)
+    }
   }
 
   // Date navigation
@@ -267,11 +288,13 @@ export default function AppShell({
           {/* Daily actions */}
           {view === 'daily' && (
             <>
-              <button onClick={() => setConfirmPull(true)} disabled={isPulling} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition">
-                {isPulling ? 'Pulling…' : '↻ Pull OP'}
-              </button>
-              <button onClick={wrapupCopy} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition">
-                ✓ Wrapup
+              {opStatus === 'ok' && (
+                <button onClick={() => setConfirmPull(true)} disabled={isPulling} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition">
+                  {isPulling ? 'Pulling…' : '↻ Pull OP'}
+                </button>
+              )}
+              <button onClick={doWrapup} disabled={wrapupLoading} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition">
+                {wrapupLoading ? 'Generating…' : '✓ Wrapup'}
               </button>
               <button onClick={() => setAddOpen(true)} className="px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition" title="Add session (⌘N)">
                 + Session
@@ -308,6 +331,9 @@ export default function AppShell({
                 </span>
               )}
             </div>
+
+            {/* Draft card — auto-populated from Claude hook */}
+            <DraftCard onPushed={() => router.refresh()} />
 
             {/* Sprint indicator */}
             <button
@@ -368,7 +394,7 @@ export default function AppShell({
 
         {/* View content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {view === 'daily' && <DailyView dayData={dayData} projects={projects} />}
+          {view === 'daily' && <DailyView dayData={dayData} projects={projects} isToday={selectedDate === today} onAddSession={() => setAddOpen(true)} />}
           {view === 'sprint' && (
             <SprintView
               projectSprints={projectSprints}
@@ -399,6 +425,48 @@ export default function AppShell({
           onConfirm={doPullOP}
           onCancel={() => setConfirmPull(false)}
         />
+      )}
+
+      {/* Wrapup Modal */}
+      {wrapupOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setWrapupOpen(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">✓ Daily Wrapup</h3>
+              <button onClick={() => setWrapupOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">×</button>
+            </div>
+            {wrapupLoading ? (
+              <div className="flex items-center gap-3 py-8 justify-center text-gray-400">
+                <span className="animate-spin text-xl">⏳</span>
+                <span className="text-sm">Generating ringkasan…</span>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-400 mb-2">Edit sebelum copy jika perlu:</p>
+                <textarea
+                  value={wrapupText}
+                  onChange={e => setWrapupText(e.target.value)}
+                  rows={8}
+                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 leading-relaxed resize-none outline-none focus:ring-2 focus:ring-indigo-400 border border-gray-200 dark:border-gray-700"
+                />
+                <div className="flex justify-between items-center mt-4">
+                  <button onClick={doWrapup} className="text-xs text-gray-400 hover:text-indigo-500 transition">↺ Generate ulang</button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(wrapupText); showToast('✓ Copied!') }}
+                      className="px-4 py-2 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
+                    >
+                      Copy
+                    </button>
+                    <button onClick={() => setWrapupOpen(false)} className="px-4 py-2 text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                      Tutup
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Toast */}
