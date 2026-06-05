@@ -1,0 +1,52 @@
+
+> daily-sprint-next@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.7 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.30.116.210:3000
+- Environments: .env.local
+✓ Ready in 2.7s
+
+ GET / 200 in 2.2s (next.js: 1126ms, application-code: 1109ms)
+⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "daily-sprint.test".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['daily-sprint.test'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_font/geist-latin.woff2 from "daily-sprint.test".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['daily-sprint.test'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET / 200 in 265ms (next.js: 27ms, application-code: 238ms)
+ GET / 200 in 163ms (next.js: 18ms, application-code: 145ms)
+ GET / 200 in 238ms (next.js: 23ms, application-code: 215ms)
+ GET / 200 in 197ms (next.js: 16ms, application-code: 182ms)
+ GET / 200 in 289ms (next.js: 25ms, application-code: 264ms)
+ GET / 200 in 84ms (next.js: 13ms, application-code: 71ms)
+ GET / 200 in 105ms (next.js: 5ms, application-code: 100ms)
+ GET / 200 in 307ms (next.js: 81ms, application-code: 225ms)
+ GET / 200 in 453ms (next.js: 49ms, application-code: 405ms)
+ GET / 200 in 200ms (next.js: 36ms, application-code: 164ms)
+ GET / 200 in 129ms (next.js: 19ms, application-code: 111ms)
+ GET / 200 in 92ms (next.js: 6ms, application-code: 86ms)
+ GET / 200 in 93ms (next.js: 6ms, application-code: 87ms)
+[?25h
+npm notice
+npm notice New minor version of npm available! 11.12.1 -> 11.16.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.16.0
+npm notice To update run: npm install -g npm@11.16.0
+npm notice

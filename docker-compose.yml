@@ -1,0 +1,31 @@
+services:
+  integrity-sprint-log:
+    build: .
+    container_name: integrity-sprint-log
+    ports:
+      - "3000:3000"
+    volumes:
+      # Sprint markdown files (one folder per user on their own PC)
+      - isl-sprints:/app/daily-sprints
+      # Google OAuth token & profile (per user)
+      - isl-auth:/app/auth-data
+      # OP cache
+      - isl-cache:/app/cache-data
+    environment:
+      - OP_BASE_URL=${OP_BASE_URL:-https://tokek.integrity-asia.com}
+      - OP_PROJECT_ID=${OP_PROJECT_ID:-integritys-websites}
+      # OP_API_TOKEN is optional here — each user sets their own via Setup Wizard
+      - OP_API_TOKEN=${OP_API_TOKEN:-}
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-isl-local-secret-2026}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SPRINT_OUTPUT_DIR=/app/daily-sprints
+      - AUTH_DATA_DIR=/app/auth-data
+      - CACHE_DATA_DIR=/app/cache-data
+    restart: unless-stopped
+
+volumes:
+  isl-sprints:
+  isl-auth:
+  isl-cache:
