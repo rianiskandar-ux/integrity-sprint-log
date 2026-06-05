@@ -34,6 +34,8 @@ export default function DraftCard({ onPushed }: Props) {
   const [editBullets, setEditBullets] = useState<string[]>([])
   const [editMins, setEditMins] = useState(30)
   const [elapsed, setElapsed] = useState('')
+  const [idleMinutes, setIdleMinutes] = useState<number>(0)
+  const IDLE_THRESHOLD = 15 // minutes
 
   // Poll for draft every 15s
   useEffect(() => {
@@ -56,14 +58,18 @@ export default function DraftCard({ onPushed }: Props) {
     return () => clearInterval(iv)
   }, [])
 
-  // Elapsed time display
+  // Elapsed time + idle detection
   useEffect(() => {
     if (!draft) return
     const update = () => {
-      const mins = Math.round((Date.now() - new Date(draft.startedAt).getTime()) / 60000)
-      const h = Math.floor(mins / 60), m = mins % 60
+      const startMins = Math.round((Date.now() - new Date(draft.startedAt).getTime()) / 60000)
+      const h = Math.floor(startMins / 60), m = startMins % 60
       setElapsed(h > 0 ? `${h}h ${m}m` : `${m}m`)
-      setEditMins(mins > 0 ? mins : draft.estimatedMins)
+      setEditMins(startMins > 0 ? startMins : draft.estimatedMins)
+
+      // Idle = time since last hook update (updatedAt)
+      const idle = Math.round((Date.now() - new Date(draft.updatedAt).getTime()) / 60000)
+      setIdleMinutes(idle)
     }
     update()
     const iv = setInterval(update, 30000)
@@ -126,30 +132,57 @@ export default function DraftCard({ onPushed }: Props) {
     setTimeout(() => { setPushed(false); onPushed() }, 2000)
   }
 
-  // Always show indicator — grey when no draft, purple when draft ready
+  const isIdle = draft ? idleMinutes >= IDLE_THRESHOLD : false
+
+  // Always show indicator
   if (!draft) {
     return (
       <div
-        className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] text-gray-300 dark:text-gray-600 border border-gray-200 dark:border-gray-700"
-        title="Smart Auto — menunggu aktivitas dari chat"
+        className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700"
+        title="Smart Auto — belum ada sesi aktif hari ini"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600" />
-        Auto
+        No session
       </div>
     )
   }
 
   return (
     <>
-      {/* Header pill — always visible when draft exists */}
+      {/* Idle alert banner — shown above header when idle */}
+      {isIdle && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-white text-xs font-semibold px-4 py-2 flex items-center justify-between shadow-lg">
+          <span>
+            ⏸ Chat idle {idleMinutes} menit — <strong>{editTitle.slice(0, 40)}</strong> belum dipush ke OP
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setOpen(true)}
+              className="bg-white text-amber-600 px-3 py-1 rounded-full text-xs font-bold hover:bg-amber-50 transition"
+            >
+              Push sekarang
+            </button>
+            <span className="text-amber-200 text-xs">atau lanjut chat untuk update otomatis</span>
+          </div>
+        </div>
+      )}
+
+      {/* Header pill */}
       <button
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900 transition animate-pulse"
-        title="Draft sesi siap dipush ke OP — klik untuk review"
+        className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+          isIdle
+            ? 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-100 animate-pulse'
+            : 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900 animate-pulse'
+        }`}
+        title={isIdle ? `Idle ${idleMinutes}m — klik untuk push` : 'Draft aktif — klik untuk review & push'}
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-        {elapsed || `~${editMins}m`} · {editTitle.slice(0, 28)}{editTitle.length > 28 ? '…' : ''}
-        <span className="ml-1 bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full text-[10px] font-bold">Push</span>
+        <span className={`w-1.5 h-1.5 rounded-full ${isIdle ? 'bg-amber-500' : 'bg-violet-500'}`} />
+        {isIdle ? `⏸ Idle ${idleMinutes}m` : `● ${elapsed || `~${editMins}m`}`}
+        <span className="truncate max-w-[120px]">· {editTitle.slice(0, 20)}{editTitle.length > 20 ? '…' : ''}</span>
+        <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isIdle ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200' : 'bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300'}`}>
+          {isIdle ? '!' : 'Push'}
+        </span>
       </button>
 
       {/* Push modal */}
