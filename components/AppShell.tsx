@@ -19,6 +19,7 @@ import SetupWizard from './SetupWizard'
 import SprintBanner from './SprintBanner'
 import DraftCard from './DraftCard'
 import { loadSettings, saveSettings, loadAppConfig } from '@/lib/op-config'
+import { useI18n, LANG_OPTIONS } from '@/lib/i18n'
 
 interface Props {
   view: string
@@ -44,6 +45,7 @@ export default function AppShell({
   monthMap, allTopics,
 }: Props) {
   const router = useRouter()
+  const { lang, setLang } = useI18n()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isPulling, startPull] = useTransition()
   const [toast, setToast] = useState<string | null>(null)
@@ -349,6 +351,20 @@ export default function AppShell({
                 </span>
               )}
             </button>
+
+            {/* Language switcher */}
+            <div className="hidden md:flex items-center rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {LANG_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setLang(opt.value)}
+                  className={`px-2 py-1.5 text-sm transition ${lang === opt.value ? 'bg-indigo-600 text-white' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                  title={opt.label}
+                >
+                  {opt.flag}
+                </button>
+              ))}
+            </div>
 
             {/* Search */}
             <button onClick={() => setSearchOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition bg-white dark:bg-gray-800">

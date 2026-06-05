@@ -126,7 +126,18 @@ export default function DraftCard({ onPushed }: Props) {
     setTimeout(() => { setPushed(false); onPushed() }, 2000)
   }
 
-  if (!draft) return null
+  // Always show indicator — grey when no draft, purple when draft ready
+  if (!draft) {
+    return (
+      <div
+        className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] text-gray-300 dark:text-gray-600 border border-gray-200 dark:border-gray-700"
+        title="Smart Auto — menunggu aktivitas dari chat"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600" />
+        Auto
+      </div>
+    )
+  }
 
   return (
     <>
