@@ -1,11 +1,12 @@
+﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
 import { TEAM_MEMBERS } from '@/lib/op-config'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const search = (searchParams.get('q') ?? '').toLowerCase().trim()
-  const token = process.env.OP_API_TOKEN
-  const base  = process.env.OP_BASE_URL
+  const token = getOpToken()
+  const base  = getOpBaseUrl()
 
   // Try OP API via /principals (accessible to non-admin users)
   if (token && base) {

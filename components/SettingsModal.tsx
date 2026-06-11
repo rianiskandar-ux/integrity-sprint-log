@@ -25,7 +25,7 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
   const [saved, setSaved] = useState(false)
   const [gcalConnected, setGcalConnected] = useState<boolean | null>(null)
   const [googleProfile, setGoogleProfile] = useState<{ name: string; email: string } | null>(null)
-  const [cacheStatus, setCacheStatus] = useState<{ lastSync: string | null; tasks: number; stories: number } | null>(null)
+  const [cacheStatus, setCacheStatus] = useState<{ lastSync: string | null; tasks: number; stories: number; incoming: number } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [allProjects, setAllProjects] = useState<{ id: number; name: string; identifier: string }[]>([])
   const [allUsers, setAllUsers] = useState<{ id: number; name: string }[]>([])
@@ -36,10 +36,9 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
       setSettings(loadSettings())
       setAppConfig(loadAppConfig())
       setSaved(false)
-      // Check gcal + cache status
       fetch('/api/calendar/events?days=1').then(r => r.json()).then(d => setGcalConnected(d.connected)).catch(() => setGcalConnected(false))
       fetch('/api/auth/profile').then(r => r.json()).then(d => setGoogleProfile(d.profile ?? null)).catch(() => {})
-      fetch('/api/op/cache').then(r => r.json()).then(d => setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0 })).catch(() => {})
+      fetch('/api/op/cache').then(r => r.json()).then(d => setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0, incoming: d.incomingTasks?.length ?? 0 })).catch(() => {})
       fetch('/api/op/projects').then(r => r.json()).then(d => setAllProjects(d.projects ?? [])).catch(() => {})
       fetch('/api/op/users?q=').then(r => r.json()).then(d => setAllUsers((d.users ?? []).map((u: { id: number; name: string }) => ({ id: u.id, name: u.name })))).catch(() => {})
     }
@@ -115,30 +114,32 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
           {tab === 'user' && (
             <>
               <section>
-                <h3 className={sec}>Identity</h3>
+                <h3 className={sec}>{t('settings.identity')}</h3>
                 <div className="space-y-3">
                   <label className="block">
-                    <span className={lbl}>Saya adalah</span>
+                    <span className={lbl}>{t('settings.i_am')}</span>
                     <select value={settings.userId} onChange={(e) => handleUserChange(Number(e.target.value))} className={sel}>
                       {TEAM_MEMBERS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                   </label>
                   <label className="block">
-                    <span className={lbl}>Accountable default</span>
+                    <span className={lbl}>{t('settings.accountable')}</span>
                     <select value={settings.defaultAccountableId ?? ''} onChange={(e) => updateUser('defaultAccountableId', e.target.value ? Number(e.target.value) : null)} className={sel}>
-                      <option value="">— Self (kosong = saya sendiri)</option>
+                      <option value="">{t('settings.accountable_self')}</option>
                       {(allUsers.length > 0 ? allUsers : TEAM_MEMBERS).filter((m) => m.id !== settings.userId).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
-                    <p className="text-xs text-gray-400 mt-1">Biasanya Nicolas atau Aufa untuk QA</p>
+                    <p className="text-xs text-gray-400 mt-1">{t('settings.accountable_hint')}</p>
                   </label>
                 </div>
               </section>
 
               <section>
-                <h3 className={sec}>OpenProject</h3>
+                <h3 className={sec}>{t('settings.openproject')}</h3>
                 <div className="space-y-3">
                   <div>
-                    <span className={lbl}>Projects yang dipantau {allProjects.length > 0 && <span className="text-gray-400 font-normal">({allProjects.length} dari OP)</span>}</span>
+                    <span className={lbl}>
+                      {t('settings.projects_watched')} {allProjects.length > 0 && <span className="text-gray-400 font-normal">({allProjects.length} {t('settings.from_op')})</span>}
+                    </span>
                     <div className="space-y-1.5 mt-1 max-h-48 overflow-y-auto pr-1">
                       {(allProjects.length > 0 ? allProjects : (settings.watchedProjects ?? []).map(id => ({ id: 0, name: id, identifier: id }))).map((p) => {
                         const watched = settings.watchedProjects ?? []
@@ -159,20 +160,20 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                   </div>
                   <label className="block">
                     <span className={lbl}>
-                      Sprint aktif
+                      {t('settings.sprint_active')}
                       {currentSprint && <span className="ml-2 text-emerald-600 dark:text-emerald-400">● {currentSprint.name}</span>}
                     </span>
                     <select value={settings.defaultVersionId ?? ''} onChange={(e) => updateUser('defaultVersionId', e.target.value ? Number(e.target.value) : null)} disabled={loadingVersions} className={sel}>
-                      <option value="">— Auto-detect dari tanggal</option>
+                      <option value="">{t('settings.sprint_auto')}</option>
                       {versions.slice(0, 15).map((v) => (
                         <option key={v.id} value={v.id}>{v.name} ({v.startDate} → {v.endDate}){v.isCurrent ? ' ★' : ''}</option>
                       ))}
                     </select>
                   </label>
                   <label className="block">
-                    <span className={lbl}>API Token (opsional)</span>
+                    <span className={lbl}>{t('settings.api_token')}</span>
                     <input type="password" value={settings.opApiToken} onChange={(e) => updateUser('opApiToken', e.target.value)}
-                      placeholder="opapi-xxxxxxxx (kosong = pakai token server)" className={inp} />
+                      placeholder={`opapi-xxxxxxxx (${t('settings.api_token_hint')})`} className={inp} />
                   </label>
                 </div>
               </section>
@@ -183,20 +184,20 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
           {tab === 'integrations' && (
             <>
               <section>
-                <h3 className={sec}>Google Calendar</h3>
+                <h3 className={sec}>{t('settings.gcal_title')}</h3>
                 <div className={`flex items-center justify-between ${card}`}>
                   <div>
                     <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {gcalConnected === null ? 'Checking…' : gcalConnected ? '✅ Connected' : '⚪ Not connected'}
+                      {gcalConnected === null ? t('settings.gcal_checking') : gcalConnected ? t('settings.gcal_connected') : t('settings.gcal_not')}
                     </p>
                     {googleProfile && <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 font-medium">{googleProfile.name} · {googleProfile.email}</p>}
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {gcalConnected ? 'Sprint Review events akan tampil di Sprint view' : 'Hubungkan untuk lihat jadwal Sprint Review'}
+                      {gcalConnected ? t('settings.gcal_hint_on') : t('settings.gcal_hint_off')}
                     </p>
                   </div>
                   {gcalConnected
                     ? <button onClick={async () => { await fetch('/api/calendar/events', { method: 'DELETE' }); await fetch('/api/auth/profile', { method: 'DELETE' }); setGcalConnected(false); setGoogleProfile(null) }}
-                        className="text-xs text-red-500 hover:text-red-600 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg transition">Disconnect</button>
+                        className="text-xs text-red-500 hover:text-red-600 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg transition">{t('common.disconnect')}</button>
                     : <a href="/api/auth/google" target="_blank" rel="noopener noreferrer"
                         onClick={() => {
                           const iv = setInterval(() => {
@@ -206,23 +207,23 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                           }, 2000)
                           setTimeout(() => clearInterval(iv), 120000)
                         }}
-                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">Connect</a>
+                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">{t('common.connect')}</a>
                   }
                 </div>
               </section>
 
               <section>
-                <h3 className={sec}>OpenProject Cache</h3>
+                <h3 className={sec}>{t('settings.cache_title')}</h3>
                 <div className={`${card} space-y-3`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
                         {cacheStatus?.lastSync
                           ? `✅ Last sync: ${new Date(cacheStatus.lastSync).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
-                          : '⚪ Belum pernah sync'}
+                          : t('settings.cache_never')}
                       </p>
                       {cacheStatus?.lastSync && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{cacheStatus.stories} user stories · {cacheStatus.tasks} open tasks</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{cacheStatus.stories} {t('settings.user_stories')} · {cacheStatus.tasks} {t('settings.open_tasks')} · {cacheStatus.incoming} incoming</p>
                       )}
                     </div>
                     <button disabled={syncing}
@@ -231,14 +232,14 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                         setSyncing(true)
                         const res = await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: settings.userId, projects: settings.watchedProjects?.length ? settings.watchedProjects : ['integritys-websites', 'know-your-vendor-kyv'] }) })
                         const d = await res.json()
-                        setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0 })
+                        setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0, incoming: d.incomingTasks?.length ?? 0 })
                         setSyncing(false)
                       }}
                       className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-                      {syncing ? 'Syncing…' : '🔄 Sync Now'}
+                      {syncing ? t('common.syncing') : t('common.sync_now')}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Auto-refresh setiap hari jam 09:30. Cache digunakan untuk picker User Story & Task saat tambah session.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.cache_hint')}</p>
                 </div>
               </section>
             </>
@@ -264,38 +265,38 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                 <div className="space-y-3">
                   <div className="flex gap-3">
                     <label className="block w-20">
-                      <span className={lbl}>Logo</span>
+                      <span className={lbl}>{t('settings.logo')}</span>
                       <input value={appConfig.appLogo} onChange={(e) => updateApp('appLogo', e.target.value)} placeholder="🚀"
                         className={inp + " text-center"} />
                     </label>
                     <label className="block flex-1">
-                      <span className={lbl}>App Name</span>
+                      <span className={lbl}>{t('settings.app_name')}</span>
                       <input value={appConfig.appName} onChange={(e) => updateApp('appName', e.target.value)} className={inp} />
                     </label>
                   </div>
                   <label className="block">
-                    <span className={lbl}>Organization Name</span>
+                    <span className={lbl}>{t('settings.org_name')}</span>
                     <input value={appConfig.orgName} onChange={(e) => updateApp('orgName', e.target.value)} className={inp} />
                   </label>
                 </div>
               </section>
 
               <section>
-                <h3 className={sec}>Links</h3>
+                <h3 className={sec}>{t('settings.links')}</h3>
                 <div className="space-y-3">
                   <label className="block">
-                    <span className={lbl}>Org URL</span>
+                    <span className={lbl}>{t('settings.org_url')}</span>
                     <input value={appConfig.orgUrl} onChange={(e) => updateApp('orgUrl', e.target.value)} placeholder="https://integrity-asia.com" className={inp} />
                   </label>
                   <label className="block">
-                    <span className={lbl}>OpenProject URL</span>
+                    <span className={lbl}>{t('settings.op_url')}</span>
                     <input value={appConfig.opUrl} onChange={(e) => updateApp('opUrl', e.target.value)} placeholder="https://tokek.integrity-asia.com" className={inp} />
                   </label>
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={lbl}>Social / Quick Links</span>
+                      <span className={lbl}>{t('settings.social_links')}</span>
                       <button onClick={() => updateApp('socialLinks', [...appConfig.socialLinks, { label: '', url: '' }])}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:opacity-80">+ Add</button>
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:opacity-80">{t('settings.add_link')}</button>
                     </div>
                     {appConfig.socialLinks.map((link, i) => (
                       <div key={i} className="flex gap-2 mb-2">
@@ -318,7 +319,7 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
           <button
             onClick={() => {
-              if (confirm('Reset Setup Wizard? Kamu perlu setup ulang profil dan token.')) {
+              if (confirm(t('settings.reset_confirm'))) {
                 const s = loadSettings()
                 saveSettings({ ...s, setupDone: false })
                 onClose()
@@ -327,10 +328,10 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
             }}
             className="text-xs text-gray-400 hover:text-red-500 transition"
           >
-            ↺ Reset Setup Wizard
+            ↺ {t('settings.reset_wizard')}
           </button>
           <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
-            {saved ? '✓ Tersimpan' : 'Simpan'}
+            {saved ? t('common.saved') : t('common.save')}
           </button>
         </div>
       </div>

@@ -8,42 +8,35 @@ interface Props { onDone: () => void }
 interface OPUser { id: number; name: string; login: string }
 interface GoogleProfile { name: string; email: string; picture?: string }
 
-// Step 0: token → Step 1: identity → Step 2: projects → Step 3: gcal → Step 4: cache → Step 5: done
 const STEPS = ['token', 'identity', 'projects', 'gcal', 'cache', 'done'] as const
 type Step = typeof STEPS[number]
 
 export default function SetupWizard({ onDone }: Props) {
   const [step, setStep] = useState<Step>('token')
 
-  // Step: token
   const [apiToken, setApiToken]         = useState('')
   const [tokenStatus, setTokenStatus]   = useState<'idle' | 'checking' | 'ok' | 'error'>('idle')
   const [tokenUser, setTokenUser]       = useState<{ id: number; name: string } | null>(null)
   const [useServerToken, setUseServerToken] = useState(false)
 
-  // Step: identity
   const [users, setUsers]               = useState<OPUser[]>([])
   const [userSearch, setUserSearch]     = useState('')
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [selectedUser, setSelectedUser] = useState<OPUser | null>(null)
 
-  // Step: projects
   const [allProjects, setAllProjects] = useState<{ id: number; name: string; identifier: string }[]>([])
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [selectedProjects, setSelectedProjects] = useState<string[]>(['integritys-websites', 'know-your-vendor-kyv'])
 
-  // Step: gcal
   const [gcalConnected, setGcalConnected] = useState(false)
   const [googleProfile, setGoogleProfile] = useState<GoogleProfile | null>(null)
   const gcalPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Step: cache
   const [syncing, setSyncing]     = useState(false)
   const [syncDone, setSyncDone]   = useState(false)
 
   const stepIdx = STEPS.indexOf(step)
 
-  // Listen for GCal postMessage from popup tab
   useEffect(() => {
     function onMessage(e: MessageEvent) {
       if (e.data === 'gcal-connected') {
@@ -56,13 +49,11 @@ export default function SetupWizard({ onDone }: Props) {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
-  // Check gcal on mount
   useEffect(() => {
     fetch('/api/calendar/events?days=1').then(r => r.json()).then(d => setGcalConnected(d.connected)).catch(() => {})
     fetch('/api/auth/profile').then(r => r.json()).then(d => { if (d.profile) setGoogleProfile(d.profile) }).catch(() => {})
   }, [])
 
-  // Load projects when on projects step
   useEffect(() => {
     if (step !== 'projects') return
     setLoadingProjects(true)
@@ -73,7 +64,6 @@ export default function SetupWizard({ onDone }: Props) {
       .catch(() => setLoadingProjects(false))
   }, [step, apiToken, useServerToken])
 
-  // Load users when on identity step
   useEffect(() => {
     if (step !== 'identity') return
     setLoadingUsers(true)
@@ -84,7 +74,6 @@ export default function SetupWizard({ onDone }: Props) {
       .catch(() => setLoadingUsers(false))
   }, [userSearch, step, apiToken, useServerToken])
 
-  // Auto-select user if token verification returned a match
   useEffect(() => {
     if (tokenUser && users.length > 0) {
       const match = users.find(u => u.id === tokenUser.id) ?? users.find(u => u.name === tokenUser.name)
@@ -96,7 +85,6 @@ export default function SetupWizard({ onDone }: Props) {
     if (!apiToken.trim()) return
     setTokenStatus('checking')
     try {
-      // Try to fetch current user info using this token
       const res = await fetch('/api/op/users/me', {
         headers: { 'x-op-token': apiToken.trim() },
       })
@@ -231,7 +219,6 @@ export default function SetupWizard({ onDone }: Props) {
                   <li>{t('setup.token_step4')}</li>
                 </ol>
               </div>
-
             </div>
           )}
 
@@ -241,14 +228,16 @@ export default function SetupWizard({ onDone }: Props) {
               {tokenUser && !useServerToken && (
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
                   <span className="text-emerald-500 text-sm">✅</span>
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300">Token terdeteksi sebagai <strong>{tokenUser.name}</strong> — sudah dipilihkan otomatis di bawah.</p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                    {t('setup.identity_auto')} <strong>{tokenUser.name}</strong>
+                  </p>
                 </div>
               )}
-              <p className="text-xs text-gray-500 dark:text-gray-400">Konfirmasi identitasmu di OpenProject.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('setup.identity_desc')}</p>
               <input value={userSearch} onChange={e => setUserSearch(e.target.value)}
-                placeholder="Cari nama..." className={inp} autoFocus />
+                placeholder={t('common.search')} className={inp} autoFocus />
               <div className="max-h-52 overflow-y-auto space-y-1">
-                {loadingUsers && <p className="text-xs text-gray-400 text-center py-4">Loading dari OP...</p>}
+                {loadingUsers && <p className="text-xs text-gray-400 text-center py-4">{t('setup.projects_loading')}</p>}
                 {!loadingUsers && users.map(u => (
                   <button key={u.id} onClick={() => setSelectedUser(u)}
                     className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition ${selectedUser?.id === u.id
@@ -256,10 +245,10 @@ export default function SetupWizard({ onDone }: Props) {
                       : 'border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-200'}`}>
                     <span className="font-medium">{u.name}</span>
                     <span className="text-[11px] text-gray-400 ml-2">@{u.login}</span>
-                    {u.id === tokenUser?.id && <span className="ml-2 text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full font-bold">Kamu</span>}
+                    {u.id === tokenUser?.id && <span className="ml-2 text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full font-bold">{t('setup.identity_you')}</span>}
                   </button>
                 ))}
-                {!loadingUsers && users.length === 0 && <p className="text-xs text-gray-400 text-center py-4">Tidak ada user ditemukan</p>}
+                {!loadingUsers && users.length === 0 && <p className="text-xs text-gray-400 text-center py-4">{t('setup.identity_notfound')}</p>}
               </div>
             </div>
           )}
@@ -267,9 +256,9 @@ export default function SetupWizard({ onDone }: Props) {
           {/* ── STEP 3: Projects ── */}
           {step === 'projects' && (
             <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Pilih project OP yang kamu kerjakan. Cache task akan diambil dari project ini.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('setup.projects_desc')}</p>
               {loadingProjects
-                ? <p className="text-xs text-gray-400 text-center py-8">Loading dari OP...</p>
+                ? <p className="text-xs text-gray-400 text-center py-8">{t('setup.projects_loading')}</p>
                 : <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                     {allProjects.map(p => (
                       <button key={p.identifier} onClick={() => toggleProject(p.identifier)}
@@ -283,11 +272,11 @@ export default function SetupWizard({ onDone }: Props) {
                         <span className="text-[10px] text-gray-400">{p.identifier}</span>
                       </button>
                     ))}
-                    {allProjects.length === 0 && <p className="text-xs text-gray-400 text-center py-4">Tidak ada project ditemukan</p>}
+                    {allProjects.length === 0 && <p className="text-xs text-gray-400 text-center py-4">{t('setup.projects_none')}</p>}
                   </div>
               }
               {selectedProjects.length > 0 && (
-                <p className="text-[11px] text-indigo-500 font-semibold">{selectedProjects.length} project dipilih</p>
+                <p className="text-[11px] text-indigo-500 font-semibold">{selectedProjects.length} {t('setup.projects_selected')}</p>
               )}
             </div>
           )}
@@ -295,12 +284,12 @@ export default function SetupWizard({ onDone }: Props) {
           {/* ── STEP 4: GCal ── */}
           {step === 'gcal' && (
             <div className="space-y-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Hubungkan Google Calendar untuk lihat jadwal Sprint Review dan agenda meeting.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('setup.gcal_desc')}</p>
               <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{gcalConnected ? '✅ Sudah terhubung' : '⚪ Belum terhubung'}</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{gcalConnected ? t('setup.gcal_connected') : t('setup.gcal_not_connected')}</p>
                   {googleProfile && <p className="text-xs text-gray-500 mt-0.5">{googleProfile.name} · {googleProfile.email}</p>}
-                  {!gcalConnected && <p className="text-xs text-gray-400 mt-0.5">Pakai akun Google kantor @integrity</p>}
+                  {!gcalConnected && <p className="text-xs text-gray-400 mt-0.5">{t('setup.gcal_hint')}</p>}
                 </div>
                 {!gcalConnected
                   ? <a href="/api/auth/google" target="_blank" rel="noopener noreferrer"
@@ -318,35 +307,35 @@ export default function SetupWizard({ onDone }: Props) {
                         setTimeout(() => { if (gcalPollRef.current) clearInterval(gcalPollRef.current) }, 120000)
                       }}
                       className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition whitespace-nowrap">
-                      Connect →
+                      {t('setup.gcal_connect_btn')}
                     </a>
-                  : <span className="text-xs text-emerald-600 font-bold">Connected ✓</span>
+                  : <span className="text-xs text-emerald-600 font-bold">{t('common.connect')} ✓</span>
                 }
               </div>
-              <p className="text-xs text-gray-400">Tab baru akan terbuka untuk login Google. Tab menutup sendiri setelah berhasil. Bisa skip dan connect nanti di Settings.</p>
+              <p className="text-xs text-gray-400">{t('setup.gcal_tab_hint')}</p>
             </div>
           )}
 
           {/* ── STEP 5: Cache ── */}
           {step === 'cache' && (
             <div className="space-y-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Sync task & user story dari OP ke lokal. Dipakai untuk picker saat Add Session.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('setup.cache_desc')}</p>
               <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Project yang di-sync:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t('setup.cache_projects')}</p>
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   {selectedProjects.map(p => (
                     <span key={p} className="px-2 py-0.5 text-[10px] bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-full font-medium">{p}</span>
                   ))}
                 </div>
                 {syncDone
-                  ? <p className="text-sm text-emerald-600 font-semibold">✅ Sync selesai! Cache siap digunakan.</p>
+                  ? <p className="text-sm text-emerald-600 font-semibold">{t('setup.cache_done')}</p>
                   : <button onClick={handleSync} disabled={syncing}
                       className="w-full py-2.5 text-sm font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition">
-                      {syncing ? '⏳ Syncing dari OP...' : '🔄 Mulai Sync'}
+                      {syncing ? t('setup.cache_syncing') : t('setup.cache_start')}
                     </button>
                 }
               </div>
-              {!syncDone && <p className="text-xs text-gray-400">Bisa skip — cache auto-refresh setiap hari jam 09:30.</p>}
+              {!syncDone && <p className="text-xs text-gray-400">{t('setup.cache_skip_hint')}</p>}
             </div>
           )}
 
@@ -355,15 +344,15 @@ export default function SetupWizard({ onDone }: Props) {
             <div className="flex flex-col items-center justify-center h-full py-4 space-y-4 text-center">
               <div className="text-5xl">🎉</div>
               <div>
-                <p className="text-base font-bold text-gray-900 dark:text-gray-100">Selamat datang, {selectedUser?.name?.split(' ')[0]}!</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Setup selesai. Siap tracking sprint.</p>
+                <p className="text-base font-bold text-gray-900 dark:text-gray-100">{t('setup.done_welcome')} {selectedUser?.name?.split(' ')[0]}!</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('setup.done_subtitle')}</p>
               </div>
               <div className="text-left w-full space-y-1.5 bg-gray-50 dark:bg-gray-800 p-4 rounded-xl text-xs text-gray-600 dark:text-gray-400">
-                <p>✅ Token OP: <span className="font-semibold text-gray-800 dark:text-gray-200">Token pribadi — KPI teratribusi ke kamu</span></p>
-                <p>✅ Identity: <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedUser?.name}</span></p>
-                <p>✅ Projects: <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedProjects.length} project dipilih</span></p>
-                <p>{gcalConnected ? '✅' : '⚪'} Google Calendar: {gcalConnected ? 'Connected' : 'Skip'}</p>
-                <p>{syncDone ? '✅' : '⚪'} OP Cache: {syncDone ? 'Synced' : 'Auto sync jam 09:30'}</p>
+                <p>✅ {t('setup.done_token')} <span className="font-semibold text-gray-800 dark:text-gray-200">{t('setup.done_token_ok')}</span></p>
+                <p>✅ {t('setup.done_identity')} <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedUser?.name}</span></p>
+                <p>✅ {t('setup.done_projects')} <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedProjects.length} {t('setup.done_projects_val')}</span></p>
+                <p>{gcalConnected ? '✅' : '⚪'} Google Calendar: {gcalConnected ? `${t('common.connect')}ed` : t('setup.done_gcal_skip')}</p>
+                <p>{syncDone ? '✅' : '⚪'} OP Cache: {syncDone ? 'Synced' : t('setup.done_cache_auto')}</p>
               </div>
             </div>
           )}

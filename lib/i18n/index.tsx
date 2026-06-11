@@ -18,11 +18,12 @@ const I18nContext = createContext<I18nContextValue>({
 const LANG_KEY = 'isl_lang'
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>('id')
+  const [lang, setLangState] = useState<Lang>('en')
 
   useEffect(() => {
     const saved = localStorage.getItem(LANG_KEY) as Lang | null
-    if (saved && ['id', 'en', 'fr'].includes(saved)) setLangState(saved)
+    if (saved && ['id', 'en'].includes(saved)) setLangState(saved)
+    else localStorage.setItem(LANG_KEY, 'en')
   }, [])
 
   function setLang(l: Lang) {
@@ -48,5 +49,4 @@ export function useI18n() {
 export const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
   { value: 'id', label: 'Indonesia', flag: '🇮🇩' },
   { value: 'en', label: 'English',   flag: '🇬🇧' },
-  { value: 'fr', label: 'Français',  flag: '🇫🇷' },
 ]

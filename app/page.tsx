@@ -10,7 +10,7 @@ export default async function Home({
   searchParams: Promise<{ view?: string; date?: string; sprint?: string }>
 }) {
   const sp = await searchParams
-  const view = sp.view ?? 'daily'
+  const view = sp.view ?? 'isldash'
   const today = new Date().toISOString().slice(0, 10)
   const selectedDate = sp.date ?? today
   const selectedSprint = sp.sprint ? parseInt(sp.sprint) : undefined

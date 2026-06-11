@@ -1,20 +1,14 @@
+import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
 
-const OP_BASE = process.env.OP_BASE_URL!
+export async function GET() {
+  const token = getOpToken()
+  const base  = getOpBaseUrl()
 
-export async function GET(req: Request) {
-  const token = req.headers.get('x-op-token') ?? process.env.OP_API_TOKEN ?? ''
-  if (!token) return NextResponse.json({ error: 'No token' }, { status: 401 })
+  if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
-  const auth = Buffer.from(`apikey:${token}`).toString('base64')
-  try {
-    const res = await fetch(`${OP_BASE}/api/v3/users/me`, {
-      headers: { Authorization: `Basic ${auth}` },
-    })
-    if (!res.ok) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    const d = await res.json()
-    return NextResponse.json({ id: d.id, name: d.name, email: d.email, login: d.login })
-  } catch {
-    return NextResponse.json({ error: 'Connection failed' }, { status: 500 })
-  }
+  const auth = 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
+  const res  = await fetch(`${base}/api/v3/users/me`, { headers: { Authorization: auth } })
+  const data = await res.json()
+  return NextResponse.json(data, { status: res.status })
 }

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import type { Session } from '@/lib/parser'
+import { useI18n } from '@/lib/i18n'
 
 const CATEGORIES: Record<string, string[]> = {
   Docker:         ['docker', 'container', 'compose'],
@@ -37,36 +38,37 @@ interface Props {
 }
 
 export default function SkillsView({ allTopics }: Props) {
+  const { t } = useI18n()
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   const catMap: Record<string, Array<Session & { date: string }>> = {}
-  for (const t of allTopics) {
-    const cat = categorize(t.title, t.bullets.join(' '))
+  for (const topic of allTopics) {
+    const cat = categorize(topic.title, topic.bullets.join(' '))
     if (!catMap[cat]) catMap[cat] = []
-    catMap[cat].push(t)
+    catMap[cat].push(topic)
   }
   const sorted = Object.entries(catMap).sort((a, b) => b[1].length - a[1].length)
   const maxCount = Math.max(...sorted.map(([, v]) => v.length), 1)
 
-  const filtered = allTopics.filter(t => {
-    const cat = categorize(t.title, t.bullets.join(' '))
+  const filtered = allTopics.filter(topic => {
+    const cat = categorize(topic.title, topic.bullets.join(' '))
     const matchCat = !activeFilter || cat === activeFilter
-    const matchSearch = !search || t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.bullets.some(b => b.toLowerCase().includes(search.toLowerCase()))
+    const matchSearch = !search || topic.title.toLowerCase().includes(search.toLowerCase()) ||
+      topic.bullets.some(b => b.toLowerCase().includes(search.toLowerCase()))
     return matchCat && matchSearch
   })
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">Skill Log</h2>
-        <p className="text-xs text-gray-400">{allTopics.length} sessions · {sorted.length} skill areas</p>
+        <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">{t('skills.title')}</h2>
+        <p className="text-xs text-gray-400">{allTopics.length} {t('skills.activities')} · {sorted.length} {t('skills.areas')}</p>
       </div>
 
       {/* Skill breakdown */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">Breakdown by Area</p>
+        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">{t('skills.breakdown')}</p>
         <div className="space-y-2">
           {sorted.map(([cat, items]) => {
             const color = CAT_COLORS[cat] ?? '#94a3b8'
@@ -89,39 +91,39 @@ export default function SkillsView({ allTopics }: Props) {
         </div>
         {activeFilter && (
           <button onClick={() => setActiveFilter(null)} className="mt-3 text-xs text-indigo-500 hover:text-indigo-600 transition">
-            ✕ Clear filter
+            {t('skills.clear_filter')}
           </button>
         )}
       </div>
 
-      {/* Search + sessions list */}
+      {/* Search + list */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex-1">
-            {activeFilter ? `${activeFilter} · ` : ''}{filtered.length} Sessions
+            {activeFilter ? `${activeFilter} · ` : ''}{filtered.length} {t('skills.count_label')}
           </p>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Cari…"
+            placeholder={t('skills.search')}
             className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-indigo-400 w-40"
           />
         </div>
         <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-[480px] overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="text-xs text-gray-400 italic text-center py-8">Tidak ada sesi ditemukan.</p>
-          ) : filtered.map((t, i) => {
-            const cat = categorize(t.title, t.bullets.join(' '))
+            <p className="text-xs text-gray-400 italic text-center py-8">{t('skills.no_results')}</p>
+          ) : filtered.map((topic, i) => {
+            const cat = categorize(topic.title, topic.bullets.join(' '))
             const color = CAT_COLORS[cat] ?? '#94a3b8'
             return (
               <div key={i} className="px-5 py-3 flex items-start gap-3">
                 <span className="text-[10px] text-gray-400 w-20 flex-shrink-0 mt-0.5 tabular-nums">
-                  {format(parseISO(t.date), 'dd MMM yy')}
+                  {format(parseISO(topic.date), 'dd MMM yy')}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{t.title}</p>
-                  {t.bullets[0] && (
-                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">{t.bullets[0]}</p>
+                  <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{topic.title}</p>
+                  {topic.bullets[0] && (
+                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">{topic.bullets[0]}</p>
                   )}
                 </div>
                 <span className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: color + '20', color }}>

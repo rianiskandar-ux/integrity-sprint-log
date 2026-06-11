@@ -50,7 +50,7 @@ export function getAuthUrl(): string {
     client_id:     process.env.GOOGLE_CLIENT_ID!,
     redirect_uri:  process.env.GOOGLE_REDIRECT_URI!,
     response_type: 'code',
-    scope:         'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+    scope:         'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/gmail.send',
     access_type:   'offline',
     prompt:        'consent',
   })
@@ -76,6 +76,30 @@ export async function exchangeCode(code: string): Promise<GoogleToken> {
     refresh_token: data.refresh_token,
     expiry:        Date.now() + (data.expires_in - 60) * 1000,
   }
+}
+
+export async function sendEmail(to: string, subject: string, htmlBody: string): Promise<boolean> {
+  const token = await getValidToken()
+  if (!token) return false
+  try {
+    const message = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/html; charset=utf-8`,
+      `X-Priority: 1`,
+      `Importance: high`,
+      '',
+      htmlBody,
+    ].join('\r\n')
+    const encoded = Buffer.from(message).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw: encoded }),
+    })
+    return res.ok
+  } catch { return false }
 }
 
 export async function getValidToken(): Promise<string | null> {

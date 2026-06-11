@@ -101,7 +101,7 @@ export function getSprintDates(): string[] {
 }
 
 // Sprint number: 2-week cycles anchored at 2026-01-05
-const SPRINT_ANCHOR = new Date('2026-01-05').getTime()
+const SPRINT_ANCHOR = new Date('2026-01-12').getTime()
 const SPRINT_DURATION = 14 * 24 * 60 * 60 * 1000
 
 export function getSprintNumber(ts: number): number {

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Session } from '@/lib/parser'
 import type { Project } from '@/lib/projects'
+import { useI18n } from '@/lib/i18n'
 
 interface Props {
   session: Session & { date?: string }
@@ -13,6 +14,7 @@ interface Props {
 
 export default function SessionDetailModal({ session, project, onClose }: Props) {
   const router = useRouter()
+  const { t } = useI18n()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(session.title)
   const [bullets, setBullets] = useState<string[]>([...session.bullets, ''])
@@ -30,7 +32,7 @@ export default function SessionDetailModal({ session, project, onClose }: Props)
   }
 
   async function handleSave() {
-    if (!title.trim()) { setError('Title wajib diisi'); return }
+    if (!title.trim()) { setError(t('detail.title_required')); return }
     setSaving(true)
     setError(null)
     const res = await fetch('/api/sessions', {
@@ -45,7 +47,7 @@ export default function SessionDetailModal({ session, project, onClose }: Props)
       }),
     })
     const d = await res.json()
-    if (!d.ok) { setError(d.error ?? 'Gagal menyimpan'); setSaving(false); return }
+    if (!d.ok) { setError(d.error ?? t('detail.failed_save')); setSaving(false); return }
     router.refresh()
     onClose()
   }
@@ -58,7 +60,7 @@ export default function SessionDetailModal({ session, project, onClose }: Props)
       body: JSON.stringify({ date: session.date, title: session.title }),
     })
     const d = await res.json()
-    if (!d.ok) { setError(d.error ?? 'Gagal hapus'); setSaving(false); return }
+    if (!d.ok) { setError(d.error ?? t('detail.failed_delete')); setSaving(false); return }
     router.refresh()
     onClose()
   }
@@ -87,7 +89,7 @@ export default function SessionDetailModal({ session, project, onClose }: Props)
           <div className="flex items-center gap-1">
             <button onClick={() => { setEditing(e => !e); setConfirmDelete(false) }}
               className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition text-xs font-semibold"
-              title={editing ? 'Cancel edit' : 'Edit'}>
+              title={editing ? t('detail.cancel_edit') : t('common.edit')}>
               {editing ? '✕' : '✏️'}
             </button>
             <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition text-sm">✕</button>
@@ -98,7 +100,7 @@ export default function SessionDetailModal({ session, project, onClose }: Props)
         <div className="px-5 py-4 max-h-96 overflow-y-auto">
           {editing ? (
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Bullets</p>
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{t('detail.bullets_label')}</p>
               {bullets.map((b, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span className="text-gray-300 dark:text-gray-600 text-xs">–</span>
@@ -110,7 +112,7 @@ export default function SessionDetailModal({ session, project, onClose }: Props)
             </div>
           ) : (
             session.bullets.length === 0
-              ? <p className="text-sm text-gray-400 italic">Tidak ada detail.</p>
+              ? <p className="text-sm text-gray-400 italic">{t('detail.no_detail')}</p>
               : <ul className="space-y-2.5">
                   {session.bullets.map((b, i) => (
                     <li key={i} className="flex items-start gap-2.5">
@@ -129,21 +131,21 @@ export default function SessionDetailModal({ session, project, onClose }: Props)
               <div>
                 {!confirmDelete
                   ? <button onClick={() => setConfirmDelete(true)} disabled={saving}
-                      className="text-xs text-red-500 hover:text-red-600 font-semibold">🗑 Hapus session</button>
+                      className="text-xs text-red-500 hover:text-red-600 font-semibold">{t('detail.delete')}</button>
                   : <div className="flex items-center gap-2">
-                      <span className="text-xs text-red-600 font-semibold">Yakin hapus?</span>
-                      <button onClick={handleDelete} disabled={saving} className="text-xs bg-red-500 text-white px-2 py-1 rounded-lg font-semibold hover:bg-red-600 transition">Ya, hapus</button>
-                      <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
+                      <span className="text-xs text-red-600 font-semibold">{t('detail.confirm_delete')}</span>
+                      <button onClick={handleDelete} disabled={saving} className="text-xs bg-red-500 text-white px-2 py-1 rounded-lg font-semibold hover:bg-red-600 transition">{t('detail.yes_delete')}</button>
+                      <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-500 hover:text-gray-700">{t('common.cancel')}</button>
                     </div>
                 }
               </div>
               <button onClick={handleSave} disabled={saving}
                 className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
-                {saving ? 'Menyimpan…' : 'Simpan'}
+                {saving ? t('common.saving') : t('common.save')}
               </button>
             </>
           ) : (
-            <p className="text-[10px] text-gray-400">{session.bullets.length} deliverables recorded</p>
+            <p className="text-[10px] text-gray-400">{session.bullets.length} {t('detail.deliverables')}</p>
           )}
         </div>
       </div>

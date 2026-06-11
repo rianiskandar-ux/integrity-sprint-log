@@ -5,6 +5,7 @@ import type { SprintDay, Session } from '@/lib/parser'
 import type { Project } from '@/lib/projects'
 import { tagSessionToProject, getProjectById } from '@/lib/projects'
 import SessionDetailModal from './SessionDetailModal'
+import { useI18n } from '@/lib/i18n'
 
 function inlineMarkdown(text: string) {
   return text
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export default function DailyView({ dayData, projects, isToday, onAddSession }: Props) {
+  const { t, lang } = useI18n()
   const [detailSession, setDetailSession] = useState<(Session & { date?: string }) | null>(null)
   const detailProject = detailSession
     ? getProjectById(tagSessionToProject(detailSession.title, detailSession.bullets.join(' ')))
@@ -30,7 +32,7 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
         <span className="text-3xl">📭</span>
-        <p className="text-sm">Tidak ada data untuk tanggal ini.</p>
+        <p className="text-sm">{t('daily.no_data')}</p>
       </div>
     )
   }
@@ -44,10 +46,10 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
         <span className="text-4xl">{isToday ? '☀️' : '🌿'}</span>
         <div className="text-center">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            {isToday ? 'Belum ada sesi hari ini' : 'Tidak ada aktivitas tercatat'}
+            {isToday ? t('daily.no_activity_today') : t('daily.no_activity_date')}
           </p>
           {isToday && (
-            <p className="text-xs text-gray-400 mt-1">Mulai catat sesi kerja pertamamu hari ini</p>
+            <p className="text-xs text-gray-400 mt-1">{t('daily.start_hint')}</p>
           )}
         </div>
         {isToday && onAddSession && (
@@ -55,7 +57,7 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
             onClick={onAddSession}
             className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
           >
-            + Mulai Session
+            {t('header.add_session')}
           </button>
         )}
       </div>
@@ -67,11 +69,11 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         {/* My Sessions */}
         <Column
-          title="My Sessions"
+          title={t('daily.col_activities')}
           count={sessions.length}
           colorClass="bg-indigo-50 dark:bg-indigo-950 border-indigo-100 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400"
           badgeClass="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300"
-          empty="Tidak ada sesi hari ini"
+          empty={t('daily.no_activity_today')}
         >
           {sessions.map((s, i) => {
             const proj = getProjectById(tagSessionToProject(s.title, s.bullets.join(' ')))
@@ -84,7 +86,8 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
                 <div className="flex items-start gap-2 mb-1">
                   <span className="text-sm">{proj.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug">{s.title}</p>
+                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug"
+                      dangerouslySetInnerHTML={{ __html: inlineMarkdown(s.title) }} />
                     {s.time && <p className="text-[10px] text-gray-400 mt-0.5">{s.time}</p>}
                   </div>
                   <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0">›</span>
@@ -99,7 +102,7 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
                       />
                     ))}
                     {s.bullets.length > 3 && (
-                      <li className="text-[10px] text-indigo-400 pl-3">+{s.bullets.length - 3} more…</li>
+                      <li className="text-[10px] text-indigo-400 pl-3">+{s.bullets.length - 3} {t('daily.more')}</li>
                     )}
                   </ul>
                 )}
@@ -115,11 +118,11 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
 
         {/* OpenProject Done */}
         <Column
-          title="OpenProject Done"
+          title={t('daily.col_op')}
           count={op_done.length}
           colorClass="bg-emerald-50 dark:bg-emerald-950 border-emerald-100 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400"
           badgeClass="bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
-          empty="Tidak ada activity OpenProject hari ini"
+          empty={t('daily.empty_op')}
         >
           {op_done.map((item, i) => (
             <div key={i} className="text-xs text-gray-700 dark:text-gray-300 py-2 px-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
@@ -129,15 +132,15 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
 
         {/* Open Tasks */}
         <Column
-          title="Open Tasks · Next 3 Days"
+          title={t('daily.col_tasks')}
           count={open_tasks.length}
           colorClass="bg-amber-50 dark:bg-amber-950 border-amber-100 dark:border-amber-900 text-amber-700 dark:text-amber-400"
           badgeClass="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"
-          empty="Tidak ada open tasks"
+          empty={t('daily.empty_tasks')}
         >
-          {open_tasks.map((t, i) => (
+          {open_tasks.map((tk, i) => (
             <div key={i} className="text-xs text-gray-700 dark:text-gray-300 py-2 px-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
-              dangerouslySetInnerHTML={{ __html: inlineMarkdown(t) }} />
+              dangerouslySetInnerHTML={{ __html: inlineMarkdown(tk) }} />
           ))}
         </Column>
       </div>

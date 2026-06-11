@@ -34,14 +34,40 @@ yarn-error.log*
 .env*
 !.env.local.example
 
-# ISL runtime data (per-user, tidak di-commit)
+# ISL runtime data (per-user, not committed)
 google-token.json
 google-profile.json
 op-cache.json
+op-mode.json
+user-config.json
+session-logs/
 daily-sprints/
 
-# Bat files yang tidak perlu di-share
+# Context and session draft files (runtime, not committed)
+context-draft.json
+context-drafts.json.bak
+processed-sessions.json
+
+# Log files
+*.log
+server.err
+startup.log
+
+# Personal task/memory data (per-user)
+task-memory/
+memory/
+
+# Personal bat scripts with hardcoded paths/tokens
 open-network-access.bat
+start-isl.bat
+rebuild-isl.bat
+
+# Claude project files
+CLAUDE.md
+
+# pnpm (project uses npm)
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # vercel
 .vercel
@@ -49,3 +75,5 @@ open-network-access.bat
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+data/

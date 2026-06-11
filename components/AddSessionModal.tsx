@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { loadSettings, WP_STATUSES } from '@/lib/op-config'
 import type { CachedUserStory, CachedWorkPackage } from '@/lib/op-cache'
+import { useI18n } from '@/lib/i18n'
 
 interface Props {
   date: string
@@ -14,6 +15,7 @@ type WPMode = 'existing' | 'new' | 'none'
 
 export default function AddSessionModal({ date, onClose }: Props) {
   const router = useRouter()
+  const { t } = useI18n()
   const [title, setTitle]   = useState('')
   const [sessionStart] = useState(() => new Date())
   const [time, setTime] = useState(() => {
@@ -83,7 +85,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
     : myTasks
 
   async function save() {
-    if (!title.trim()) { setError('Title wajib diisi'); return }
+    if (!title.trim()) { setError(t('session.title_required')); return }
     setSaving(true)
     setError(null)
 
@@ -98,7 +100,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
     })
     const data = await res.json()
     if (!data.ok) {
-      setError(data.error ?? 'Gagal menyimpan')
+      setError(data.error ?? t('detail.failed_save'))
       setSaving(false)
       return
     }
@@ -156,7 +158,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
       <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
 
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-          <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Add Session</h3>
+          <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">{t('session.add_title')}</h3>
           <span className="text-xs text-gray-400">{date}</span>
         </div>
 
@@ -165,14 +167,14 @@ export default function AddSessionModal({ date, onClose }: Props) {
           {/* Title + Time */}
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Title *</label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{t('session.title_label')}</label>
               <input ref={titleRef} value={title} onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. KYV Docker — SSL Fix"
+                placeholder={t('session.title_placeholder')}
                 className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-indigo-400 placeholder-gray-400"
                 onKeyDown={e => e.key === 'Enter' && save()} />
             </div>
             <div className="w-32">
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Time</label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{t('session.time_label')}</label>
               <input value={time} onChange={e => setTime(e.target.value)}
                 className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
@@ -180,7 +182,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
 
           {/* Bullets */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Bullets</label>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{t('session.bullets_label')}</label>
             <div className="space-y-2">
               {bullets.map((b, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -195,9 +197,9 @@ export default function AddSessionModal({ date, onClose }: Props) {
 
           {/* OP Link */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">OpenProject</label>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">{t('session.op_label')}</label>
             {cacheEmpty && (
-              <p className="text-xs text-amber-500 mb-2">⚠ Cache kosong — sync dulu di Settings → Integrations</p>
+              <p className="text-xs text-amber-500 mb-2">{t('session.cache_warn')}</p>
             )}
             <div className="flex gap-2 mb-3">
               {(['none', 'existing', 'new'] as WPMode[]).map(m => (
@@ -205,7 +207,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
                   className={`flex-1 py-1.5 text-xs rounded-lg border transition font-medium ${wpMode === m
                     ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
-                  {m === 'none' ? 'Skip' : m === 'existing' ? '🔗 Link existing' : '✨ Create new'}
+                  {m === 'none' ? t('session.op_skip') : m === 'existing' ? t('session.op_link') : t('session.op_new')}
                 </button>
               ))}
             </div>
@@ -214,7 +216,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
             {wpMode === 'existing' && (
               <div className="space-y-2">
                 <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)}
-                  placeholder="Cari task…"
+                  placeholder={t('session.op_search')}
                   className="w-full text-xs px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-indigo-400 placeholder-gray-400" />
                 <div className="max-h-36 overflow-y-auto space-y-1">
                   {filteredTasks.slice(0, 8).map(t => (
@@ -227,7 +229,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
                       <span className="ml-2 text-[10px] text-gray-400">{t.project}</span>
                     </button>
                   ))}
-                  {filteredTasks.length === 0 && <p className="text-xs text-gray-400 py-2 text-center">Tidak ada task ditemukan</p>}
+                  {filteredTasks.length === 0 && <p className="text-xs text-gray-400 py-2 text-center">{t('session.op_notfound')}</p>}
                 </div>
               </div>
             )}
@@ -235,7 +237,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
             {/* Create new — pick User Story */}
             {wpMode === 'new' && (
               <div className="space-y-2">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Pilih User Story parent:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('session.op_story')}</p>
                 <div className="max-h-36 overflow-y-auto space-y-1">
                   {userStories.slice(0, 10).map(s => (
                     <button key={s.id} onClick={() => setSelectedStoryId(s.id === selectedStoryId ? null : s.id)}
@@ -247,10 +249,10 @@ export default function AddSessionModal({ date, onClose }: Props) {
                       <span className="ml-2 text-[10px] text-gray-400">{s.project}</span>
                     </button>
                   ))}
-                  {userStories.length === 0 && <p className="text-xs text-gray-400 py-2 text-center">Cache kosong — sync di Settings</p>}
+                  {userStories.length === 0 && <p className="text-xs text-gray-400 py-2 text-center">{t('session.op_no_story')}</p>}
                 </div>
                 {!selectedStoryId && (
-                  <p className="text-xs text-gray-400">Tidak pilih = auto-detect dari judul</p>
+                  <p className="text-xs text-gray-400">{t('session.op_auto')}</p>
                 )}
               </div>
             )}
@@ -258,7 +260,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
 
           {/* Duration indicator */}
           <div className="flex items-center gap-2 py-1">
-            <span className="text-[11px] text-gray-400">⏱ Durasi session:</span>
+            <span className="text-[11px] text-gray-400">{t('session.duration')}</span>
             <span className="text-[11px] font-bold text-indigo-500 tabular-nums">{duration || '< 1m'}</span>
             <span className="text-[10px] text-gray-300 dark:text-gray-600">— akan dicatat ke OP</span>
           </div>
@@ -267,7 +269,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
           {wpMode === 'existing' && selectedTaskId && (
             <div className="space-y-3 pt-1 border-t border-gray-100 dark:border-gray-800">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Update Status Task</label>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{t('session.status_label')}</label>
                 <div className="flex flex-wrap gap-1.5">
                   {WP_STATUSES.map(s => (
                     <button key={s.id} onClick={() => setWpStatus(wpStatus === s.opId ? null : s.opId)}
@@ -303,8 +305,8 @@ export default function AddSessionModal({ date, onClose }: Props) {
 
         <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
           <div className="text-xs text-gray-400">
-            {wpMode === 'existing' && selectedTaskId && `→ Log time ke #${selectedTaskId}`}
-            {wpMode === 'new' && `→ Create task baru di OP`}
+            {wpMode === 'existing' && selectedTaskId && `${t('session.log_to')} #${selectedTaskId}`}
+            {wpMode === 'new' && t('session.create_new')}
           </div>
           <div className="flex gap-2">
             <button onClick={onClose}
@@ -313,7 +315,7 @@ export default function AddSessionModal({ date, onClose }: Props) {
             </button>
             <button onClick={save} disabled={saving}
               className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
-              {saving ? 'Saving…' : 'Save Session'}
+              {saving ? t('common.saving') : t('session.save_btn')}
             </button>
           </div>
         </div>

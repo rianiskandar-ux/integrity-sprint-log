@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import type { SprintDay } from '@/lib/parser'
 import type { Project } from '@/lib/projects'
 import { tagSessionToProject, getProjectById } from '@/lib/projects'
+import { useI18n } from '@/lib/i18n'
 
 interface Props {
   monthMap: Record<string, SprintDay[]>
@@ -11,13 +12,14 @@ interface Props {
 }
 
 export default function MonthView({ monthMap, projects }: Props) {
+  const { t } = useI18n()
   const months = Object.keys(monthMap).sort().reverse()
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">Monthly Log</h2>
-        <p className="text-xs text-gray-400">{months.length} months recorded</p>
+        <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">{t('month.title')}</h2>
+        <p className="text-xs text-gray-400">{months.length} {t('month.recorded')}</p>
       </div>
 
       {months.map((month) => {
@@ -41,9 +43,9 @@ export default function MonthView({ monthMap, projects }: Props) {
                 {format(parseISO(month + '-01'), 'MMMM yyyy')}
               </h3>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400">{activeDays} active days</span>
+                <span className="text-xs text-gray-400">{activeDays} {t('month.active_days')}</span>
                 <span className="text-xs font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
-                  {totalSessions} sessions
+                  {totalSessions} {t('month.activities')}
                 </span>
               </div>
             </div>
@@ -69,22 +71,22 @@ export default function MonthView({ monthMap, projects }: Props) {
               {days.filter((d) => d.sessions.length > 0).map((day) => (
                 <div key={day.date} className="px-5 py-3">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 w-28 flex-shrink-0">
+                    <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 w-24 flex-shrink-0">
                       {format(parseISO(day.date), 'EEE, d MMM')}
                     </span>
-                    <span className="text-[10px] text-gray-400">{day.sessions.length} session{day.sessions.length !== 1 ? 's' : ''}</span>
+                    <span className="text-[10px] text-gray-300 dark:text-gray-600">
+                      {day.sessions.length} {t('month.activities')}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="space-y-1 pl-2">
                     {day.sessions.map((s, i) => {
                       const proj = getProjectById(tagSessionToProject(s.title, s.bullets.join(' ')))
                       return (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border font-medium"
-                          style={{ borderColor: proj.color + '40', color: proj.color, background: proj.color + '15' }}
-                        >
-                          {proj.icon} {s.title}
-                        </span>
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-sm flex-shrink-0">{proj.icon}</span>
+                          <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{s.title}</p>
+                          {s.time && <span className="text-[10px] text-gray-400 flex-shrink-0">{s.time}</span>}
+                        </div>
                       )
                     })}
                   </div>
