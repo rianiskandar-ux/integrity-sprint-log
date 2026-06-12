@@ -340,7 +340,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
                 <div key={s.id} className="flex items-center gap-2 mb-2 group">
                   <span className="flex-1 text-[10px] text-gray-600 dark:text-gray-300 truncate">{s.title}</span>
                   <button onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: s.id, title: s.title, taskType: 'session' } }))}
-                    className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-indigo-50 dark:hover:bg-indigo-950">
+                    className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
                     💬
                   </button>
                 </div>
@@ -362,11 +362,11 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
                 <div key={t.id} className="flex items-center gap-2 mb-2 group">
                   <span className="flex-1 text-[10px] text-gray-600 dark:text-gray-300 truncate">#{t.id} {t.subject}</span>
                   <button onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: t.subject, opTaskId: t.id } }))}
-                    className="flex-shrink-0 text-[9px] font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-700 px-1.5 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-emerald-50 dark:hover:bg-emerald-950">
+                    className="flex-shrink-0 text-[9px] font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-700 px-1.5 py-0.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-950">
                     ▶
                   </button>
                   <button onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: `incoming-${t.id}`, title: t.subject, taskType: 'incoming', opTaskId: t.id } }))}
-                    className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-indigo-50 dark:hover:bg-indigo-950">
+                    className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
                     💬
                   </button>
                 </div>

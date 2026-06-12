@@ -37,13 +37,13 @@ function TaskRow({ t, opUrl, myUserId, onChat }: {
       {fromOther && (
         <span className="flex-shrink-0 text-[10px] text-amber-500 italic">dari {t.createdBy?.split(' ')[0] ?? '?'}</span>
       )}
-      {/* Action buttons — visible on hover */}
+      {/* Action buttons — always visible */}
       {fromOther ? (
-        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition flex gap-1">
+        <div className="flex-shrink-0 flex gap-1">
           <button
             onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: t.subject, opTaskId: t.id } })) }}
             className="text-[9px] font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-700 px-1.5 py-0.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-950">
-            ▶
+            ▶ Mulai
           </button>
           <button
             onClick={e => { e.stopPropagation(); onChat({ id: `banner-${t.id}`, title: t.subject, taskType: 'incoming', opTaskId: t.id, sprintName: t.sprintName ?? null, status: t.status }) }}
@@ -54,7 +54,7 @@ function TaskRow({ t, opUrl, myUserId, onChat }: {
       ) : (
         <button
           onClick={e => { e.stopPropagation(); onChat({ id: `banner-${t.id}`, title: t.subject, taskType: 'session', opTaskId: t.id, sprintName: t.sprintName ?? null, status: t.status }) }}
-          className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
+          className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
           💬
         </button>
       )}
