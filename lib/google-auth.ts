@@ -46,6 +46,7 @@ export function saveToken(token: GoogleToken) {
 }
 
 export function getAuthUrl(): string {
+  const hint = process.env.GOOGLE_LOGIN_HINT ?? ''
   const params = new URLSearchParams({
     client_id:     process.env.GOOGLE_CLIENT_ID!,
     redirect_uri:  process.env.GOOGLE_REDIRECT_URI!,
@@ -54,6 +55,7 @@ export function getAuthUrl(): string {
     access_type:   'offline',
     prompt:        'consent',
   })
+  if (hint) params.set('login_hint', hint)
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 

@@ -81,6 +81,7 @@ export default function SprintPlanView() {
   const [tab, setTab]                 = useState<Tab>('active')
   const [projectFilter, setProjectFilter] = useState<string>('all')
   const [customTheme, setCustomTheme] = useState('')
+  const [aiLoading, setAiLoading]         = useState(false)
   const [reloading, setReloading]         = useState(false)
   const [sendingToQueue, setSendingToQueue] = useState(false)
   const [selectedSuggests, setSelectedSuggests] = useState<Set<number>>(new Set())
@@ -112,18 +113,40 @@ export default function SprintPlanView() {
       const r = await fetch('/api/op/sprint-plan').then(r => r.json())
       if (r.error) throw new Error(r.error)
       setData(r)
-      setCustomTheme(r.aiName?.theme ?? '')
+      setCustomTheme('')
     } catch (e) { setError(String(e)) }
     setLoading(false)
+    // Load AI analysis in background after page renders
+    loadAI()
+  }
+
+  async function loadAI() {
+    setAiLoading(true)
+    try {
+      const r = await fetch('/api/op/sprint-plan/ai').then(r => r.json())
+      setData(prev => prev ? {
+        ...prev,
+        aiName: r.aiName ?? prev.aiName,
+        aiSummary: r.aiSummary ?? prev.aiSummary,
+        aiSuggestedTasks: r.aiSuggestedTasks?.length ? r.aiSuggestedTasks : prev.aiSuggestedTasks,
+      } : prev)
+      if (r.aiName?.theme) setCustomTheme(r.aiName.theme)
+    } catch {}
+    setAiLoading(false)
   }
 
   async function reloadAI() {
     if (!data) return
     setReloading(true)
     try {
-      const r = await fetch('/api/op/sprint-plan').then(r => r.json())
-      if (r.aiName) setData(prev => prev ? { ...prev, aiName: r.aiName } : prev)
-      setCustomTheme(r.aiName?.theme ?? customTheme)
+      const r = await fetch('/api/op/sprint-plan/ai').then(r => r.json())
+      setData(prev => prev ? {
+        ...prev,
+        aiName: r.aiName ?? prev.aiName,
+        aiSummary: r.aiSummary ?? prev.aiSummary,
+        aiSuggestedTasks: r.aiSuggestedTasks?.length ? r.aiSuggestedTasks : prev.aiSuggestedTasks,
+      } : prev)
+      if (r.aiName?.theme) setCustomTheme(r.aiName.theme)
     } catch {}
     setReloading(false)
   }
@@ -267,6 +290,33 @@ export default function SprintPlanView() {
   const totalSpent = allTasks.reduce((a, t) => a + (t.spentHours ?? 0), 0)
   const openEst    = carryOver.reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
 
+  // Capacity health: based on open estimated hours for next sprint
+  // < 40h = under capacity (blue), 40-50h = good (green), 50-60h = warning (yellow), > 60h = over (red)
+  const capacityColor = openEst < 40
+    ? { bar: 'bg-blue-400', text: 'text-blue-600 dark:text-blue-400', label: 'Under capacity', bg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' }
+    : openEst <= 50
+    ? { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', label: 'Good capacity', bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' }
+    : openEst <= 60
+    ? { bar: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400', label: 'Near limit', bg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' }
+    : { bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400', label: 'Over capacity!', bg: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800' }
+
+  // Sprint velocity gap: days elapsed % vs tasks done %
+  const sprintStart = new Date(currentSprint.startDate).getTime()
+  const sprintEnd   = new Date(currentSprint.endDate).getTime()
+  const now         = Date.now()
+  const sprintElapsedPct = sprintEnd > sprintStart
+    ? Math.min(100, Math.round((now - sprintStart) / (sprintEnd - sprintStart) * 100))
+    : 0
+  const taskDonePct = allTasks.length > 0 ? Math.round(byStatus.done / allTasks.length * 100) : 0
+  const velocityGap = sprintElapsedPct - taskDonePct  // positive = behind schedule
+
+  // Sprint move rules per task: < 50% done → can move; ≥ 70% done → must finish
+  function getMoveRule(t: TaskItem): 'must-finish' | 'can-move' | 'ok' {
+    if (t.percentDone >= 70) return 'must-finish'
+    if (t.percentDone < 50)  return 'can-move'
+    return 'ok'
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
 
@@ -332,7 +382,7 @@ export default function SprintPlanView() {
         </div>
 
         {/* Work hours summary */}
-        <div className="flex gap-4 pt-1 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex gap-4 pt-1 border-t border-gray-100 dark:border-gray-800 flex-wrap">
           <div className="text-center">
             <p className="text-[9px] text-gray-400 uppercase tracking-wide">Total Est.</p>
             <p className="text-xs font-bold text-gray-700 dark:text-gray-200">{fmtH(totalEst)}</p>
@@ -343,22 +393,45 @@ export default function SprintPlanView() {
           </div>
           <div className="text-center">
             <p className="text-[9px] text-gray-400 uppercase tracking-wide">Open Est.</p>
-            <p className="text-xs font-bold text-amber-600 dark:text-amber-400">{fmtH(openEst)}</p>
+            <p className={`text-xs font-bold ${capacityColor.text}`}>{fmtH(openEst)}</p>
           </div>
           <div className="text-center">
             <p className="text-[9px] text-gray-400 uppercase tracking-wide">Tasks</p>
             <p className="text-xs font-bold text-gray-700 dark:text-gray-200">{allTasks.length}</p>
           </div>
+          {/* Capacity bar */}
+          <div className="flex-1 min-w-32">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[9px] text-gray-400 uppercase tracking-wide">Capacity (open est.)</p>
+              <span className={`text-[9px] font-bold ${capacityColor.text}`}>{capacityColor.label}</span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${capacityColor.bar}`}
+                style={{ width: `${Math.min(100, openEst / 60 * 100)}%` }} />
+            </div>
+            <p className="text-[8px] text-gray-400 mt-0.5">40h–60h ideal · {fmtH(openEst)} open</p>
+          </div>
         </div>
+
+        {/* Velocity gap warning */}
+        {sprintElapsedPct > 20 && velocityGap > 20 && (
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <span className="text-amber-500">⚡</span>
+            <p className="text-[10px] text-amber-600 dark:text-amber-400">
+              Sprint {sprintElapsedPct}% lewat tapi baru {taskDonePct}% selesai — gap {velocityGap}%.
+              {velocityGap > 40 ? ' Perlu akselerasi atau geser task ke sprint berikutnya.' : ' Monitor progress lebih ketat.'}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Next sprint name card */}
       <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wide">✨ Next Sprint — Draft</p>
-          <button onClick={reloadAI} disabled={reloading}
+          <button onClick={reloadAI} disabled={reloading || aiLoading}
             className="text-[10px] text-violet-500 hover:text-violet-700 transition disabled:opacity-40">
-            {reloading ? '⏳ generating…' : '↻ Suggest lagi'}
+            {reloading || aiLoading ? '⏳ generating…' : '↻ Suggest lagi'}
           </button>
         </div>
 
@@ -408,6 +481,13 @@ export default function SprintPlanView() {
         )}
       </div>
 
+      {/* AI loading placeholder */}
+      {aiLoading && !aiSummary && aiSuggestedTasks.length === 0 && (
+        <div className="border border-indigo-100 dark:border-indigo-900 rounded-xl px-4 py-3 flex items-center gap-2 text-[11px] text-indigo-400">
+          <span className="animate-spin">⏳</span> AI sedang analisa sprint…
+        </div>
+      )}
+
       {/* AI Sprint Plan for next sprint */}
       {(aiSummary || aiSuggestedTasks.length > 0) && (
         <div className="border border-indigo-200 dark:border-indigo-800 rounded-xl overflow-hidden">
@@ -419,9 +499,9 @@ export default function SprintPlanView() {
               </p>
               <p className="text-[9px] text-indigo-400 mt-0.5">Berdasarkan data sprint {currentSprint.name}</p>
             </div>
-            <button onClick={reloadAI} disabled={reloading}
+            <button onClick={reloadAI} disabled={reloading || aiLoading}
               className="text-[10px] text-indigo-400 hover:text-indigo-600 transition disabled:opacity-40">
-              {reloading ? '⏳' : '↻ Refresh'}
+              {reloading || aiLoading ? '⏳' : '↻ Refresh'}
             </button>
           </div>
 
@@ -594,6 +674,7 @@ export default function SprintPlanView() {
               const editedSubject = edits[task.id] ?? task.subject
               const sk           = statusKey(task.status)
               const statusCls    = STATUS_COLOR[sk] ?? 'text-gray-400'
+              const moveRule     = isSelectable ? getMoveRule(task) : null
 
               return (
                 <div key={task.id}
@@ -639,6 +720,17 @@ export default function SprintPlanView() {
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[9px] text-gray-400">{task.project}</span>
                         <span className={`text-[9px] font-semibold ${statusCls}`}>{task.status}</span>
+                        {/* Sprint move rule badge */}
+                        {moveRule === 'must-finish' && (
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950 text-red-600 border border-red-200 dark:border-red-800">
+                            🔒 Wajib selesai
+                          </span>
+                        )}
+                        {moveRule === 'can-move' && (
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-500 border border-blue-200 dark:border-blue-800">
+                            ➡ Bisa geser
+                          </span>
+                        )}
                         {/* Progress bar inline */}
                         {task.percentDone > 0 && (
                           <div className="flex items-center gap-1">
