@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { CachedWorkPackage } from '@/lib/op-cache'
 import { useI18n } from '@/lib/i18n'
+import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 
 interface Props {
   currentSprintNo: number
@@ -17,27 +18,31 @@ const STATUS_DOT: Record<string, string> = {
   'Closed':      'bg-emerald-400',
 }
 
-function TaskRow({ t, opUrl, myUserId }: { t: CachedWorkPackage; opUrl: string | null; myUserId: number | null }) {
+function TaskRow({ t, opUrl, myUserId, onChat }: {
+  t: CachedWorkPackage; opUrl: string | null; myUserId: number | null
+  onChat: (ctx: TaskChatContext) => void
+}) {
   const link = opUrl ? `${opUrl}/work_packages/${t.id}` : null
   const dot  = STATUS_DOT[t.status] ?? 'bg-gray-300 dark:bg-gray-600'
   const fromOther = t.createdById !== null && myUserId !== null && t.createdById !== myUserId
 
   return (
-    <div className="flex items-center gap-2 py-1 text-[11px] border-b border-gray-100 dark:border-gray-700/40 last:border-0 min-w-0">
-      {/* Status dot */}
+    <div className="flex items-center gap-2 py-1 text-[11px] border-b border-gray-100 dark:border-gray-700/40 last:border-0 min-w-0 group">
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
-      {/* ID */}
       {link
         ? <a href={link} target="_blank" rel="noopener" className="text-indigo-400 font-mono hover:text-indigo-500 flex-shrink-0 font-semibold">#{t.id}</a>
         : <span className="text-indigo-400 font-mono flex-shrink-0 font-semibold">#{t.id}</span>
       }
-      {/* Title */}
       <span className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300">{t.subject}</span>
-      {/* From other person */}
       {fromOther && (
         <span className="flex-shrink-0 text-[10px] text-amber-500 italic">dari {t.createdBy?.split(' ')[0] ?? '?'}</span>
       )}
-      {/* Status */}
+      {/* Chat button — visible on hover */}
+      <button
+        onClick={e => { e.stopPropagation(); onChat({ id: `banner-${t.id}`, title: t.subject, taskType: fromOther ? 'incoming' : 'session', opTaskId: t.id, sprintName: t.sprintName ?? null, status: t.status }) }}
+        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
+        💬
+      </button>
       <span className="flex-shrink-0 text-[10px] text-gray-400">{t.status}</span>
     </div>
   )
@@ -53,6 +58,7 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
   const [incomingCount, setIncomingCount] = useState(0)
   const [lastSync, setLastSync]   = useState<string | null>(null)
   const [opSprintName, setOpSprintName] = useState<string | null>(null)
+  const [chatTask, setChatTask]         = useState<TaskChatContext | null>(null)
 
   function refreshCache() {
     fetch('/api/op/cache')
@@ -174,18 +180,22 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
               </p>
             )}
             {(daysLeft === null || daysLeft > 3 ? actionable : quickTasks).map(t =>
-              <TaskRow key={t.id} t={t} opUrl={opUrl} myUserId={myUserId} />
+              <TaskRow key={t.id} t={t} opUrl={opUrl} myUserId={myUserId} onChat={setChatTask} />
             )}
             {daysLeft !== null && daysLeft <= 3 && heavyTasks.length > 0 && (
               <>
                 <p className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wide pt-2 pb-0.5">
                   ➡️ Next sprint
                 </p>
-                {heavyTasks.map(t => <TaskRow key={t.id} t={t} opUrl={opUrl} myUserId={myUserId} />)}
+                {heavyTasks.map(t => <TaskRow key={t.id} t={t} opUrl={opUrl} myUserId={myUserId} onChat={setChatTask} />)}
               </>
             )}
           </div>
         </div>
+      )}
+
+      {chatTask && (
+        <TaskChatModal task={chatTask} onClose={() => setChatTask(null)} />
       )}
     </div>
   )

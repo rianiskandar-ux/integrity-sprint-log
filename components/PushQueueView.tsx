@@ -152,9 +152,10 @@ function SessionCard({
 
         {/* Suggested match badge */}
         {suggested && mode === 'idle' && (
-          <div className="flex-shrink-0 text-right">
-            <p className="text-[9px] text-teal-500 font-semibold">Suggested match:</p>
+          <div className="flex-shrink-0 text-right" title={`Auto-match: session ini mirip dengan task OP "${suggested.subject}" — klik "Link ke #${suggested.id}" untuk menghubungkan`}>
+            <p className="text-[9px] text-teal-500 font-semibold">🔍 Match OP:</p>
             <p className="text-[10px] text-teal-600 dark:text-teal-400 font-medium">#{suggested.id}</p>
+            <p className="text-[9px] text-teal-400 max-w-[100px] truncate">{suggested.subject.slice(0, 30)}</p>
           </div>
         )}
 

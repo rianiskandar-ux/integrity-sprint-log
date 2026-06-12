@@ -8,6 +8,13 @@ interface Message {
   id: string
 }
 
+interface TaskShortcut {
+  id: string
+  label: string
+  type: 'queue' | 'incoming'
+  taskId?: number | null
+}
+
 function md(text: string): string {
   return text
     .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) =>
@@ -28,16 +35,33 @@ export default function ChatBubble() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput]       = useState('')
   const [streaming, setStreaming] = useState(false)
-  const [aiReady, setAiReady]   = useState<boolean | null>(null)
+  const [aiReady, setAiReady]       = useState<boolean | null>(null)
+  const [taskShortcuts, setShortcuts] = useState<TaskShortcut[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
   const abortRef  = useRef<AbortController | null>(null)
 
   useEffect(() => {
     fetch('/api/user-config').then(r => r.json()).then(d => {
-      setAiReady(d.llmApiKeySet || d.llmProvider === 'ollama')
+      setAiReady(d.llmApiKeySet || d.llmProvider === 'ollama' || d.llmProvider === '9router')
     }).catch(() => setAiReady(false))
   }, [])
+
+  // Load task shortcuts when panel opens
+  useEffect(() => {
+    if (!open) return
+    Promise.all([
+      fetch('/api/isl/sessions?status=pending').then(r => r.json()).catch(() => ({})),
+      fetch('/api/op/cache').then(r => r.json()).catch(() => ({})),
+    ]).then(([sessRes, cacheRes]) => {
+      const queue: TaskShortcut[] = ((sessRes.sessions ?? []) as { id: string; title: string; opTaskId?: number | null }[])
+        .slice(0, 3).map(s => ({ id: s.id, label: s.title, type: 'queue' as const, taskId: s.opTaskId }))
+      const incoming: TaskShortcut[] = ((cacheRes.incomingTasks ?? []) as { id: number; subject: string; islStatus?: string }[])
+        .filter((t) => t.islStatus !== 'done')
+        .slice(0, 3).map(t => ({ id: `incoming-${t.id}`, label: t.subject, type: 'incoming' as const, taskId: t.id }))
+      setShortcuts([...queue, ...incoming].slice(0, 5))
+    })
+  }, [open])
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 150)
@@ -160,6 +184,25 @@ export default function ChatBubble() {
                       {p}
                     </button>
                   ))}
+                  {taskShortcuts.length > 0 && (
+                    <div className="pt-1">
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-1 pb-1">Task Workspace</p>
+                      {taskShortcuts.map(s => (
+                        <button key={s.id}
+                          onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: {
+                            id: s.id,
+                            title: s.label,
+                            taskType: s.type === 'queue' ? 'session' : 'incoming',
+                            opTaskId: s.taskId,
+                          }}))}
+                          className="w-full text-left text-[10px] px-3 py-1.5 rounded-xl border border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-200 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition flex items-center gap-2 mt-1">
+                          <span className="flex-shrink-0 text-[9px]">{s.type === 'queue' ? '📤' : '📥'}</span>
+                          <span className="truncate">{s.label}</span>
+                          <span className="flex-shrink-0 text-indigo-400 ml-auto">💬</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

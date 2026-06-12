@@ -29,6 +29,7 @@ import FlowModal from './FlowModal'
 import ChatBubble from './ChatBubble'
 import SprintReportModal from './SprintReportModal'
 import FeedbackModal from './FeedbackModal'
+import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import { loadSettings, saveSettings, loadAppConfig } from '@/lib/op-config'
 import { useI18n, LANG_OPTIONS } from '@/lib/i18n'
 
@@ -79,6 +80,17 @@ export default function AppShell({
   const [reportOpen, setReportOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [opSprintName, setOpSprintName] = useState<string | null>(null)
+  const [globalTaskChat, setGlobalTaskChat] = useState<TaskChatContext | null>(null)
+
+  // Listen for task chat open events from ChatBubble shortcuts
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ctx = (e as CustomEvent).detail as TaskChatContext
+      if (ctx) setGlobalTaskChat(ctx)
+    }
+    window.addEventListener('isl:open-task-chat', handler)
+    return () => window.removeEventListener('isl:open-task-chat', handler)
+  }, [])
 
   useEffect(() => {
     fetch('/api/op/cache')
@@ -549,6 +561,7 @@ export default function AppShell({
       {flowOpen && <FlowModal onClose={() => setFlowOpen(false)} />}
       {reportOpen && <SprintReportModal onClose={() => setReportOpen(false)} />}
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+      {globalTaskChat && <TaskChatModal task={globalTaskChat} onClose={() => setGlobalTaskChat(null)} />}
       <ChatBubble />
       {showSetup && <SetupWizard onDone={() => { setShowSetup(false); setUserName(loadSettings().userName.split(' ')[0]) }} />}
       {confirmPull && (
