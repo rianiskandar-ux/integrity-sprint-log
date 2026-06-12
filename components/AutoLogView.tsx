@@ -131,18 +131,14 @@ function SessionDetailPopup({
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLOR[status] ?? STATUS_COLOR.in_progress}`}>
               {STATUS_BADGE[status] ?? status}
             </span>
+            {/* Origin badge — most prominent label */}
+            {(() => { const o = getOriginBadge(session); return o ? <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.cls}`}>{o.label}</span> : null })()}
             {isUndone && <span className="text-[10px] font-semibold text-red-400 bg-red-50 dark:bg-red-950 px-2 py-0.5 rounded-full">↩ Backlogged</span>}
             {session.needsValidation && !session.hasExplicitCmd && (
               <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full">⚠️ Needs validation</span>
             )}
-            {session.hasExplicitCmd && (
-              <span className="text-[10px] text-gray-400 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-full">✔ Command confirmed</span>
-            )}
-            {session.isNewTask === false && (
-              <span className="text-[10px] text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-full">🤖 Activity on existing task</span>
-            )}
             {session.isNewTask === true && (
-              <span className="text-[10px] text-violet-500 bg-violet-50 dark:bg-violet-950 px-2 py-0.5 rounded-full">🤖 New task created</span>
+              <span className="text-[10px] text-violet-500 bg-violet-50 dark:bg-violet-950 px-2 py-0.5 rounded-full">🆕 New task created</span>
             )}
           </div>
 
@@ -259,10 +255,22 @@ function SessionDetailPopup({
   )
 }
 
+// ── Origin badge helper ────────────────────────────────────────────────────────
+function getOriginBadge(s: Session): { label: string; cls: string } | null {
+  if (s.source === 'sprint-plan') return { label: '📋 Sprint Plan', cls: 'text-violet-500 bg-violet-50 dark:bg-violet-950' }
+  if (s.source === 'ai-suggest')  return { label: '💡 AI Suggest',  cls: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-950' }
+  if (s.autoPushed)               return { label: '⚡ ISL Auto',    cls: 'text-amber-600 bg-amber-50 dark:bg-amber-950' }
+  if (s.needsValidation && !s.hasExplicitCmd) return { label: '🤖 ISL Generated', cls: 'text-blue-500 bg-blue-50 dark:bg-blue-950' }
+  if (s.hasExplicitCmd)           return { label: '✅ ISL Confirmed', cls: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950' }
+  if (s.opTaskId && s.isNewTask === false) return { label: '🔵 OP Activity', cls: 'text-sky-600 bg-sky-50 dark:bg-sky-950' }
+  return null
+}
+
 // ── Session Row (inside a task group) ─────────────────────────────────────────
 function SessionRow({ session, opUrl, onClick }: { session: Session; opUrl: string; onClick: () => void }) {
   const ps     = pushStatus(session)
   const status = session.taskStatus ?? 'in_progress'
+  const origin = getOriginBadge(session)
   return (
     <div
       onClick={onClick}
@@ -280,10 +288,13 @@ function SessionRow({ session, opUrl, onClick }: { session: Session; opUrl: stri
           {ps === 'discarded' && <span className="text-[10px] text-red-400">↩</span>}
           <span className="text-xs text-gray-600 dark:text-gray-300 truncate">{session.title}</span>
         </div>
-        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400">
+        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400 flex-wrap">
           <span>⏱ {formatDur(session.actualMins ?? session.estimatedMins)}</span>
           <span>📅 {formatDate(session.startedAt)}</span>
           {session.isNewTask && <span className="text-violet-400">new task</span>}
+          {origin && (
+            <span className={`px-1.5 py-0.5 rounded-full font-semibold ${origin.cls}`}>{origin.label}</span>
+          )}
         </div>
       </div>
       <span className="text-gray-300 dark:text-gray-600 text-xs group-hover:text-gray-500 transition flex-shrink-0">›</span>
