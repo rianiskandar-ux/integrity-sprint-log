@@ -18,6 +18,7 @@ import ConfirmModal from './ConfirmModal'
 import SetupWizard from './SetupWizard'
 import SprintBanner from './SprintBanner'
 import AutoLogView from './AutoLogView'
+import DailyLogView from './DailyLogView'
 import AutoLogIndicator from './AutoLogIndicator'
 import EnvModeBadge from './EnvModeBadge'
 import IncomingTasksPanel from './IncomingTasksPanel'
@@ -313,6 +314,7 @@ export default function AppShell({
       else if (e.key === 's') navigate({ view: 'sprint' })
       else if (e.key === 'm') navigate({ view: 'month' })
       else if (e.key === 'l') navigate({ view: 'skills' })
+      else if (e.key === 'g') navigate({ view: 'dailylog' })
       else if (e.key === 't') navigate({ view: 'daily', date: today })
     }
     window.addEventListener('keydown', onKey)
@@ -395,7 +397,7 @@ export default function AppShell({
             const VIEW_LABELS: Record<string, string> = {
               sprint: 'Sprint', month: 'Month', skills: 'Skills',
               isldash: 'ISL Dashboard', incoming: 'Incoming', pushqueue: 'Push Queue',
-              autolog: 'Auto Log', sprintplan: 'Sprint Plan', backlog: 'Backlog', oldtasks: 'Backlog',
+              autolog: 'Auto Log', dailylog: 'Daily Log', sprintplan: 'Sprint Plan', backlog: 'Backlog', oldtasks: 'Backlog',
             }
             return <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{VIEW_LABELS[view] ?? view}</span>
           })()}
@@ -554,7 +556,8 @@ export default function AppShell({
           )}
           {view === 'month' && <MonthView monthMap={monthMap} projects={projects} />}
           {view === 'skills' && <SkillsView allTopics={allTopics} />}
-          {view === 'autolog' && <AutoLogView />}
+          {view === 'autolog'   && <AutoLogView />}
+          {view === 'dailylog'  && <DailyLogView />}
           {view === 'incoming' && <IncomingTasksPanel />}
           {view === 'isldash'   && <div className="flex-1 min-h-0 overflow-hidden"><ISLDashboard onNavigate={v => navigate({ view: v })} onReport={() => setReportOpen(true)} /></div>}
           {view === 'oldtasks'  && <StaleBacklogView onToast={msg => { setToast(msg); setTimeout(() => setToast(null), 3000) }} />}

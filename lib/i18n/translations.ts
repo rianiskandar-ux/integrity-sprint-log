@@ -54,6 +54,7 @@ export const translations = {
   'nav.isldash':    { id: 'Dashboard',    en: 'Dashboard' },
   'nav.pushqueue':  { id: 'Push Queue',  en: 'Push Queue' },
   'nav.sprintplan': { id: 'Sprint Plan', en: 'Sprint Plan' },
+  'nav.dailylog':   { id: 'Daily Log',   en: 'Daily Log' },
   'nav.backlog':    { id: 'Backlog',     en: 'Backlog' },
   'nav.oldtasks':   { id: 'Tugas Lama',  en: 'Old Tasks' },
   'nav.wrapup':   { id: 'Ringkasan Harian', en: 'Daily Summary' },

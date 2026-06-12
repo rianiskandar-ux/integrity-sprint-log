@@ -16,10 +16,11 @@ const ISL_ITEMS = [
   { id: 'incoming',  key: 'nav.incoming'  as const, icon: '📥', shortcut: 'I', color: 'text-blue-500'   },
   { id: 'pushqueue', key: 'nav.pushqueue' as const, icon: '📤', shortcut: 'Q', color: 'text-amber-500'  },
   { id: 'autolog',   key: 'nav.autolog'   as const, icon: '🤖', shortcut: 'A', color: 'text-emerald-500' },
+  { id: 'dailylog',  key: 'nav.dailylog'  as const, icon: '📓', shortcut: 'G', color: 'text-violet-500'  },
   { id: 'backlog',   key: 'nav.backlog'   as const, icon: '🗃', shortcut: 'B', color: 'text-orange-500'  },
 ]
 
-const ISL_VIEWS = new Set(['isldash', 'incoming', 'pushqueue', 'autolog', 'backlog'])
+const ISL_VIEWS = new Set(['isldash', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
 
 interface Props {
   open: boolean
