@@ -335,22 +335,49 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
           {queue.count > 0 && (
             <>
               <div className="h-px bg-gray-50 dark:bg-gray-700 my-4" />
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2">📤 Push Queue</p>
+              {queue.sessions.slice(0, 2).map(s => (
+                <div key={s.id} className="flex items-center gap-2 mb-2 group">
+                  <span className="flex-1 text-[10px] text-gray-600 dark:text-gray-300 truncate">{s.title}</span>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: s.id, title: s.title, taskType: 'session' } }))}
+                    className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-indigo-50 dark:hover:bg-indigo-950">
+                    💬
+                  </button>
+                </div>
+              ))}
               <button onClick={() => onNavigate('pushqueue')}
-                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition hover:opacity-90"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition hover:opacity-90"
                 style={{ background: '#fef2f2', color: RED }}>
                 <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
-                {queue.count} session pending review
+                {queue.count} pending review →
               </button>
             </>
           )}
 
           {incoming.newCount > 0 && (
-            <button onClick={() => onNavigate('incoming')}
-              className="mt-2 w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition hover:opacity-90"
-              style={{ background: '#eff6ff', color: BRAND }}>
-              <span className="w-2 h-2 rounded-full bg-current" />
-              {incoming.newCount} new incoming tasks
-            </button>
+            <>
+              <div className="h-px bg-gray-50 dark:bg-gray-700 my-3" />
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2">📥 Incoming</p>
+              {incoming.preview.slice(0, 2).map(t => (
+                <div key={t.id} className="flex items-center gap-2 mb-2 group">
+                  <span className="flex-1 text-[10px] text-gray-600 dark:text-gray-300 truncate">#{t.id} {t.subject}</span>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: t.subject, opTaskId: t.id } }))}
+                    className="flex-shrink-0 text-[9px] font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-700 px-1.5 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-emerald-50 dark:hover:bg-emerald-950">
+                    ▶
+                  </button>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: `incoming-${t.id}`, title: t.subject, taskType: 'incoming', opTaskId: t.id } }))}
+                    className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-indigo-50 dark:hover:bg-indigo-950">
+                    💬
+                  </button>
+                </div>
+              ))}
+              <button onClick={() => onNavigate('incoming')}
+                className="mt-1 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition hover:opacity-90"
+                style={{ background: '#eff6ff', color: BRAND }}>
+                <span className="w-2 h-2 rounded-full bg-current" />
+                {incoming.newCount} new incoming →
+              </button>
+            </>
           )}
         </div>
 

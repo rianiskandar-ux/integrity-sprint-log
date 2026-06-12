@@ -9,14 +9,16 @@ import { useI18n } from '@/lib/i18n'
 interface Props {
   date: string
   onClose: () => void
+  prefillTitle?: string
+  prefillOpTaskId?: number | null
 }
 
 type WPMode = 'existing' | 'new' | 'none'
 
-export default function AddSessionModal({ date, onClose }: Props) {
+export default function AddSessionModal({ date, onClose, prefillTitle, prefillOpTaskId }: Props) {
   const router = useRouter()
   const { t } = useI18n()
-  const [title, setTitle]   = useState('')
+  const [title, setTitle]   = useState(prefillTitle ?? '')
   const [sessionStart] = useState(() => new Date())
   const [time, setTime] = useState(() => {
     const now = new Date()
@@ -28,10 +30,10 @@ export default function AddSessionModal({ date, onClose }: Props) {
   const titleRef = useRef<HTMLInputElement>(null)
 
   // OP fields
-  const [wpMode, setWpMode]               = useState<WPMode>('none')
+  const [wpMode, setWpMode]               = useState<WPMode>(prefillOpTaskId ? 'existing' : 'none')
   const [myTasks, setMyTasks]             = useState<CachedWorkPackage[]>([])
   const [userStories, setUserStories]     = useState<CachedUserStory[]>([])
-  const [selectedTaskId, setSelectedTaskId]       = useState<number | null>(null)
+  const [selectedTaskId, setSelectedTaskId]       = useState<number | null>(prefillOpTaskId ?? null)
   const [selectedStoryId, setSelectedStoryId]     = useState<number | null>(null)
   const [taskSearch, setTaskSearch]       = useState('')
   const [opResult, setOpResult]           = useState<{ taskId?: number; opUrl?: string } | null>(null)

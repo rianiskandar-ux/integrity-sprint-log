@@ -188,18 +188,32 @@ export default function ChatBubble() {
                     <div className="pt-1">
                       <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-1 pb-1">Task Workspace</p>
                       {taskShortcuts.map(s => (
-                        <button key={s.id}
-                          onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: {
-                            id: s.id,
-                            title: s.label,
-                            taskType: s.type === 'queue' ? 'session' : 'incoming',
-                            opTaskId: s.taskId,
-                          }}))}
-                          className="w-full text-left text-[10px] px-3 py-1.5 rounded-xl border border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-200 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition flex items-center gap-2 mt-1">
-                          <span className="flex-shrink-0 text-[9px]">{s.type === 'queue' ? '📤' : '📥'}</span>
-                          <span className="truncate">{s.label}</span>
-                          <span className="flex-shrink-0 text-indigo-400 ml-auto">💬</span>
-                        </button>
+                        <div key={s.id} className="mt-1 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2">
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[9px]">{s.type === 'queue' ? '📤' : '📥'}</span>
+                            <span className="text-[10px] font-medium text-gray-700 dark:text-gray-300 truncate flex-1">{s.label}</span>
+                          </div>
+                          {s.type === 'queue' ? (
+                            <button
+                              onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: s.id, title: s.label, taskType: 'session', opTaskId: s.taskId } }))}
+                              className="w-full text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-700 rounded-lg px-2 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition text-center">
+                              💬 Lanjut Chat
+                            </button>
+                          ) : (
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: s.label, opTaskId: s.taskId } }))}
+                                className="flex-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-700 rounded-lg px-2 py-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition text-center">
+                                ▶ Mulai
+                              </button>
+                              <button
+                                onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: s.id, title: s.label, taskType: 'incoming', opTaskId: s.taskId } }))}
+                                className="flex-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-700 rounded-lg px-2 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition text-center">
+                                💬 Diskusi
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}

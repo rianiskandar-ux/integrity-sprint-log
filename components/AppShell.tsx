@@ -81,6 +81,7 @@ export default function AppShell({
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [opSprintName, setOpSprintName] = useState<string | null>(null)
   const [globalTaskChat, setGlobalTaskChat] = useState<TaskChatContext | null>(null)
+  const [addPrefill, setAddPrefill] = useState<{ title?: string; opTaskId?: number | null } | null>(null)
 
   // Listen for task chat open events from ChatBubble shortcuts
   useEffect(() => {
@@ -90,6 +91,16 @@ export default function AppShell({
     }
     window.addEventListener('isl:open-task-chat', handler)
     return () => window.removeEventListener('isl:open-task-chat', handler)
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as { title?: string; opTaskId?: number | null }
+      setAddPrefill(d)
+      setAddOpen(true)
+    }
+    window.addEventListener('isl:start-session', handler)
+    return () => window.removeEventListener('isl:start-session', handler)
   }, [])
 
   useEffect(() => {
@@ -555,7 +566,7 @@ export default function AppShell({
 
       {/* Modals */}
       {searchOpen && <SearchModal allTopics={allTopics} onClose={() => setSearchOpen(false)} onNavigate={navigate} />}
-      {addOpen && <AddSessionModal date={selectedDate} onClose={() => setAddOpen(false)} />}
+      {addOpen && <AddSessionModal date={selectedDate} onClose={() => { setAddOpen(false); setAddPrefill(null) }} prefillTitle={addPrefill?.title} prefillOpTaskId={addPrefill?.opTaskId} />}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={() => { setUserName(loadSettings().userName.split(' ')[0]) }} />
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {flowOpen && <FlowModal onClose={() => setFlowOpen(false)} />}

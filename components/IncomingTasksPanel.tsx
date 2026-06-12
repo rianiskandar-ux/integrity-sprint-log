@@ -194,7 +194,12 @@ export default function IncomingTasksPanel() {
                   </div>
 
                   {/* Status quick-set */}
-                  <div className="flex-shrink-0 flex flex-col gap-1.5 min-w-[80px]">
+                  <div className="flex-shrink-0 flex flex-col gap-1.5 min-w-[88px]">
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: task.subject, opTaskId: task.id } }))}
+                      className="px-2 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
+                      ▶ Mulai Kerja
+                    </button>
                     <button
                       onClick={() => setChatTask({
                         id: `incoming-${task.id}`,
@@ -205,7 +210,7 @@ export default function IncomingTasksPanel() {
                         status: task.status,
                       })}
                       className="px-2 py-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition">
-                      💬 Chat
+                      💬 Diskusi
                     </button>
                     {task.islStatus !== 'in_progress' && task.islStatus !== 'done' && (
                       <button
