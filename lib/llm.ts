@@ -16,6 +16,7 @@ export type LLMProvider =
   | 'together'
   | 'ollama'
   | '9router'
+  | 'claude-cli'
 
 export interface LLMConfig {
   provider:  LLMProvider
@@ -34,21 +35,23 @@ export const DEFAULT_MODELS: Record<LLMProvider, string> = {
   together:    'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
   ollama:      'llama3.2',
   '9router':   'claude-sonnet-4-6',
+  'claude-cli': 'claude',
 }
 
 export const PROVIDER_LABELS: Record<LLMProvider, string> = {
-  anthropic:  'Anthropic (Claude)',
-  openai:     'OpenAI (GPT)',
-  google:     'Google Gemini',
-  groq:       'Groq (Llama / free)',
-  openrouter: 'OpenRouter (multi-model)',
-  mistral:    'Mistral',
-  together:   'Together AI',
-  ollama:     'Ollama (local, no key)',
-  '9router':  '9Router (local proxy, no key)',
+  anthropic:   'Anthropic (Claude)',
+  openai:      'OpenAI (GPT)',
+  google:      'Google Gemini',
+  groq:        'Groq (Llama / free)',
+  openrouter:  'OpenRouter (multi-model)',
+  mistral:     'Mistral',
+  together:    'Together AI',
+  ollama:      'Ollama (local, no key)',
+  '9router':   '9Router (local proxy, no key)',
+  'claude-cli': 'Claude Code CLI (pakai subscription, lokal only)',
 }
 
-export const FREE_PROVIDERS: LLMProvider[] = ['groq', 'openrouter', 'ollama', '9router']
+export const FREE_PROVIDERS: LLMProvider[] = ['groq', 'openrouter', 'ollama', '9router', 'claude-cli']
 
 /** Call the LLM with a plain-text prompt. Returns the response text. */
 export async function callLLM(prompt: string, config: LLMConfig): Promise<string> {
@@ -61,6 +64,9 @@ export async function callLLM(prompt: string, config: LLMConfig): Promise<string
 
     case 'google':
       return callGemini(prompt, model, config.apiKey)
+
+    case 'claude-cli':
+      return callClaudeCLI(prompt)
 
     // OpenAI-compatible providers
     case 'openai':
@@ -143,6 +149,26 @@ async function callGemini(prompt: string, model: string, apiKey: string): Promis
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 }
 
+/** Call Claude Code CLI as subprocess — uses existing SSO session, no API key needed */
+async function callClaudeCLI(prompt: string): Promise<string> {
+  const { execFile } = await import('child_process')
+  const { promisify } = await import('util')
+  const execFileAsync = promisify(execFile)
+
+  try {
+    const { stdout } = await execFileAsync('claude', [
+      '-p', prompt,
+      '--output-format', 'text',
+      '--no-stream',
+    ], { timeout: 60000, maxBuffer: 1024 * 1024 })
+    return stdout.trim()
+  } catch (err: unknown) {
+    const e = err as { code?: string; stderr?: string; message?: string }
+    if (e.code === 'ENOENT') throw new Error('Claude Code CLI tidak ditemukan. Install via: npm install -g @anthropic-ai/claude-code')
+    throw new Error(`Claude CLI error: ${e.stderr || e.message}`)
+  }
+}
+
 /** Build LLMConfig from user-config (server-side) */
 export function getLLMConfig(): LLMConfig | null {
   // Lazy import to avoid loading fs in client contexts
@@ -154,7 +180,7 @@ export function getLLMConfig(): LLMConfig | null {
   const apiKey   = cfg.llmApiKey || (provider === 'anthropic' ? getAnthropicKey() : '')
 
   // Local providers don't need a key
-  if (provider === 'ollama' || provider === '9router') return { provider, apiKey: '', model: cfg.llmModel || undefined }
+  if (provider === 'ollama' || provider === '9router' || provider === 'claude-cli') return { provider, apiKey: '', model: cfg.llmModel || undefined }
   if (!apiKey) return null
 
   return { provider, apiKey, model: cfg.llmModel || undefined }
