@@ -25,8 +25,6 @@ interface Props {
   onPush?: (id: string) => void
 }
 
-const BRAND_LIGHT = '#e8eef5'
-
 export default function TaskChatModal({ task, onClose, onPush }: Props) {
   const [messages,  setMessages]  = useState<Message[]>([])
   const [input,     setInput]     = useState('')
@@ -34,9 +32,11 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
   const [loading,   setLoading]   = useState(true)
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const streamingIdRef = useRef<string | null>(null)
 
   // Load existing chat history
   useEffect(() => {
+    const greeting = buildGreeting(task)
     fetch(`/api/chat/history/${encodeURIComponent(task.id)}`)
       .then(r => r.json())
       .then(d => {
@@ -45,18 +45,14 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
             ...m, id: `hist-${i}`
           })))
         } else {
-          // First open — show a greeting with task context
-          setMessages([{
-            role: 'assistant',
-            id: 'greeting',
-            content: buildGreeting(task),
-          }])
+          setMessages([{ role: 'assistant', id: 'greeting', content: greeting }])
         }
       })
       .catch(() => {
-        setMessages([{ role: 'assistant', id: 'greeting', content: buildGreeting(task) }])
+        setMessages([{ role: 'assistant', id: 'greeting', content: greeting }])
       })
       .finally(() => setLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id])
 
   useEffect(() => {
@@ -88,6 +84,7 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
     setMessages(prev => [...prev, userMsg, assistantMsg])
     setInput('')
     setStreaming(true)
+    streamingIdRef.current = assistantId
     abortRef.current = new AbortController()
 
     try {
@@ -157,6 +154,7 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: '⚠️ Connection error.' } : m))
     } finally {
       setStreaming(false)
+      streamingIdRef.current = null
       abortRef.current = null
     }
   }, [messages, input, streaming, task])
@@ -202,30 +200,35 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
             <div className="flex justify-center py-8">
               <div className="w-5 h-5 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
             </div>
-          ) : messages.map(m => (
-            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {m.role === 'assistant' && (
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5 mr-2"
-                  style={{ background: BRAND }}>
-                  AI
+          ) : messages.map(m => {
+            const isStreamingThis = streaming && m.id === streamingIdRef.current
+            return (
+              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {m.role === 'assistant' && (
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5 mr-2"
+                    style={{ background: BRAND }}>
+                    AI
+                  </div>
+                )}
+                <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
+                  m.role === 'user'
+                    ? 'text-white rounded-tr-sm'
+                    : 'text-gray-800 dark:text-gray-200 rounded-tl-sm border border-gray-100 dark:border-gray-700 dark:bg-gray-800'
+                }`}
+                  style={m.role === 'user' ? { background: BRAND } : undefined}>
+                  {m.content
+                    ? m.content
+                    : isStreamingThis
+                      ? <span className="inline-flex gap-1 py-1">
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      : null}
                 </div>
-              )}
-              <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
-                m.role === 'user'
-                  ? 'text-white rounded-tr-sm'
-                  : 'text-gray-800 dark:text-gray-100 rounded-tl-sm border border-gray-100 dark:border-gray-700'
-              }`}
-                style={m.role === 'user' ? { background: BRAND } : { background: BRAND_LIGHT }}>
-                {m.content || (streaming && m.role === 'assistant' ? (
-                  <span className="inline-flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </span>
-                ) : '')}
               </div>
-            </div>
-          ))}
+            )
+          })}
           <div ref={bottomRef} />
         </div>
 
