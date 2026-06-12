@@ -38,6 +38,7 @@ yarn-error.log*
 google-token.json
 google-profile.json
 op-cache.json
+op-config.json
 op-mode.json
 user-config.json
 session-logs/

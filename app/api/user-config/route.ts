@@ -6,6 +6,7 @@ export async function GET() {
   // Never expose keys in full — mask them
   return NextResponse.json({
     displayName:     cfg.displayName,
+    opBaseUrl:       cfg.opBaseUrl || '',
     opTokenSet:      !!cfg.opToken,
     anthropicKeySet: !!cfg.anthropicKey,
     llmProvider:     cfg.llmProvider || 'anthropic',

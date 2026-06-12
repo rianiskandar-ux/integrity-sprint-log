@@ -1,0 +1,146 @@
+{
+  "_comment": "OpenProject sync config untuk Daily Sprint App. Edit bagian 'me' sesuai user masing-masing.",
+  "baseUrl": "https://your-openproject.example.com",
+  "me": {
+    "userId": 1,
+    "name": "Your Name",
+    "userHref": "/api/v3/users/1"
+  },
+  "team": {
+    "1": {
+      "name": "Your Name",
+      "href": "/api/v3/users/1"
+    }
+  },
+  "projects": {
+    "integritys-websites": {
+      "id": 12,
+      "name": "Integrity's Websites",
+      "href": "/api/v3/projects/12",
+      "keywords": [
+        "kyv",
+        "knowyourvendor",
+        "minerva",
+        "empverif",
+        "eduverif",
+        "employment",
+        "education",
+        "integrity website",
+        "wordpress",
+        "laragon",
+        "daily-sprint",
+        "portal"
+      ]
+    },
+    "know-your-vendor-kyv": {
+      "id": 20,
+      "name": "Know Your Vendor (KYV)",
+      "href": "/api/v3/projects/20",
+      "keywords": [
+        "kyv",
+        "knowyourvendor",
+        "vendor",
+        "know your vendor"
+      ]
+    },
+    "knowme": {
+      "id": 11,
+      "name": "Knowme",
+      "href": "/api/v3/projects/11",
+      "keywords": [
+        "knowme",
+        "know me"
+      ]
+    },
+    "omnibot-omni-channel-with-chatbot": {
+      "id": 25,
+      "name": "OmniBot",
+      "href": "/api/v3/projects/25",
+      "keywords": [
+        "omnibot",
+        "chatbot",
+        "omni",
+        "crisp",
+        "chat"
+      ]
+    },
+    "phoenix": {
+      "id": 9,
+      "name": "Phoenix",
+      "href": "/api/v3/projects/9",
+      "keywords": [
+        "phoenix",
+        "wbs",
+        "portal customer"
+      ]
+    },
+    "services-websites": {
+      "id": 40,
+      "name": "Services Websites",
+      "href": "/api/v3/projects/40",
+      "keywords": [
+        "services",
+        "integrity asia",
+        "integrity indonesia",
+        "integrity malaysia",
+        "integrity thailand",
+        "headless"
+      ]
+    },
+    "minerva": {
+      "id": 10,
+      "name": "Minerva",
+      "href": "/api/v3/projects/10",
+      "keywords": [
+        "minerva",
+        "minerva-global"
+      ]
+    }
+  },
+  "defaults": {
+    "projectId": "integritys-websites",
+    "typeTask": 1,
+    "typeUserStory": 6,
+    "typeBug": 7,
+    "typeFeature": 4,
+    "statusNew": 1,
+    "statusInProgress": 7,
+    "statusClosed": 12,
+    "priority": 8
+  },
+  "typeDetect": {
+    "bug": [
+      "bug",
+      "fix",
+      "error",
+      "crash",
+      "broken",
+      "gagal",
+      "rusak",
+      "tidak bisa",
+      "fail"
+    ],
+    "feature": [
+      "feature",
+      "fitur",
+      "build",
+      "tambah",
+      "add",
+      "implement",
+      "buat",
+      "create",
+      "new"
+    ],
+    "task": [
+      "deploy",
+      "setup",
+      "config",
+      "install",
+      "migrate",
+      "update",
+      "backup",
+      "restore",
+      "test"
+    ]
+  }
+}

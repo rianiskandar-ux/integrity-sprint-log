@@ -6,6 +6,7 @@ const BRAND = '#1d3a5c'
 
 export default function SettingsPage() {
   const [displayName,  setDisplayName]  = useState('')
+  const [opBaseUrl,    setOpBaseUrl]    = useState('')
   const [opToken,      setOpToken]      = useState('')
   const [llmProvider,  setLlmProvider]  = useState<LLMProvider>('anthropic')
   const [llmApiKey,    setLlmApiKey]    = useState('')
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   useEffect(() => {
     fetch('/api/user-config').then(r => r.json()).then(d => {
       setDisplayName(d.displayName ?? '')
+      setOpBaseUrl(d.opBaseUrl ?? '')
       setLlmProvider((d.llmProvider as LLMProvider) || 'anthropic')
       setLlmModel(d.llmModel ?? '')
       setOpTokenSet(d.opTokenSet || d.opTokenSource === 'env')
@@ -71,7 +73,7 @@ export default function SettingsPage() {
     e.preventDefault()
     setSaving(true); setError(''); setSaved(false)
 
-    const body: Record<string, string> = { displayName, llmProvider, llmModel }
+    const body: Record<string, string> = { displayName, opBaseUrl: opBaseUrl.trim(), llmProvider, llmModel }
     if (opToken.trim())   body.opToken   = opToken.trim()
     if (llmApiKey.trim()) body.llmApiKey = llmApiKey.trim()
 
@@ -138,6 +140,14 @@ export default function SettingsPage() {
               <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
                 placeholder="Nama kamu"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">OpenProject URL</label>
+              <input type="text" value={opBaseUrl} onChange={e => setOpBaseUrl(e.target.value)}
+                placeholder="https://your-openproject.com"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1" />
+              <p className="text-xs text-gray-400 mt-1">URL instance OpenProject tim kamu</p>
             </div>
 
             <div>
@@ -254,6 +264,9 @@ export default function SettingsPage() {
             </button>
           </form>
         </div>
+
+        {/* Google Calendar */}
+        <GoogleCalendarSection />
 
         {/* Telegram Notifications */}
         <TelegramSection />
@@ -386,6 +399,80 @@ function TelegramSection() {
         <p>• ✅ Session berhasil di-push ke OP</p>
         <p>• 🏃 Sprint deadline (3 hari & 1 hari sebelum)</p>
       </div>
+    </div>
+  )
+}
+
+// ── Google Calendar Section ───────────────────────────────────────────────────
+function GoogleCalendarSection() {
+  const [profile,     setProfile]     = useState<{ name: string; email: string; picture?: string } | null>(null)
+  const [connecting,  setConnecting]  = useState(false)
+  const [msg,         setMsg]         = useState('')
+
+  useEffect(() => {
+    fetch('/api/auth/profile').then(r => r.json()).then(d => {
+      setProfile(d.profile ?? null)
+    }).catch(() => {})
+
+    // Listen for OAuth popup message
+    const handler = (e: MessageEvent) => {
+      if (e.data === 'gcal-connected') {
+        setConnecting(false)
+        setMsg('✓ Google Calendar terhubung!')
+        fetch('/api/auth/profile').then(r => r.json()).then(d => setProfile(d.profile ?? null))
+        setTimeout(() => setMsg(''), 4000)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  function connect() {
+    setConnecting(true)
+    setMsg('')
+    window.open('/api/auth/google', 'gcal-oauth', 'width=500,height=600,scrollbars=yes')
+  }
+
+  async function disconnect() {
+    await fetch('/api/auth/profile', { method: 'DELETE' }).catch(() => {})
+    setProfile(null)
+    setMsg('Disconnected')
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ background: '#fce8e6' }}>
+          📅
+        </div>
+        <div className="flex-1">
+          <h3 className="text-sm font-bold text-gray-800">Google Calendar</h3>
+          <p className="text-[10px] text-gray-400">Lihat jadwal & event di ISL Dashboard</p>
+        </div>
+        {profile && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">Terhubung ✓</span>}
+      </div>
+
+      {profile ? (
+        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+          {profile.picture && <img src={profile.picture} alt="" className="w-8 h-8 rounded-full" />}
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-800 truncate">{profile.name}</p>
+            <p className="text-[10px] text-gray-400 truncate">{profile.email}</p>
+          </div>
+          <button onClick={disconnect} className="text-[10px] text-red-500 hover:text-red-700 font-medium">Disconnect</button>
+        </div>
+      ) : (
+        <button onClick={connect} disabled={connecting}
+          className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition disabled:opacity-60 flex items-center justify-center gap-2"
+          style={{ background: '#4285F4' }}>
+          {connecting ? 'Menunggu…' : '🔗 Connect Google Account'}
+        </button>
+      )}
+
+      {msg && <p className={`text-xs text-center font-medium ${msg.startsWith('✓') ? 'text-green-600' : 'text-gray-500'}`}>{msg}</p>}
+
+      <p className="text-[10px] text-gray-400">Butuh Google OAuth credentials di .env.local (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)</p>
     </div>
   )
 }
