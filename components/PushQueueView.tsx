@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useI18n } from '@/lib/i18n'
+import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 
 interface PendingSession {
   id: string
@@ -62,7 +63,7 @@ interface NewTaskForm {
 }
 
 function SessionCard({
-  session, cache, opUrl, onPushed, onDiscard, userId,
+  session, cache, opUrl, onPushed, onDiscard, userId, onOpenChat,
 }: {
   session: PendingSession
   cache: OPCache
@@ -70,6 +71,7 @@ function SessionCard({
   onPushed: (id: string, taskId: number) => void
   onDiscard: (id: string) => void
   userId: number
+  onOpenChat: (ctx: TaskChatContext) => void
 }) {
   const { t } = useI18n()
   const [expanded, setExpanded]   = useState(false)
@@ -172,7 +174,7 @@ function SessionCard({
 
       {/* Action bar */}
       {mode === 'idle' && (
-        <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 flex-wrap">
           {suggested && (
             <button onClick={() => { setMode('link'); setLinkId(String(suggested.id)) }}
               className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 transition px-2.5 py-1.5 rounded-lg border border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-950">
@@ -186,6 +188,20 @@ function SessionCard({
           <button onClick={() => setMode('link')}
             className="text-[10px] text-gray-400 hover:text-gray-600 transition px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
             🔗 Link ke Task Lain
+          </button>
+          <button
+            onClick={() => onOpenChat({
+              id: session.id,
+              title: session.title,
+              taskType: 'session',
+              opTaskId: session.opTaskId,
+              sprintName: (cache.sprints ?? []).find(s => s.isCurrent)?.name ?? null,
+              date: session.date,
+              status: session.taskStatus,
+              bullets: session.bullets,
+            })}
+            className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 transition px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950">
+            💬 Lanjut Chat
           </button>
           <button onClick={() => onDiscard(session.id)}
             className="text-[10px] text-gray-300 hover:text-red-400 transition ml-auto">
@@ -361,6 +377,7 @@ export default function PushQueueView() {
   const [userId, setUserId]       = useState(8)
   const [toast, setToast]         = useState<string | null>(null)
   const [pushed, setPushed]       = useState<Set<string>>(new Set())
+  const [chatTask, setChatTask]   = useState<TaskChatContext | null>(null)
 
   useEffect(() => {
     try {
@@ -451,9 +468,22 @@ export default function PushQueueView() {
               onPushed={onPushed}
               onDiscard={onDiscard}
               userId={userId}
+              onOpenChat={setChatTask}
             />
           ))}
         </div>
+      )}
+
+      {chatTask && (
+        <TaskChatModal
+          task={chatTask}
+          onClose={() => setChatTask(null)}
+          onPush={(id) => {
+            setChatTask(null)
+            const s = sessions.find(x => x.id === id)
+            if (s) { /* user can push from modal header — just close */ }
+          }}
+        />
       )}
     </div>
   )

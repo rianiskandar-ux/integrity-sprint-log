@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getLLMConfig } from '@/lib/llm'
-import { loadCache } from '@/lib/op-cache'
+import { loadCache, type CachedWorkPackage, type CachedSprint } from '@/lib/op-cache'
 import { loadUserConfig } from '@/lib/user-config'
 
 export const runtime = 'nodejs'
@@ -13,7 +13,15 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { messages } = await req.json() as { messages: { role: string; content: string }[] }
+  const body = await req.json() as {
+    messages: { role: string; content: string }[]
+    taskContext?: {
+      id?: string; title?: string; opTaskId?: number | null
+      opStoryId?: number | null; sprintName?: string | null
+      status?: string; bullets?: string[]
+    }
+  }
+  const { messages, taskContext } = body
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response(JSON.stringify({ error: 'No messages provided' }), { status: 400 })
   }
@@ -23,14 +31,51 @@ export async function POST(req: NextRequest) {
   const cache   = loadCache()
   const sprint  = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent)
   const today   = new Date().toISOString().split('T')[0]
+  const userId  = userCfg.displayName
+
+  // My open tasks
+  const allWP: CachedWorkPackage[] = [
+    ...(cache.myOpenTasks ?? []),
+    ...(cache.incomingTasks ?? []),
+  ]
+  const myTasks = allWP
+    .filter(wp => !wp.isClosed)
+    .slice(0, 30)
+    .map(wp => `- [#${wp.id}] ${wp.subject} (${wp.status}${wp.sprintName ? `, ${wp.sprintName}` : ''})`)
+    .join('\n')
+
+  // Pending push queue
+  const { getAllSessions } = await import('@/lib/session-store')
+  const pendingSessions = getAllSessions()
+    .filter(s => s.pushStatus === 'pending')
+    .slice(0, 10)
+    .map(s => `- ${s.title} (${s.date})`)
+    .join('\n')
+
+  const sprintData = sprint as CachedSprint | undefined
+
+  const taskSection = taskContext?.title ? [
+    `\n--- TASK CONTEXT ---`,
+    `You are helping with a specific task:`,
+    `Title: ${taskContext.title}`,
+    taskContext.opTaskId ? `OP Task ID: #${taskContext.opTaskId}` : '',
+    taskContext.sprintName ? `Sprint: ${taskContext.sprintName}` : '',
+    taskContext.status ? `Status: ${taskContext.status}` : '',
+    taskContext.bullets?.length ? `Progress notes:\n${taskContext.bullets.map(b => `• ${b}`).join('\n')}` : '',
+    `Focus your responses on this task unless the user asks about something else.`,
+    `--- END TASK CONTEXT ---`,
+  ].filter(Boolean).join('\n') : ''
 
   const systemPrompt = [
-    `You are ISL Assistant, an AI helper built into Integrity Sprint Log (ISL) — a sprint tracking app for the Integrity team.`,
+    `You are ISL Assistant, an AI helper built into Integrity Sprint Log (ISL) — a sprint tracking app for the Integrity Asia team.`,
     `Today: ${today}`,
     userCfg.displayName ? `User: ${userCfg.displayName}` : '',
-    sprint ? `Active sprint: ${sprint.name} (${sprint.startDate} → ${sprint.endDate})` : '',
-    `You help with sprint planning, task management, writing, debugging, and general questions.`,
-    `Be concise and practical. Use markdown for code and lists.`,
+    sprintData ? `Active sprint: ${sprintData.name} (${sprintData.startDate} → ${sprintData.endDate})` : 'No active sprint.',
+    myTasks ? `\nOpen tasks in OP:\n${myTasks}` : 'No tasks cached — user may need to sync OP cache from Settings.',
+    pendingSessions ? `\nSessions waiting to push to OP:\n${pendingSessions}` : '',
+    taskSection,
+    `\nYou have full context of the user's sprint and tasks above. Answer questions directly using this data.`,
+    `Be concise and practical. Use markdown for lists. Respond in the same language the user writes in.`,
   ].filter(Boolean).join('\n')
 
   const model = cfg.model || getDefaultModel(cfg.provider)

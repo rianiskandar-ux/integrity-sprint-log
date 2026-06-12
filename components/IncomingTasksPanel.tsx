@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { CachedWorkPackage } from '@/lib/op-cache'
 import { useI18n } from '@/lib/i18n'
+import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 
 const ISL_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   new:         { label: 'New',         color: 'text-gray-500',   dot: 'bg-gray-400' },
@@ -25,6 +26,7 @@ export default function IncomingTasksPanel() {
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [toast, setToast]       = useState<string | null>(null)
   const [filter, setFilter]     = useState<'open' | 'all'>('open')
+  const [chatTask, setChatTask] = useState<TaskChatContext | null>(null)
 
   useEffect(() => {
     fetch('/api/op/cache')
@@ -193,6 +195,18 @@ export default function IncomingTasksPanel() {
 
                   {/* Status quick-set */}
                   <div className="flex-shrink-0 flex flex-col gap-1.5 min-w-[80px]">
+                    <button
+                      onClick={() => setChatTask({
+                        id: `incoming-${task.id}`,
+                        title: task.subject,
+                        taskType: 'incoming',
+                        opTaskId: task.id,
+                        sprintName: task.sprintName ?? null,
+                        status: task.status,
+                      })}
+                      className="px-2 py-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition">
+                      💬 Chat
+                    </button>
                     {task.islStatus !== 'in_progress' && task.islStatus !== 'done' && (
                       <button
                         onClick={() => updateStatus(task, 'in_progress')}
@@ -238,6 +252,10 @@ export default function IncomingTasksPanel() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50 max-w-sm text-center">
           {toast}
         </div>
+      )}
+
+      {chatTask && (
+        <TaskChatModal task={chatTask} onClose={() => setChatTask(null)} />
       )}
     </div>
   )
