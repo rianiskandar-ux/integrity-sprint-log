@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useI18n } from '@/lib/i18n'
+import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 
 interface TaskItem {
   id: number
@@ -93,6 +94,7 @@ export default function SprintPlanView() {
   const [pushing, setPushing]         = useState(false)
   const [pushResults, setPushResults] = useState<{ id: number; ok: boolean; error?: string }[] | null>(null)
   const [toast, setToast]             = useState<string | null>(null)
+  const [chatTask, setChatTask]       = useState<TaskChatContext | null>(null)
 
   useEffect(() => {
     load()
@@ -743,6 +745,20 @@ export default function SprintPlanView() {
                       </div>
                     </div>
 
+                    {/* Chat button */}
+                    <button
+                      onClick={() => setChatTask({
+                        id: `sprint-task-${task.id}`,
+                        title: task.subject,
+                        taskType: 'incoming',
+                        opTaskId: task.id,
+                        sprintName: data?.currentSprint?.name ?? null,
+                        status: task.status,
+                      })}
+                      className="flex-shrink-0 mt-0.5 text-[10px] font-semibold px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-blue-600 hover:border-blue-300 dark:hover:text-blue-400 dark:hover:border-blue-700 transition">
+                      💬
+                    </button>
+
                     {/* Work columns */}
                     <div className="hidden sm:flex items-start gap-3 flex-shrink-0 text-right">
                       <div className="w-16">
@@ -854,6 +870,10 @@ export default function SprintPlanView() {
           </button>
         )}
       </div>
+
+      {chatTask && (
+        <TaskChatModal task={chatTask} onClose={() => setChatTask(null)} />
+      )}
     </div>
   )
 }
