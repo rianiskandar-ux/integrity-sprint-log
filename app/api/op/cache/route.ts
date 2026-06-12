@@ -12,9 +12,16 @@ function readMode() {
   try { return JSON.parse(fs.readFileSync(MODE_FILE, 'utf-8')) } catch { return null }
 }
 
-// GET — return current cache
+// GET — return current cache + server-side config for frontend (avoids localStorage dependency)
 export async function GET() {
-  return NextResponse.json(loadCache())
+  const cache = loadCache()
+  const mode  = readMode()
+  const opUrl = getOpBaseUrl() || 'https://tokek.integrity-asia.com'
+  return NextResponse.json({
+    ...cache,
+    _opUrl:  opUrl,
+    _userId: (mode?.userId ?? cache.userId ?? null) as number | null,
+  })
 }
 
 // POST — rebuild cache

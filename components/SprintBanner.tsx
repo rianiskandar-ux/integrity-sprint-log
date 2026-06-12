@@ -84,6 +84,9 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
         setLastSync(d.lastSync ?? null)
         const current = (d.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent)
         if (current) setOpSprintName(current.name)
+        // Use server-side config — no localStorage needed
+        if (d._opUrl)  setOpUrl(d._opUrl)
+        if (d._userId) setMyUserId(d._userId)
       })
       .catch(() => {})
   }
@@ -97,17 +100,6 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
       const end   = new Date(sprintEndDate as number); end.setHours(0, 0, 0, 0)
       setDaysLeft(Math.round((end.getTime() - today.getTime()) / 86400000))
     }
-
-    try {
-      const appCfg = localStorage.getItem('isl_app_config')
-      const s      = localStorage.getItem('isl_user_settings')
-      const opUrlVal: string = appCfg
-        ? ((JSON.parse(appCfg as string) as { opUrl?: string }).opUrl ?? 'https://tokek.integrity-asia.com')
-        : 'https://tokek.integrity-asia.com'
-      setOpUrl(opUrlVal)
-      if (s) setMyUserId((JSON.parse(s as string) as { userId?: number }).userId ?? null)
-    } catch {}
-    fetch('/api/op/mode').then(r => r.json()).then(d => { if (d.userId) setMyUserId(d.userId) }).catch(() => {})
 
     return () => window.removeEventListener('isl:cache-refreshed', refreshCache)
   }, [currentSprintNo, sprintEndDate])  // eslint-disable-line react-hooks/exhaustive-deps

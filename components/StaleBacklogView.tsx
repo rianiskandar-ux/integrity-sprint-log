@@ -203,16 +203,10 @@ export default function StaleBacklogView({ onToast }: { onToast?: (msg: string) 
   const [opUrl, setOpUrl]       = useState<string>('')
 
   useEffect(() => {
-    try {
-      const s = localStorage.getItem('isl_settings')
-      if (s) setOpUrl(JSON.parse(s).opBaseUrl ?? '')
-    } catch {}
-  }, [])
-
-  useEffect(() => {
     fetch('/api/op/cache')
       .then(r => r.json())
       .then(d => {
+        if (d._opUrl) setOpUrl(d._opUrl)
         const cache = d
         const sprintList: OPSprint[] = Array.from<OPSprint>(
           new Map<number, OPSprint>((cache.sprints ?? []).map((s: OPSprint) => [s.id, s])).values()

@@ -380,13 +380,7 @@ export default function PushQueueView() {
   const [pushed, setPushed]       = useState<Set<string>>(new Set())
   const [chatTask, setChatTask]   = useState<TaskChatContext | null>(null)
 
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem('isl_settings')
-      if (s) { const p = JSON.parse(s); if (p.opBaseUrl) setOpUrl(p.opBaseUrl) }
-    } catch {}
-    load()
-  }, [])
+  useEffect(() => { load() }, [])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -401,7 +395,9 @@ export default function PushQueueView() {
       const allPending = (sessRes.sessions ?? []) as PendingSession[]
       setSessions(allPending.sort((a, b) => b.startedAt.localeCompare(a.startedAt)))
       setCache(cacheRes)
-      if (cacheRes.userId) setUserId(cacheRes.userId)
+      if (cacheRes._userId) setUserId(cacheRes._userId)
+      else if (cacheRes.userId) setUserId(cacheRes.userId)
+      if (cacheRes._opUrl) setOpUrl(cacheRes._opUrl)
     } catch {}
     setLoading(false)
   }

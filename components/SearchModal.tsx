@@ -37,10 +37,7 @@ export default function SearchModal({ allTopics, onClose, onNavigate }: Props) {
 
   useEffect(() => {
     inputRef.current?.focus()
-    try {
-      const appCfg = localStorage.getItem('isl_app_config')
-      if (appCfg) setOpUrl(JSON.parse(appCfg).opUrl ?? opUrl)
-    } catch {}
+    fetch('/api/op/cache').then(r => r.json()).then(d => { if (d._opUrl) setOpUrl(d._opUrl) }).catch(() => {})
   }, [])
 
   // Local ISL search

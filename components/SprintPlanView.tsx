@@ -95,10 +95,6 @@ export default function SprintPlanView() {
   const [toast, setToast]             = useState<string | null>(null)
 
   useEffect(() => {
-    try {
-      const s = localStorage.getItem('isl_settings')
-      if (s) setOpUrl(JSON.parse(s).opBaseUrl ?? opUrl)
-    } catch {}
     load()
   }, [])
 
@@ -110,10 +106,14 @@ export default function SprintPlanView() {
   async function load() {
     setLoading(true); setError(null); setSelected(new Set()); setPushResults(null)
     try {
-      const r = await fetch('/api/op/sprint-plan').then(r => r.json())
+      const [r, cacheR] = await Promise.all([
+        fetch('/api/op/sprint-plan').then(r => r.json()),
+        fetch('/api/op/cache').then(r => r.json()).catch(() => ({})),
+      ])
       if (r.error) throw new Error(r.error)
       setData(r)
       setCustomTheme('')
+      if (cacheR._opUrl) setOpUrl(cacheR._opUrl)
     } catch (e) { setError(String(e)) }
     setLoading(false)
     // Load AI analysis in background after page renders

@@ -512,9 +512,7 @@ export default function AutoLogView() {
   const [showManualForm, setShowManualForm] = useState(false)
   const [manualForm, setManualForm] = useState({ title: '', bullets: '', actualMins: '' })
 
-  const opUrl = typeof window !== 'undefined'
-    ? (() => { try { return JSON.parse(localStorage.getItem('isl_settings') ?? '{}').opBaseUrl ?? 'https://tokek.integrity-asia.com' } catch { return 'https://tokek.integrity-asia.com' } })()
-    : 'https://tokek.integrity-asia.com'
+  const opUrl = (cache as { _opUrl?: string })._opUrl ?? 'https://tokek.integrity-asia.com'
 
   async function load() {
     const [sessRes, cacheRes, modeRes, statsRes, timerRes] = await Promise.all([

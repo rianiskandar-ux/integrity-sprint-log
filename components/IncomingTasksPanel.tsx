@@ -33,14 +33,10 @@ export default function IncomingTasksPanel() {
       .then(r => r.json())
       .then(d => {
         setTasks(d.incomingTasks ?? [])
+        if (d._opUrl) setOpUrl(d._opUrl)
         setLoading(false)
       })
       .catch(() => setLoading(false))
-
-    try {
-      const appCfg = localStorage.getItem('isl_app_config')
-      if (appCfg) setOpUrl(JSON.parse(appCfg).opUrl ?? opUrl)
-    } catch {}
   }, [])
 
   async function updateStatus(task: CachedWorkPackage, islStatus: string) {
@@ -67,11 +63,10 @@ export default function IncomingTasksPanel() {
   async function triggerSync() {
     setLoading(true)
     try {
-      const s = JSON.parse(localStorage.getItem('isl_user_settings') ?? '{}')
       await fetch('/api/op/cache', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: s.userId, userName: s.userName, projects: s.watchedProjects }),
+        body: JSON.stringify({}),  // server reads userId/projects from op-mode.json
       })
       const d = await fetch('/api/op/cache').then(r => r.json())
       setTasks(d.incomingTasks ?? [])
