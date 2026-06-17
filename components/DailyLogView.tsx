@@ -150,6 +150,7 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
 export default function DailyLogView() {
   const [entries, setEntries]     = useState<Entry[]>([])
   const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState<string | null>(null)
   const [expanded, setExpanded]   = useState<Set<string>>(new Set())
   const [showAll, setShowAll]     = useState(false)
   const [total, setTotal]         = useState(0)
@@ -164,11 +165,15 @@ export default function DailyLogView() {
       const r = await fetch(`/api/daily-log?limit=${showAll ? 60 : 14}`).then(r => r.json())
       setEntries(r.entries ?? [])
       setTotal(r.total ?? 0)
+      setError(null)
       // Auto-expand today and yesterday
       const today = new Date().toISOString().slice(0, 10)
       const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
       setExpanded(new Set([today, yesterday]))
-    } catch {}
+    } catch (e) {
+      setError('Gagal memuat daily log. Pastikan folder daily-sprints tersedia.')
+      console.error('[DailyLogView] load error:', e)
+    }
     setLoading(false)
   }
 
@@ -205,6 +210,13 @@ export default function DailyLogView() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Memuat daily log…</div>
+  )
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center h-48 gap-3">
+      <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+      <button onClick={load} className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg transition">↻ Coba lagi</button>
+    </div>
   )
 
   return (

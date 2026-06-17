@@ -33,6 +33,7 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const streamingIdRef = useRef<string | null>(null)
+  const messagesRef = useRef<Message[]>([])
 
   // Load existing chat history
   useEffect(() => {
@@ -54,6 +55,8 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id])
+
+  useEffect(() => { messagesRef.current = messages }, [messages])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -130,8 +133,8 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
         setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: full } : m))
       }
 
-      // Persist to server
-      const allMsgs = [...messages, userMsg, { role: 'assistant' as const, content: full, id: assistantId }]
+      // Persist to server — use ref to avoid stale closure over messages snapshot
+      const allMsgs = [...messagesRef.current, userMsg, { role: 'assistant' as const, content: full, id: assistantId }]
         .filter(m => m.id !== 'greeting')
         .map(m => ({ role: m.role, content: m.content, ts: new Date().toISOString() }))
 

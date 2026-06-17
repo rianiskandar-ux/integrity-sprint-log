@@ -3,10 +3,13 @@ import { getLLMConfig } from '@/lib/llm'
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+// Read per-request to avoid stale values if config files are updated after startup
+function getConfig() {
+  return { base: getOpBaseUrl(), token: getOpToken() }
+}
 
 export async function GET() {
+  const { base: OP_BASE, token: OP_TOKEN } = getConfig()
   if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
   const auth  = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')

@@ -51,6 +51,7 @@ export function loadAppConfig(): AppConfig {
 }
 
 export function saveAppConfig(c: AppConfig): void {
+  if (typeof window === 'undefined') return
   localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(c))
 }
 
@@ -130,6 +131,7 @@ export function loadSettings(): UserSettings {
 }
 
 export function saveSettings(s: UserSettings): void {
+  if (typeof window === 'undefined') return
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
 }
 

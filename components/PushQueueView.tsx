@@ -395,8 +395,8 @@ export default function PushQueueView() {
       const allPending = (sessRes.sessions ?? []) as PendingSession[]
       setSessions(allPending.sort((a, b) => b.startedAt.localeCompare(a.startedAt)))
       setCache(cacheRes)
-      if (cacheRes._userId) setUserId(cacheRes._userId)
-      else if (cacheRes.userId) setUserId(cacheRes.userId)
+      if (cacheRes._userId != null) setUserId(cacheRes._userId)
+      else if (cacheRes.userId != null) setUserId(cacheRes.userId)
       if (cacheRes._opUrl) setOpUrl(cacheRes._opUrl)
     } catch {}
     setLoading(false)

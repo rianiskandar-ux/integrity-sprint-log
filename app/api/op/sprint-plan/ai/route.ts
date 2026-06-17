@@ -3,12 +3,14 @@ import { callLLM, getLLMConfig } from '@/lib/llm'
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+function getConfig() {
+  return { base: getOpBaseUrl(), token: getOpToken() }
+}
 
 export async function GET() {
   const llmCfg = getLLMConfig()
   if (!llmCfg) return NextResponse.json({ aiName: null, aiSummary: null, aiSuggestedTasks: [] })
+  const { base: OP_BASE, token: OP_TOKEN } = getConfig()
   if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
   const auth  = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')

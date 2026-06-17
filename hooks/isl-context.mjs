@@ -283,6 +283,7 @@ function getActualDurationMins(rawLines) {
 
 // ── OP API helpers ────────────────────────────────────────────────────────────
 function opHeaders() {
+  if (!OP_API_TOKEN) throw new Error('OP_API_TOKEN not set — check .env.local')
   return { Authorization: 'Basic ' + Buffer.from(`apikey:${OP_API_TOKEN}`).toString('base64'), 'Content-Type': 'application/json' }
 }
 async function opGet(path)       { return fetch(`${OP_BASE_URL}${path}`, { headers: opHeaders() }) }
@@ -426,7 +427,7 @@ async function main() {
         method: 'POST',
         headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-haiku-4-5-20250514',
           max_tokens: 900,
           messages: [{
             role: 'user',

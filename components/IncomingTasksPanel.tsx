@@ -68,10 +68,14 @@ export default function IncomingTasksPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),  // server reads userId/projects from op-mode.json
       })
-      const d = await fetch('/api/op/cache').then(r => r.json())
+      const r = await fetch('/api/op/cache')
+      if (!r.ok) throw new Error(`Cache fetch failed: ${r.status}`)
+      const d = await r.json()
       setTasks(d.incomingTasks ?? [])
       window.dispatchEvent(new Event('isl:cache-refreshed'))
-    } catch {}
+    } catch (e) {
+      console.error('[IncomingTasksPanel] sync error:', e)
+    }
     setLoading(false)
   }
 

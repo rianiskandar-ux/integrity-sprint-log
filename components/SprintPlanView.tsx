@@ -752,7 +752,7 @@ export default function SprintPlanView() {
                         title: task.subject,
                         taskType: 'incoming',
                         opTaskId: task.id,
-                        sprintName: data?.currentSprint?.name ?? null,
+                        sprintName: currentSprint.name,
                         status: task.status,
                       })}
                       className="flex-shrink-0 mt-0.5 text-[10px] font-semibold px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-blue-600 hover:border-blue-300 dark:hover:text-blue-400 dark:hover:border-blue-700 transition">

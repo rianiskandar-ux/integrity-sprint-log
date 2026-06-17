@@ -39,7 +39,9 @@ function parseMarkdown(raw: string, date: string): DailyLogEntry {
         sections.notes.push(noteBuffer.join('\n').trim())
         noteBuffer.length = 0
       }
-      if (line.startsWith('## ') && !line.includes('Dikerjakan') && !line.includes('Open') && !line.includes('Technical')) {
+      if (line.startsWith('---')) {
+        currentSection = null
+      } else if (line.startsWith('## ') && !line.includes('Dikerjakan') && !line.includes('Open') && !line.includes('Technical')) {
         currentSection = null
       }
       continue
