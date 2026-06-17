@@ -45,6 +45,12 @@ export default async function Home({
     }
   }
 
+  // Ensure current sprint always appears in selector even with zero sessions
+  if (!sprintMeta[currentSprintNo]) {
+    const [start, end] = getSprintWindow(currentSprintNo)
+    sprintMeta[currentSprintNo] = { start, end, dates: [], sessions: 0 }
+  }
+
   const monthMap: Record<string, typeof allDays> = {}
   for (const day of allDays) {
     const month = day.date.slice(0, 7)

@@ -659,6 +659,24 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([])
   const [overviewData, setOverviewData] = useState<OverviewData | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
+  type OpSprint = { id: number; name: string; startDate: string; endDate: string; isCurrent: boolean }
+  const [opSprintList, setOpSprintList] = useState<OpSprint[]>([])
+
+  // Load OP sprint names on mount so selector labels show immediately (independent of per-sprint overview)
+  useEffect(() => {
+    fetch('/api/op/cache')
+      .then(r => r.json())
+      .then(d => {
+        const seen = new Set<number>()
+        const unique = ((d.sprints ?? []) as OpSprint[]).filter(s => {
+          if (seen.has(s.id)) return false
+          seen.add(s.id)
+          return true
+        })
+        setOpSprintList(unique)
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     fetch('/api/calendar/events?days=30')
@@ -691,18 +709,16 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
   const sprintNos = Object.keys(sprintMeta).map(Number).sort((a, b) => b - a)
 
   // Build ISL sprint → OP sprint name map using date overlap
-  type OpSprintEntry = { id: number; name: string; startDate: string; endDate: string; isCurrent: boolean }
+  // Use opSprintList (loaded on mount) so labels resolve immediately, not after per-sprint overview
   const opSprintByIsl: Record<number, string> = {}
-  if (overviewData?.allSprints?.length) {
-    for (const sno of sprintNos) {
-      const meta = sprintMeta[sno]
-      const sd = new Date(meta.start).toISOString().split('T')[0]
-      const ed = new Date(meta.end).toISOString().split('T')[0]
-      const match = (overviewData.allSprints as OpSprintEntry[]).find(
-        s => s.startDate <= ed && s.endDate >= sd
-      )
-      if (match) opSprintByIsl[sno] = match.name
-    }
+  const sourceList = opSprintList.length ? opSprintList : (overviewData?.allSprints ?? []) as OpSprint[]
+  for (const sno of sprintNos) {
+    const meta = sprintMeta[sno]
+    if (!meta) continue
+    const sd = new Date(meta.start).toISOString().split('T')[0]
+    const ed = new Date(meta.end).toISOString().split('T')[0]
+    const match = sourceList.find(s => s.startDate <= ed && s.endDate >= sd)
+    if (match) opSprintByIsl[sno] = match.name
   }
 
   const TABS: { id: Tab; label: string; icon: string }[] = [

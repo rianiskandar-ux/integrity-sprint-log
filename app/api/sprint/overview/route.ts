@@ -99,9 +99,13 @@ export async function GET(req: Request) {
         pushStatus: s.pushStatus,
       }))
 
+    // Deduplicate sprints by id (same sprint appears once per project in cache)
+    const seenIds = new Set<number>()
+    const uniqueSprints = allSprints.filter(s => { if (seenIds.has(s.id)) return false; seenIds.add(s.id); return true })
+
     return NextResponse.json({
       sprint: targetSprint,
-      allSprints: allSprints.map(s => ({ id: s.id, name: s.name, startDate: s.startDate, endDate: s.endDate, isCurrent: s.isCurrent })),
+      allSprints: uniqueSprints.map(s => ({ id: s.id, name: s.name, startDate: s.startDate, endDate: s.endDate, isCurrent: s.isCurrent })),
       isl: {
         sessionCount, totalRealMins, totalEstMins,
         topTopics, projectFreq, recentSessions,
