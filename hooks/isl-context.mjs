@@ -278,7 +278,8 @@ function getActualDurationMins(rawLines) {
     } catch {}
   }
   if (times.length < 2) return null
-  return Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 60000))
+  // Cap at 480 min (8h) — wall-clock duration can be huge if session left idle
+  return Math.min(480, Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 60000)))
 }
 
 // ── OP API helpers ────────────────────────────────────────────────────────────

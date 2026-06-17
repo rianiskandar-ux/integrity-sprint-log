@@ -34,9 +34,10 @@ export async function GET(req: Request) {
       islSessions = islSessions.filter(s => s.date >= filterStart && s.date <= filterEnd)
     }
 
-    // ISL stats
-    const totalRealMins = islSessions.reduce((a, s) => a + (s.actualMins ?? s.estimatedMins ?? 0), 0)
-    const totalEstMins  = islSessions.reduce((a, s) => a + (s.estimatedMins ?? 0), 0)
+    // ISL stats — cap per-session at 480 min (8h) to prevent hook timer bugs inflating totals
+    const MAX_SESSION_MINS = 480
+    const totalRealMins = islSessions.reduce((a, s) => a + Math.min(s.actualMins ?? s.estimatedMins ?? 0, MAX_SESSION_MINS), 0)
+    const totalEstMins  = islSessions.reduce((a, s) => a + Math.min(s.estimatedMins ?? 0, MAX_SESSION_MINS), 0)
     const sessionCount  = islSessions.length
 
     // Topic/keyword frequency from session titles + bullets
