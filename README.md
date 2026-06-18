@@ -1,47 +1,47 @@
 # Integrity Sprint Log (ISL)
 
-Sprint tracker untuk tim yang menggunakan **Claude AI + OpenProject**.  
-Auto-log setiap sesi AI ke OpenProject — tanpa input manual.
+Sprint tracker for teams using **Claude AI + OpenProject**.  
+Auto-logs every AI session to OpenProject — no manual input needed.
 
 ---
 
-## Apa ini?
+## What is this?
 
-ISL menghubungkan tiga hal:
-- **Claude AI sessions** (VS Code, Kiro, atau Terminal ISL)
-- **OpenProject** — task management tim
+ISL connects three things:
+- **Claude AI sessions** (VS Code, Kiro, or ISL Terminal)
+- **OpenProject** — team task management
 - **Sprint log** — Daily, Weekly, Sprint overview
 
-Setiap kali kamu selesai chat dengan Claude, ISL otomatis:
-1. Buat ringkasan sesi (title + bullets)
-2. Cari task yang matching di OpenProject
-3. Post activity log + time entry ke OP
-4. Tampilkan di ISL Daily
+Every time you finish a Claude session, ISL automatically:
+1. Generates a summary (title + bullets)
+2. Finds the matching task in OpenProject
+3. Posts an activity log + time entry to OP
+4. Shows it in ISL Daily
 
 ---
 
-## Prasyarat
+## Prerequisites
 
-Sebelum mulai, pastikan sudah terinstall:
+Make sure these are installed before you start:
 
-| Tool | Link | Untuk apa |
+| Tool | Link | Purpose |
 |---|---|---|
-| **Node.js 18+** | https://nodejs.org | Menjalankan ISL |
-| **Claude CLI** | https://docs.anthropic.com/claude-code | AI provider (subscription, bukan API key) |
-| **Git** | https://git-scm.com | Download kode |
+| **Node.js 18+** | https://nodejs.org | Run ISL |
+| **Claude CLI** | https://docs.anthropic.com/claude-code | AI provider (subscription, no API key needed) |
+| **Git** | https://git-scm.com | Download the code |
 
-Cek versi:
+Check versions:
 ```bash
-node -v        # harus >= 18
+node -v        # must be >= 18
 claude --version
 git --version
 ```
 
 ---
 
-## Cara Install (5 langkah)
+## Installation (5 steps)
 
-### Step 1 — Download
+### Step 1 — Clone the repo
 
 ```bash
 git clone https://github.com/rianiskandar-ux/integrity-sprint-log.git isl
@@ -54,7 +54,7 @@ cd isl
 npm install
 ```
 
-### Step 3 — Setup environment
+### Step 3 — Set up environment
 
 ```bash
 # Windows
@@ -64,28 +64,28 @@ copy .env.local.example .env.local
 cp .env.local.example .env.local
 ```
 
-Buka file `.env.local` dan isi minimal:
+Open `.env.local` and fill in at minimum:
 ```env
-CACHE_DATA_DIR=C:/Users/NAMAKAMU/ai-apps/isl-data
-SPRINT_OUTPUT_DIR=C:/Users/NAMAKAMU/ai-apps/isl-data/sprints
+CACHE_DATA_DIR=C:/Users/YOURUSERNAME/isl-data
+SPRINT_OUTPUT_DIR=C:/Users/YOURUSERNAME/isl-data/sprints
 ```
 
-> Ganti `NAMAKAMU` dengan username kamu. Folder akan dibuat otomatis.
+> Replace `YOURUSERNAME` with your actual username. The folders will be created automatically.
 
-**OP Token dan konfigurasi lain** diisi via **Setup Wizard** saat pertama buka aplikasi — tidak perlu edit file lagi.
+**OP token and other settings** are configured via the **Setup Wizard** when you first open the app — no need to edit more files.
 
-### Step 4 — Build & jalankan
+### Step 4 — Build & run
 
 ```bash
 npm run build
 node .next/standalone/server.js
 ```
 
-Buka browser: **http://localhost:3000**
+Open your browser: **http://localhost:3000**
 
-### Step 5 — Setup hook Claude (WAJIB untuk auto-log)
+### Step 5 — Register the Claude hook (required for auto-logging)
 
-Buka file `~/.claude/settings.json` (buat kalau belum ada), tambahkan:
+Open `~/.claude/settings.json` (create it if it doesn't exist) and add:
 
 ```json
 {
@@ -93,7 +93,7 @@ Buka file `~/.claude/settings.json` (buat kalau belum ada), tambahkan:
     "Stop": [{
       "hooks": [{
         "type": "command",
-        "command": "node C:/Users/NAMAKAMU/ai-apps/isl/hooks/isl-context.mjs",
+        "command": "node C:/Users/YOURUSERNAME/isl/hooks/isl-context.mjs",
         "timeout": 120
       }]
     }]
@@ -101,84 +101,84 @@ Buka file `~/.claude/settings.json` (buat kalau belum ada), tambahkan:
 }
 ```
 
-> Ganti path sesuai lokasi folder ISL kamu.
+> Update the path to match where you cloned the ISL repo.
 
 ---
 
 ## Setup Wizard (First Run)
 
-Saat pertama buka http://localhost:3000, kamu akan diminta isi:
+When you first open http://localhost:3000, you'll be prompted to fill in:
 
-1. **Nama** — untuk label di sprint report
-2. **OpenProject URL** — contoh: `https://tokek.integrity-asia.com`
-3. **OpenProject API Token** — bisa dibuat di OP → Settings → API access tokens
-4. **AI Provider** — pilih `Claude CLI` (gratis pakai subscription) atau masukkan API key
+1. **Display name** — shown in sprint reports
+2. **OpenProject URL** — e.g. `https://your-openproject.com`
+3. **OpenProject API token** — create one at OP → Settings → API access tokens
+4. **AI provider** — choose `Claude CLI` (free with subscription) or enter an API key
 
-Setup selesai → langsung bisa dipakai.
-
----
-
-## Cara Pakai Sehari-hari
-
-### Auto-log (otomatis)
-Tidak perlu melakukan apa-apa. Setiap sesi Claude selesai, ISL otomatis log ke Daily.
-
-### Manual link ke task OP
-Ketik di awal chat Claude:
-```
-!ticket:7519    ← ID task di OpenProject
-```
-ISL akan log sesi ini ke task tersebut. Kalau ID adalah User Story, ISL akan **buat task baru** di bawahnya.
-
-### Lihat log hari ini
-Buka ISL → **Daily** → pilih tanggal
-
-### Push ke OpenProject
-Buka ISL → **Auto Log** → Push Queue → klik Push
-
-### Post agenda ke OP Meeting
-Buka ISL → Sprint → tab **Agenda** → pilih meeting → Post
-
-### Terminal Claude langsung dari ISL
-Buka ISL → **Terminal** (sidebar) → ketik `claude` → session otomatis ter-log
+Once done, ISL is ready to use.
 
 ---
 
-## Struktur Folder
+## Daily Usage
+
+### Auto-logging (automatic)
+Nothing to do — every Claude session is logged to Daily automatically when the session ends.
+
+### Link a session to a specific OP task
+Type this at the start of a Claude session:
+```
+!ticket:7519    ← task ID in OpenProject
+```
+ISL will log the session to that task. If the ID is a User Story, ISL will **create a new child task** under it.
+
+### View today's log
+Open ISL → **Daily** → select a date
+
+### Push to OpenProject
+Open ISL → **Auto Log** → Push Queue → click Push
+
+### Post agenda to an OP Meeting
+Open ISL → Sprint → **Agenda** tab → select a meeting → Post
+
+### Run Claude directly from ISL
+Open ISL → **Terminal** (sidebar) → type `claude` → session is logged automatically
+
+---
+
+## Project Structure
 
 ```
 isl/
 ├── app/                  # Next.js pages & API routes
-├── components/           # UI components (SprintView, AgendaTab, dll)
+├── components/           # UI components (SprintView, AgendaTab, etc.)
 ├── hooks/
-│   └── isl-context.mjs   # Stop hook — ini yang auto-log ke OP
+│   └── isl-context.mjs   # Stop hook — handles auto-logging to OP
 ├── lib/                  # Utilities (op-cache, user-config, llm)
-├── .env.local.example    # Template environment
+├── .env.local.example    # Environment template
 └── README.md
 ```
 
-Data user (cache, sessions, config) disimpan di `CACHE_DATA_DIR` yang kamu set di `.env.local` — **tidak masuk git**.
+User data (cache, sessions, config) is stored in `CACHE_DATA_DIR` — **never committed to git**.
 
 ---
 
 ## Troubleshooting
 
-| Masalah | Solusi |
+| Problem | Solution |
 |---|---|
-| `cannot find module` saat build | Jalankan `npm install` dulu |
-| Auto-log tidak muncul di Daily | Cek hook sudah ditambah ke `~/.claude/settings.json` |
-| OP tidak terkoneksi | Cek OP URL dan token di ISL Settings |
-| Terminal tidak bisa connect | Pastikan Launcher Dashboard jalan di port 9000 |
-| Port 3000 sudah dipakai | `set PORT=3001 && node .next/standalone/server.js` |
+| `cannot find module` on build | Run `npm install` first |
+| Sessions not appearing in Daily | Check that the hook is added to `~/.claude/settings.json` |
+| OpenProject not connecting | Check OP URL and token in ISL Settings |
+| Terminal can't connect | Make sure Launcher Dashboard is running on port 9000 |
+| Port 3000 already in use | `set PORT=3001 && node .next/standalone/server.js` |
 
 ---
 
-## Keamanan
+## Security
 
-- **`.env.local` tidak pernah masuk git** — aman untuk di-push
-- Token OP dan API keys disimpan lokal di `CACHE_DATA_DIR/user-config.json` — tidak dikirim ke mana-mana
-- Semua komunikasi antara ISL dan OP terjadi di local machine kamu
-- Claude CLI berjalan lokal — tidak ada data yang dikirim ke server ISL
+- **`.env.local` is never committed** — safe to push
+- OP tokens and API keys are stored locally in `CACHE_DATA_DIR/user-config.json` — never sent anywhere
+- All communication between ISL and OpenProject happens on your local machine
+- Claude CLI runs locally — no data is sent to ISL servers
 
 ---
 
@@ -187,6 +187,6 @@ Data user (cache, sessions, config) disimpan di `CACHE_DATA_DIR` yang kamu set d
 - **Next.js 16** (App Router) + TypeScript
 - **Tailwind CSS v4**
 - **xterm.js** — embedded terminal
-- **node-pty** — PTY spawning di Launcher
+- **node-pty** — PTY spawning in Launcher
 - **OpenProject API v3**
 - **Claude CLI** — AI via subscription
