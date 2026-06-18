@@ -22,6 +22,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'fs'
 import { join }    from 'path'
 import { homedir } from 'os'
+import { spawn }   from 'child_process'
 
 const ISL_URL           = process.env.ISL_URL    || 'http://localhost:3000'
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
@@ -154,8 +155,9 @@ function findMatchingTask(title, bullets) {
     const sprint = getCurrentSprint()
     const cutoff = sprint?.startDate ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
 
-    const openTasks   = (cache.myOpenTasks   ?? []).filter(t => t.islStatus !== 'abandoned' && t.islStatus !== 'rejected')
-    const closedTasks = (cache.myClosedTasks ?? []).filter(t => (t.updatedAt ?? '').slice(0, 10) >= cutoff)
+    const isLeafType = t => !/user.?story|story|epic|feature/i.test(t.type ?? '')
+    const openTasks   = (cache.myOpenTasks   ?? []).filter(t => t.islStatus !== 'abandoned' && t.islStatus !== 'rejected' && isLeafType(t))
+    const closedTasks = (cache.myClosedTasks ?? []).filter(t => (t.updatedAt ?? '').slice(0, 10) >= cutoff && isLeafType(t))
     const pool        = [...openTasks, ...closedTasks]
     if (!pool.length) return null
 
@@ -168,8 +170,17 @@ function findMatchingTask(title, bullets) {
     let best = null, bestScore = 0
     for (const task of pool) {
       const taskText = task.subject.toLowerCase()
-      const score    = keywords.filter(kw => taskText.includes(kw)).length
-      const minScore = Math.min(2, Math.ceil(keywords.length * 0.2))
+      // Only count keywords >= 4 chars that appear as whole-ish words (not substrings of longer words)
+      const score = keywords.filter(kw => {
+        const idx = taskText.indexOf(kw)
+        if (idx === -1) return false
+        const before = taskText[idx - 1]
+        const after  = taskText[idx + kw.length]
+        // Allow match if bordered by non-alpha or start/end of string
+        return (!before || /\W/.test(before)) && (!after || /\W/.test(after))
+      }).length
+      // Require at least 2 keyword hits AND at least 30% of keywords (was 20%)
+      const minScore = Math.max(2, Math.ceil(keywords.length * 0.3))
       if (score >= minScore && score > bestScore) { bestScore = score; best = task }
     }
     return best
@@ -194,8 +205,9 @@ function findRelatedOldTask(title, bullets) {
     const sprint = getCurrentSprint()
     const cutoff = sprint?.startDate ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
 
+    const isLeafType = t => !/user.?story|story|epic|feature/i.test(t.type ?? '')
     // Only look at tasks closed BEFORE current sprint
-    const oldClosed = (cache.myClosedTasks ?? []).filter(t => (t.updatedAt ?? '').slice(0, 10) < cutoff)
+    const oldClosed = (cache.myClosedTasks ?? []).filter(t => (t.updatedAt ?? '').slice(0, 10) < cutoff && isLeafType(t))
     if (!oldClosed.length) return null
 
     const text     = (title + ' ' + bullets.join(' ')).toLowerCase()
@@ -346,6 +358,36 @@ function markProcessed(sessionId) {
   } catch {}
 }
 
+// ── Claude CLI call (subscription, no API key needed) ────────────────────────
+function callClaudeCLI(prompt) {
+  const isWin = process.platform === 'win32'
+  return new Promise((resolve) => {
+    let settled = false
+    const done = (val) => { if (!settled) { settled = true; resolve(val) } }
+
+    // spawn() does not support timeout option — use manual kill timer
+    const child = spawn(isWin ? 'claude.cmd' : 'claude', ['--print', '--output-format', 'text'], {
+      env: { ...process.env }, shell: isWin,
+    })
+    const killTimer = setTimeout(() => {
+      process.stderr.write('[ISL] callClaudeCLI timed out after 60s — killing\n')
+      child.kill('SIGTERM')
+      done('')
+    }, 60000)
+
+    child.stdin.write(prompt, 'utf8')
+    child.stdin.end()
+    let out = ''
+    child.stdout.on('data', d => { out += d.toString('utf8') })
+    child.stderr.on('data', d => { process.stderr.write('[claude-cli] ' + d.toString('utf8')) })
+    child.on('close', () => { clearTimeout(killTimer); done(out.trim()) })
+    child.on('error', (e) => {
+      process.stderr.write(`[ISL] callClaudeCLI spawn error: ${e.message}\n`)
+      clearTimeout(killTimer); done('')
+    })
+  })
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
   let payload = {}
@@ -413,26 +455,17 @@ async function main() {
   const contextText = recent.map(m => `[${m.role.toUpperCase()}]: ${m.text.slice(0, 900)}`).join('\n\n')
 
   let taskInfo    = null
-  let tokenUsage  = null
+  const tokenUsage  = null  // CLI subscription — no token tracking
 
-  if (ANTHROPIC_API_KEY) {
-    try {
-      const commandHint = command
-        ? `\nUser explicitly typed "${command.cmd}" → taskStatus MUST be "${command.islStatus}".`
-        : '\nNo explicit command → default taskStatus to "in_progress" unless very clear completion signal.'
-      const ticketHint = ticketBinding
-        ? `\nUser bound this session to OP task #${ticketBinding} via !ticket command.`
-        : ''
+  try {
+    const commandHint = command
+      ? `\nUser explicitly typed "${command.cmd}" → taskStatus MUST be "${command.islStatus}".`
+      : '\nNo explicit command → default taskStatus to "in_progress" unless very clear completion signal.'
+    const ticketHint = ticketBinding
+      ? `\nUser bound this session to OP task #${ticketBinding} via !ticket command.`
+      : ''
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20250514',
-          max_tokens: 900,
-          messages: [{
-            role: 'user',
-            content: `Analyze this Claude Code work session.${commandHint}${ticketHint}
+    const prompt = `Analyze this Claude Code work session.${commandHint}${ticketHint}
 
 SESSION:
 ${contextText}
@@ -450,25 +483,18 @@ taskStatus rules (CONSERVATIVE):
 - "on_hold": ONLY if !hold OR clear blocker: "waiting for", "blocked by", "nanti setelah"
 - "in_progress": DEFAULT — use when unsure
 
-title: "[Project] Verb + Object" — specific, max 70 chars
-activities: 4-10 specific completed steps, past tense, technical detail
+title: "[Project] Verb + Object" — specific, max 70 chars, English only
+activities: 4-10 specific completed steps, past tense, technical detail, English only
 
-Return ONLY valid JSON:
-{"title":"...","activities":["step 1","..."],"isSubstantial":true,"taskStatus":"in_progress"}`,
-          }],
-        }),
-      })
+Return ONLY valid JSON, no markdown, no extra text:
+{"title":"...","activities":["step 1","..."],"isSubstantial":true,"taskStatus":"in_progress"}`
 
-      if (res.ok) {
-        const data = await res.json()
-        tokenUsage = data.usage ?? null
-        const json = JSON.parse((data.content?.[0]?.text ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '{}')
-        if (json.isSubstantial && json.title) {
-          taskInfo = { title: json.title.slice(0, 80), bullets: (json.activities ?? []).slice(0, 8).filter(Boolean), aiStatus: json.taskStatus || 'in_progress' }
-        }
-      }
-    } catch {}
-  }
+    const raw  = await callClaudeCLI(prompt)
+    const json = JSON.parse((raw ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '{}')
+    if (json.isSubstantial && json.title) {
+      taskInfo = { title: json.title.slice(0, 80), bullets: (json.activities ?? []).slice(0, 8).filter(Boolean), aiStatus: json.taskStatus || 'in_progress' }
+    }
+  } catch {}
 
   if (!taskInfo) {
     const allAssistant = messages.filter(m => m.role === 'assistant').map(m => m.text).join(' ')
@@ -507,6 +533,11 @@ function estimateTaskMins(title, bullets) {
 
 // ── Auto Push ─────────────────────────────────────────────────────────────────
 async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userId, finalStatus, hasExplicitCmd, needsValidation, ticketBinding, tokenUsage }) {
+  // Guard: title is required — without it OP subject would be empty
+  if (!title || !title.trim()) {
+    process.stderr.write('[ISL] autoPush skipped — title is empty\n')
+    return
+  }
   const date         = new Date().toISOString().split('T')[0]
   const opMode       = getOPMode()
   const sprint       = getCurrentSprint()
@@ -523,31 +554,82 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     let existingTask = null
 
     if (ticketBinding) {
-      // Direct binding — fetch fresh from OP
+      // Direct binding — fetch fresh from OP to determine type
+      let boundWP = null
       try {
         const res = await opGet(`/api/v3/work_packages/${ticketBinding}`)
-        if (res.ok) existingTask = await res.json()
+        if (res.ok) boundWP = await res.json()
       } catch {}
-      if (!existingTask) existingTask = findTaskById(ticketBinding)
+      if (!boundWP) boundWP = findTaskById(ticketBinding)
+
+      const wpType = boundWP?._links?.type?.title ?? boundWP?.type ?? ''
+      const isStory = /user.?story|story|feature/i.test(wpType)
+
+      if (isStory && boundWP) {
+        // !ticket:StoryID → create new child task under this story
+        process.stderr.write(`[ISL] !ticket:${ticketBinding} is a User Story — creating child task.\n`)
+
+        // Prefer actual session duration over keyword-based estimate
+        // A long discussion/iteration session is far more accurate than complexity signals
+        const estimatedMins = actualMins ?? estimateTaskMins(title, bullets)
+        const estimatedISO  = `PT${estimatedMins}M`
+        const sprintVersion = versionId
+          ? { _links: { version: { href: `/api/v3/versions/${versionId}` } } }
+          : {}
+
+        const newWP = {
+          subject:     title,
+          description: { format: 'markdown', raw: buildTaskDescription(title, bullets, date, null) },
+          estimatedTime: estimatedISO,
+          ...sprintVersion,
+          _links: {
+            type:    { href: '/api/v3/types/1' },  // Task type
+            status:  { href: OP_STATUS_HREF[finalStatus] ?? OP_STATUS_HREF.in_progress },
+            parent:  { href: `/api/v3/work_packages/${ticketBinding}` },
+            project: boundWP._links?.project ?? { href: `/api/v3/projects/${boundWP.projectId ?? 1}` },
+            assignee: { href: `/api/v3/users/${userId}` },
+          },
+        }
+
+        try {
+          const createRes = await opPost('/api/v3/work_packages', newWP)
+          if (createRes.ok) {
+            const created = await createRes.json()
+            if (created.id) {
+              taskId    = created.id
+              isNewTask = true
+              process.stderr.write(`[ISL] Created child task #${taskId} under Story #${ticketBinding}.\n`)
+            } else {
+              process.stderr.write(`[ISL] OP returned no ID for new task — response: ${JSON.stringify(created).slice(0,200)}\n`)
+            }
+          } else {
+            const errText = await createRes.text().catch(() => '?')
+            process.stderr.write(`[ISL] Failed to create child task (${createRes.status}): ${errText.slice(0,200)}\n`)
+          }
+        } catch (e) {
+          process.stderr.write(`[ISL] Failed to create child task: ${e.message}\n`)
+        }
+      } else {
+        // !ticket:TaskID → log to existing task
+        existingTask = boundWP
+      }
     } else {
       existingTask = findMatchingTask(title, bullets)
     }
 
     // Check if there's a related OLD task (for reference in new task description)
-    if (!existingTask) {
+    if (!existingTask && !taskId) {
       const related = findRelatedOldTask(title, bullets)
       if (related) relatedOldId = related.id
     }
 
     const activityMd = buildActivityMarkdown(title, bullets, actualMins, sessionId, date, statusLabel, tokenUsage, relatedOldId)
 
-    if (existingTask) {
-      // Found matching task — log activity comment to OP (read-only update, no status change)
-      taskId = existingTask.id
+    if (taskId && isNewTask) {
+      // New child task created — add activity log + time entry
       try {
         await opPost(`/api/v3/work_packages/${taskId}/activities`, { comment: { format: 'markdown', raw: activityMd } })
       } catch {}
-      // Time entry on existing task
       const durLabel = actualMins
         ? (actualMins >= 60 ? `${Math.floor(actualMins/60)}j ${actualMins%60}m` : `${actualMins}m`)
         : `${durationMins}m (est)`
@@ -556,18 +638,108 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
         comment: { format: 'markdown', raw: `**${title}**\n\n⏱ ${durLabel} | ${statusLabel} | 🤖 ISL` },
         _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
       }).catch(() => {})
+    } else if (existingTask) {
+      // Existing task — log activity comment + time entry
+      taskId = existingTask.id
+      try {
+        await opPost(`/api/v3/work_packages/${taskId}/activities`, { comment: { format: 'markdown', raw: activityMd } })
+      } catch {}
+      const durLabel = actualMins
+        ? (actualMins >= 60 ? `${Math.floor(actualMins/60)}j ${actualMins%60}m` : `${actualMins}m`)
+        : `${durationMins}m (est)`
+      await opPost('/api/v3/time_entries', {
+        hours: `PT${durationMins}M`, spentOn: date,
+        comment: { format: 'markdown', raw: `**${title}**\n\n⏱ ${durLabel} | ${statusLabel} | 🤖 ISL` },
+        _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
+      }).catch(() => {})
+      // If actual duration significantly exceeds current estimate → bump estimatedTime
+      if (actualMins) {
+        try {
+          const wpRes = await opGet(`/api/v3/work_packages/${taskId}`)
+          if (wpRes.ok) {
+            const wp = await wpRes.json()
+            const currentEstISO = wp.estimatedTime ?? 'PT0M'
+            const currentEstMins = (() => {
+              const m = currentEstISO.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/)
+              return m ? (Number(m[1]??0)*24*60 + Number(m[2]??0)*60 + Number(m[3]??0)) : 0
+            })()
+            if (actualMins > currentEstMins * 1.2) {
+              // Actual > 120% of estimate → update to actual
+              await opPatch(`/api/v3/work_packages/${taskId}`, {
+                lockVersion: wp.lockVersion,
+                estimatedTime: `PT${actualMins}M`,
+              }).catch(() => {})
+              process.stderr.write(`[ISL] Updated estimatedTime on #${taskId}: ${currentEstMins}m → ${actualMins}m\n`)
+            }
+          }
+        } catch {}
+      }
     } else {
-      // No matching task — save to ISL only, user decides whether to create/link in OP
-      process.stderr.write(`[ISL] No matching OP task found — saved to ISL pending. Use !ticket:ID to link or push manually via ISL.\n`)
-      isNewTask = false  // not creating in OP — user must approve
+      // No match — save to ISL pending
+      process.stderr.write(`[ISL] No matching OP task found — saved to ISL pending.\n`)
+      isNewTask = false
     }
 
     // Append to task memory file
     if (taskId) appendTaskMemory(taskId, title, bullets, date, actualMins, sessionId)
+
+    // Sync parent User Story estimatedTime = sum of all child task estimates
+    // This keeps the US as an accurate container of actual work done
+    if (taskId) {
+      try {
+        const taskRes = await opGet(`/api/v3/work_packages/${taskId}`)
+        if (taskRes.ok) {
+          const task = await taskRes.json()
+          const parentHref = task._links?.parent?.href
+          if (parentHref) {
+            const parentId = parentHref.split('/').pop()
+            const parentRes = await opGet(`/api/v3/work_packages/${parentId}`)
+            if (parentRes.ok) {
+              const parent = await parentRes.json()
+              const parentType = parent._links?.type?.title ?? ''
+              // Only sync if parent is a User Story (not Epic — Epic spans multiple sprints)
+              if (/user.?story|story/i.test(parentType)) {
+                const childrenRes = await opGet(`/api/v3/work_packages?filters=${encodeURIComponent(JSON.stringify([{parent:{operator:'=',values:[parentId]}}]))}&pageSize=100`)
+                if (childrenRes.ok) {
+                  const children = (await childrenRes.json())._embedded?.elements ?? []
+                  const parseISO = iso => {
+                    if (!iso) return 0
+                    const m = iso.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/)
+                    return m ? (Number(m[1]??0)*24*60 + Number(m[2]??0)*60 + Number(m[3]??0)) : 0
+                  }
+                  const totalMins = children
+                    .filter(c => !/rejected|abandoned/i.test(c._links?.status?.title ?? ''))
+                    .reduce((sum, c) => sum + parseISO(c.estimatedTime), 0)
+                  if (totalMins > 0) {
+                    await opPatch(`/api/v3/work_packages/${parentId}`, {
+                      lockVersion: parent.lockVersion,
+                      estimatedTime: `PT${totalMins}M`,
+                    }).catch(() => {})
+                    process.stderr.write(`[ISL] Synced US #${parentId} estimatedTime → ${Math.round(totalMins/60*10)/10}h (sum of ${children.length} tasks)\n`)
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+    }
   }
 
-  // Save to ISL
-  const storyId = opMode.stories ? pickStory(title, bullets, opMode.stories) : null
+  // Save to ISL — prefer OP task's actual parent as storyId over keyword guessing
+  let storyId = null
+  if (taskId) {
+    // Look up the matched/created task in cache to find its parent (User Story)
+    try {
+      const cache = JSON.parse(readFileSync(`${ISL_DIR}/op-cache.json`, 'utf-8'))
+      const allWPs = [...(cache.myOpenTasks ?? []), ...(cache.myClosedTasks ?? []),
+                     ...(cache.userStories ?? []), ...(cache.epics ?? [])]
+      const cachedTask = allWPs.find(t => t.id === taskId)
+      const parentId = cachedTask?.userStoryId ?? cachedTask?.parentId ?? null
+      if (parentId) storyId = parentId
+    } catch {}
+  }
+  if (!storyId && opMode.stories) storyId = pickStory(title, bullets, opMode.stories)
   const tokenSummary = tokenUsage
     ? { inputTokens: tokenUsage.input_tokens ?? 0, outputTokens: tokenUsage.output_tokens ?? 0 }
     : null

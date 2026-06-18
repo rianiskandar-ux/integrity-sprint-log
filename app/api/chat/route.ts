@@ -153,6 +153,10 @@ async function callStream(
     return streamAnthropicSSE(res.body!, encoder)
   }
 
+  if (provider === 'claude-cli') {
+    return callStreamClaudeCLI(system, messages, encoder)
+  }
+
   if (provider === 'google') {
     // Gemini doesn't have great streaming support — fall back to single call
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
@@ -186,6 +190,58 @@ async function callStream(
   })
   if (!res.ok) throw new Error(`${model} HTTP ${res.status}: ${await res.text()}`)
   return streamOpenAISSE(res.body!, encoder)
+}
+
+async function callStreamClaudeCLI(
+  system: string,
+  messages: { role: string; content: string }[],
+  encoder: TextEncoder,
+): Promise<ReadableStream<Uint8Array>> {
+  const { spawn } = await import('child_process')
+  const isWin = process.platform === 'win32'
+
+  // Build full conversation as a single prompt for claude -p
+  const lines: string[] = [`${system}\n\n---`]
+  for (const m of messages.slice(0, -1)) {
+    lines.push(`\n${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+  }
+  const last = messages[messages.length - 1]
+  if (last) lines.push(`\nUser: ${last.content}`)
+  const prompt = lines.join('')
+
+  return new Promise<ReadableStream<Uint8Array>>((resolve, reject) => {
+    const child = spawn(isWin ? 'claude.cmd' : 'claude', ['--print', '--output-format', 'text'], {
+      timeout: 120000,
+      env: { ...process.env },
+      shell: isWin,
+    })
+
+    child.stdin.write(prompt, 'utf8')
+    child.stdin.end()
+
+    let output = ''
+    let errOut = ''
+    child.stdout.on('data', (d: Buffer) => { output += d.toString('utf8') })
+    child.stderr.on('data', (d: Buffer) => { errOut += d.toString('utf8') })
+
+    child.on('close', (code: number | null) => {
+      if (code !== 0) {
+        reject(new Error(errOut || `Claude CLI exited with code ${code}`))
+        return
+      }
+      const text = output.trim()
+      resolve(new ReadableStream({
+        start(ctrl) { ctrl.enqueue(encoder.encode(text)); ctrl.close() }
+      }))
+    })
+    child.on('error', (e: Error) => {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+        reject(new Error('Claude Code CLI tidak ditemukan. Install: npm install -g @anthropic-ai/claude-code'))
+      } else {
+        reject(e)
+      }
+    })
+  })
 }
 
 function streamOpenAISSE(body: ReadableStream<Uint8Array>, enc: TextEncoder): ReadableStream<Uint8Array> {

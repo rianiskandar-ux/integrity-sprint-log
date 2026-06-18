@@ -195,11 +195,6 @@ export default function IncomingTasksPanel() {
                   {/* Status quick-set */}
                   <div className="flex-shrink-0 flex flex-col gap-1.5 min-w-[88px]">
                     <button
-                      onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: task.subject, opTaskId: task.id } }))}
-                      className="px-2 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
-                      ▶ Mulai Kerja
-                    </button>
-                    <button
                       onClick={() => setChatTask({
                         id: `incoming-${task.id}`,
                         title: task.subject,
@@ -211,7 +206,12 @@ export default function IncomingTasksPanel() {
                       className="px-2 py-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition">
                       💬 Diskusi
                     </button>
-                    {task.islStatus !== 'in_progress' && task.islStatus !== 'done' && (
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: task.subject, opTaskId: task.id } }))}
+                      className="px-2 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
+                      ▶ Mulai Kerja
+                    </button>
+                    {(task.islStatus === 'new' || !task.islStatus) && (
                       <button
                         onClick={() => updateStatus(task, 'in_progress')}
                         disabled={updatingId === task.id}
@@ -235,14 +235,6 @@ export default function IncomingTasksPanel() {
                         ▶ Lanjut
                       </button>
                     )}
-                    {task.islStatus !== 'done' && (
-                      <button
-                        onClick={() => updateStatus(task, 'done')}
-                        disabled={updatingId === task.id}
-                        className="px-2 py-1 text-[10px] font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 disabled:opacity-50 transition">
-                        {updatingId === task.id ? '…' : '✅ Done'}
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -259,7 +251,27 @@ export default function IncomingTasksPanel() {
       )}
 
       {chatTask && (
-        <TaskChatModal task={chatTask} onClose={() => setChatTask(null)} />
+        <TaskChatModal
+          task={chatTask}
+          onClose={() => setChatTask(null)}
+          onAddToQueue={chatTask.taskType === 'incoming' ? async (bullets) => {
+            const r = await fetch('/api/isl/sessions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: chatTask.title,
+                bullets,
+                opTaskId: chatTask.opTaskId ?? null,
+                pushStatus: 'pending',
+                estimatedMins: 60,
+                taskStatus: 'in_progress',
+                source: 'incoming',
+              }),
+            }).then(r => r.json()).catch(() => ({ ok: false }))
+            setChatTask(null)
+            showToast(r.ok ? `✅ Added to Push Queue` : `❌ Failed: ${r.error ?? 'error'}`)
+          } : undefined}
+        />
       )}
     </div>
   )

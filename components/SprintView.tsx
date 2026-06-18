@@ -7,6 +7,8 @@ import type { Project } from '@/lib/projects'
 import type { CalendarEvent } from '@/app/api/calendar/events/route'
 import { useI18n } from '@/lib/i18n'
 import SprintPlanView from './SprintPlanView'
+import NextSprintTab from './NextSprintTab'
+import AgendaTab from './AgendaTab'
 
 interface Props {
   projectSprints: Record<string, Record<number, Array<Session & { date: string }>>>
@@ -61,8 +63,8 @@ function OverviewTab({ data, loading }: { data: OverviewData | null; loading: bo
     setAiLoading(true)
     setAiNotConf(false)
     try {
-      const d = await fetch('/api/op/sprint-plan').then(r => r.json())
-      if (d.aiConfigured === false) { setAiNotConf(true); setAiDone(true); setAiLoading(false); return }
+      const d = await fetch('/api/op/sprint-plan/ai').then(r => r.json())
+      if (d.error || (!d.aiSummary && !d.aiSuggestedTasks?.length)) { setAiNotConf(true); setAiDone(true); setAiLoading(false); return }
       if (d.aiSummary)        setAiSummary(d.aiSummary)
       if (d.aiSuggestedTasks?.length) setAiSuggests(d.aiSuggestedTasks)
       setAiDone(true)
@@ -647,9 +649,25 @@ function WorkLogTab({
   )
 }
 
+// ─── Past sprint notice ───────────────────────────────────────────────────────
+
+function PastSprintNotice({ label, currentSprintName, note }: { label: string; currentSprintName: string; note?: string }) {
+  return (
+    <div className="mt-6 px-5 py-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+      <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-1">
+        {label} hanya tersedia untuk sprint aktif
+      </p>
+      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+        {note ?? `Tab ini tidak menampilkan data sprint lama.`}
+        {' '}Pilih <strong>{currentSprintName}</strong> untuk menggunakannya.
+      </p>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'worklog' | 'plan'
+type Tab = 'overview' | 'worklog' | 'plan' | 'next-sprint' | 'agenda'
 
 export default function SprintView({ projectSprints, sprintMeta, currentSprintNo, viewSprintNo, projects, onNavigate }: Props) {
   const { t, lang } = useI18n()
@@ -722,9 +740,11 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
   }
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'worklog',  label: 'Work Log',  icon: '📝' },
-    { id: 'plan',     label: 'Sprint Plan', icon: '🗓' },
+    { id: 'overview',     label: 'Overview',     icon: '📊' },
+    { id: 'worklog',      label: 'Work Log',      icon: '📝' },
+    { id: 'plan',         label: 'Sprint Plan',   icon: '🗓' },
+    { id: 'next-sprint',  label: 'Next Sprint',   icon: '🗂' },
+    { id: 'agenda',       label: 'Agenda',        icon: '📋' },
   ]
 
   return (
@@ -792,16 +812,25 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
           opSprintName={overviewData?.sprint?.name}
         />
       )}
+      {tab === 'next-sprint' && (
+        viewSprintNo !== currentSprintNo
+          ? <PastSprintNotice label="Next Sprint" currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`} />
+          : <NextSprintTab currentSprintNo={currentSprintNo} />
+      )}
+      {tab === 'agenda' && (
+        viewSprintNo !== currentSprintNo
+          ? <PastSprintNotice label="Agenda" currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`} />
+          : <AgendaTab currentSprintNo={currentSprintNo} />
+      )}
       {tab === 'plan' && (
-        <div>
-          <OpAgendaBanner
-            reviewEvent={reviewEvent}
-            agendaOpen={agendaOpen}
-            setAgendaOpen={setAgendaOpen}
-            t={t}
-          />
-          <SprintPlanView />
-        </div>
+        viewSprintNo !== currentSprintNo
+          ? <PastSprintNotice label="Sprint Plan" currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`} note="Sprint Plan selalu menampilkan sprint aktif dari OP — data sprint lama tidak tersedia di sini." />
+          : (
+            <div>
+              <OpAgendaBanner reviewEvent={reviewEvent} agendaOpen={agendaOpen} setAgendaOpen={setAgendaOpen} t={t} />
+              <SprintPlanView />
+            </div>
+          )
       )}
     </div>
   )

@@ -117,7 +117,8 @@ export default function SettingsPage() {
   const isFree   = FREE_PROVIDERS.includes(llmProvider)
   const isOllama = llmProvider === 'ollama'
   const is9Router = llmProvider === '9router'
-  const isNoKey  = isOllama || is9Router
+  const isClaudeCLI = llmProvider === 'claude-cli'
+  const isNoKey  = isOllama || is9Router || isClaudeCLI
   const defaultModel = DEFAULT_MODELS[llmProvider]
 
   // Models to show: fetched list takes priority, else just show default
@@ -177,7 +178,8 @@ export default function SettingsPage() {
               </select>
               {pInfo && (
                 <p className={`text-xs mt-1 ${isFree ? 'text-green-700' : 'text-gray-400'}`}>
-                  {isOllama ? '📦 Lokal & offline — pastikan Ollama berjalan'
+                  {isClaudeCLI ? '🤖 Pakai subscription claude.ai — butuh Claude Code CLI terinstall & sudah login (claude auth login)'
+                   : isOllama ? '📦 Lokal & offline — pastikan Ollama berjalan'
                    : is9Router ? '🔀 9Router jalan di localhost:20128 — tidak perlu API key'
                    : isFree ? `🆓 Gratis — ${pInfo.hint}`
                    : `🔑 ${pInfo.hint}`}
@@ -205,11 +207,13 @@ export default function SettingsPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-sm font-medium text-gray-700">Model</label>
-                <button type="button" onClick={() => fetchModels()}
-                  disabled={modelsLoading || (!llmKeySet && !llmApiKey && !isNoKey)}
-                  className="text-xs text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline">
-                  {modelsLoading ? 'Memuat…' : '↻ Detect model'}
-                </button>
+                {!isClaudeCLI && (
+                  <button type="button" onClick={() => fetchModels()}
+                    disabled={modelsLoading || (!llmKeySet && !llmApiKey && !isNoKey)}
+                    className="text-xs text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline">
+                    {modelsLoading ? 'Memuat…' : '↻ Detect model'}
+                  </button>
+                )}
               </div>
               <select value={activeModel}
                 onChange={e => setLlmModel(e.target.value === defaultModel ? '' : e.target.value)}

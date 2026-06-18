@@ -1,4 +1,4 @@
-import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
+import { getOpToken, getOpBaseUrl, loadUserConfig } from '@/lib/user-config'
 import { callLLM, getLLMConfig } from '@/lib/llm'
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
@@ -20,9 +20,16 @@ export async function GET() {
   const currentSprint = sprintList.find(s => s.isCurrent)
   if (!currentSprint) return NextResponse.json({ error: 'No current sprint' }, { status: 404 })
 
-  const userId = String(cache.userId ?? 8)
+  const userCfg      = loadUserConfig()
+  const displayName  = userCfg.displayName || 'Team Member'
+  const userId       = String(cache.userId ?? 8)
   const currentNum   = parseInt(currentSprint.name.replace(/\D/g, '')) || 0
   const suggestedNum = currentNum + 1
+  const sprintPeriod = `${currentSprint.startDate} – ${currentSprint.endDate}`
+  const projectNames = [...new Set([
+    ...((cache.myOpenTasks ?? []) as { project?: string }[]).map(t => t.project),
+    ...((cache.myClosedTasks ?? []) as { project?: string }[]).map(t => t.project),
+  ].filter(Boolean))].join(', ') || 'Integrity Asia'
 
   function parseIsoDur(dur: unknown): number | null {
     if (!dur || typeof dur !== 'string') return null
@@ -84,12 +91,14 @@ export async function GET() {
   const prompt = `You are a sprint planning assistant for a software team. Analyze Sprint #${currentNum} and create a complete plan for Sprint #${suggestedNum}.
 
 SPRINT #${currentNum} DATA:
-- Period: ${currentSprint.startDate} → ${currentSprint.endDate}
+- Period: ${sprintPeriod}
+- Projects: ${projectNames}
+- Member: ${displayName}
 - Total tasks: ${carryOver.length + doneTasks.length} (${doneTasks.length} done, ${carryOver.length} carry-over)
 - Total estimated: ${totalEst.toFixed(1)}h | Total spent: ${totalSpent.toFixed(1)}h
 - Remaining open work: ${openEst.toFixed(1)}h
 
-CARRY-OVER (${carryOver.length} tasks — these must enter Sprint #${suggestedNum}):
+CARRY-OVER (${carryOver.length} tasks):
 ${carryLines || '(none)'}
 
 DONE THIS SPRINT (${doneTasks.length} tasks):
@@ -100,7 +109,7 @@ Reply with JSON only — no markdown, no extra text:
   "theme": "2-4 word sprint theme",
   "goal": "one clear sentence sprint goal for Sprint #${suggestedNum}",
   "suggestions": ["alt theme 1", "alt theme 2"],
-  "summary": "2-3 sentence sprint retrospective: what was accomplished, what's carrying over, and key focus for next sprint",
+  "summary": "Sprint report in this exact format — output plain text, not JSON string:\\nSprint #${currentNum} — ${sprintPeriod}\\n${projectNames} · ${displayName}\\n\\n[1 short paragraph: what got done, what's still going, and why. Write like a real team member reflecting, not a status report. No jargon, no 'the team', no 'momentum'. Max 3 sentences.]\\n\\nCOMPLETED\\n[list each done task as: ✓ subject]\\n\\nCARRYING OVER → Sprint #${suggestedNum}\\n[list each carry-over as: → subject (status)]\\n\\nNEXT SPRINT FOCUS\\n[1 sentence: what specifically needs to happen in Sprint #${suggestedNum}]\\n\\n${doneTasks.length} done · ${carryOver.length} carry-over · ${openEst.toFixed(1)}h remaining",
   "suggestedTasks": [
     {
       "subject": "task title (be specific, actionable)",

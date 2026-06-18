@@ -151,22 +151,32 @@ async function callGemini(prompt: string, model: string, apiKey: string): Promis
 
 /** Call Claude Code CLI as subprocess — uses existing SSO session, no API key needed */
 async function callClaudeCLI(prompt: string): Promise<string> {
-  const { execFile } = await import('child_process')
-  const { promisify } = await import('util')
-  const execFileAsync = promisify(execFile)
+  const { spawn } = await import('child_process')
+  const isWin = process.platform === 'win32'
 
-  try {
-    const { stdout } = await execFileAsync('claude', [
-      '-p', prompt,
-      '--output-format', 'text',
-      '--no-stream',
-    ], { timeout: 60000, maxBuffer: 1024 * 1024 })
-    return stdout.trim()
-  } catch (err: unknown) {
-    const e = err as { code?: string; stderr?: string; message?: string }
-    if (e.code === 'ENOENT') throw new Error('Claude Code CLI tidak ditemukan. Install via: npm install -g @anthropic-ai/claude-code')
-    throw new Error(`Claude CLI error: ${e.stderr || e.message}`)
-  }
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(isWin ? 'claude.cmd' : 'claude', ['--print', '--output-format', 'text'], {
+      timeout: 120000,
+      env: { ...process.env },
+      shell: isWin,
+    })
+
+    child.stdin.write(prompt, 'utf8')
+    child.stdin.end()
+
+    let output = '', errOut = ''
+    child.stdout.on('data', (d: Buffer) => { output += d.toString('utf8') })
+    child.stderr.on('data', (d: Buffer) => { errOut += d.toString('utf8') })
+
+    child.on('close', (code: number | null) => {
+      if (code !== 0) { reject(new Error(errOut || `Claude CLI exited ${code}`)); return }
+      resolve(output.trim())
+    })
+    child.on('error', (e: NodeJS.ErrnoException) => {
+      if (e.code === 'ENOENT') reject(new Error('Claude Code CLI tidak ditemukan. Install: npm install -g @anthropic-ai/claude-code'))
+      else reject(e)
+    })
+  })
 }
 
 /** Build LLMConfig from user-config (server-side) */

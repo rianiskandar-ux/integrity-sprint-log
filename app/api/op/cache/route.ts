@@ -91,6 +91,9 @@ export async function POST(req: Request) {
       }
     }
 
+    // Fire status-sync after cache rebuild (fire-and-forget)
+    fetch('http://localhost:3000/api/op/status-sync').catch(() => {})
+
     return NextResponse.json({ ok: true, ...cache })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

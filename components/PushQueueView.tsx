@@ -52,6 +52,23 @@ const TYPE_OPTIONS = [
   { id: 6, label: 'User Story' },
 ]
 
+interface ActivitySegment { duration: number; note: string }
+
+function bulletsToSegments(bullets: string[], totalMins: number): ActivitySegment[] {
+  if (!bullets.length) return [{ duration: totalMins, note: '' }]
+  const perSlot = Math.max(1, Math.round(totalMins / bullets.length))
+  return bullets.map((note, i) => {
+    // Last segment gets remaining time
+    const used = perSlot * i
+    const d = i === bullets.length - 1 ? Math.max(1, totalMins - used) : perSlot
+    return { duration: d, note }
+  })
+}
+
+function segmentsToBullets(segs: ActivitySegment[]): string[] {
+  return segs.filter(s => s.note.trim()).map(s => `[${s.duration}m] ${s.note.trim()}`)
+}
+
 interface NewTaskForm {
   subject: string
   projectId: number
@@ -60,6 +77,137 @@ interface NewTaskForm {
   sprintId: number | null
   estimatedMins: number
   typeId: number
+}
+
+function ActivityTimeline({
+  segments, onChange, totalMins, accentColor, taskTitle,
+}: {
+  segments: ActivitySegment[]
+  onChange: (segs: ActivitySegment[]) => void
+  totalMins: number
+  accentColor: 'teal' | 'violet'
+  taskTitle?: string
+}) {
+  const [suggesting, setSuggesting] = useState(false)
+
+  async function suggestSegments() {
+    setSuggesting(true)
+    try {
+      const prompt = `You are a work log assistant. Given a task title and estimated duration, suggest 3-4 realistic activity timeline segments showing how the work was likely broken up.
+
+Task: "${taskTitle ?? 'Work session'}"
+Total estimated time: ${totalMins} minutes
+
+Reply with ONLY a JSON array, no explanation:
+[{"duration": 15, "note": "..."}, {"duration": 30, "note": "..."}, ...]
+
+Rules:
+- durations must sum to exactly ${totalMins}
+- notes must be in English, concise (max 10 words), action-oriented (e.g. "Reviewed requirements and planned approach")
+- reflect realistic phases for this type of task`
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: prompt }],
+          taskContext: { id: 'suggest', title: taskTitle ?? '', taskType: 'new' },
+        }),
+      })
+      if (!res.ok) return
+
+      const reader = res.body!.getReader()
+      const dec = new TextDecoder()
+      let full = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        full += dec.decode(value, { stream: true })
+      }
+
+      const match = full.match(/\[[\s\S]*\]/)
+      if (match) {
+        const parsed = JSON.parse(match[0]) as { duration: number; note: string }[]
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          onChange(parsed.map(s => ({ duration: Math.max(1, Number(s.duration)), note: String(s.note) })))
+        }
+      }
+    } catch { /* ignore */ }
+    setSuggesting(false)
+  }
+
+  const usedMins = segments.reduce((s, x) => s + x.duration, 0)
+  const over = usedMins > totalMins
+  const pct  = Math.min(100, Math.round(usedMins / Math.max(1, totalMins) * 100))
+
+  const borderCls = accentColor === 'teal'
+    ? 'border-teal-100 dark:border-teal-800'
+    : 'border-violet-100 dark:border-violet-800'
+  const ringCls = accentColor === 'teal'
+    ? 'focus:ring-teal-300'
+    : 'focus:ring-violet-300'
+  const barCls = over ? 'bg-red-400' : accentColor === 'teal' ? 'bg-teal-400' : 'bg-violet-400'
+  const addCls = accentColor === 'teal'
+    ? 'text-teal-500 hover:text-teal-700'
+    : 'text-violet-500 hover:text-violet-700'
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Activity Timeline</label>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={suggestSegments} disabled={suggesting}
+            className="text-[9px] font-semibold text-amber-500 hover:text-amber-700 disabled:opacity-50 flex items-center gap-0.5">
+            {suggesting ? '⏳ Suggesting…' : '✨ Suggest'}
+          </button>
+          <button type="button"
+            onClick={() => onChange([...segments, { duration: Math.max(1, totalMins - usedMins), note: '' }])}
+            className={`text-[9px] font-semibold ${addCls}`}>
+            + Add segment
+          </button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="space-y-0.5">
+        <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${barCls}`} style={{ width: `${pct}%` }} />
+        </div>
+        <div className={`text-[9px] font-semibold ${over ? 'text-red-500' : 'text-gray-400'}`}>
+          {usedMins}m / {totalMins}m {over ? `(+${usedMins - totalMins}m over)` : `(${totalMins - usedMins}m remaining)`}
+        </div>
+      </div>
+
+      {/* Segments */}
+      <div className="space-y-1.5">
+        {segments.map((seg, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <span className="text-[9px] text-gray-400 font-mono flex-shrink-0 w-4 text-right">{i + 1}.</span>
+            <input
+              type="number"
+              min={1}
+              value={seg.duration}
+              onChange={e => onChange(segments.map((x, j) => j === i ? { ...x, duration: Math.max(1, Number(e.target.value)) } : x))}
+              className={`w-14 text-[11px] border ${borderCls} rounded px-1.5 py-1 bg-white dark:bg-gray-900 text-center focus:outline-none focus:ring-1 ${ringCls} text-indigo-600 font-semibold`}
+              title="Duration in minutes"
+            />
+            <span className="text-[9px] text-gray-400 flex-shrink-0">min</span>
+            <input
+              value={seg.note}
+              onChange={e => onChange(segments.map((x, j) => j === i ? { ...x, note: e.target.value } : x))}
+              placeholder={`What was done in this ${seg.duration}m…`}
+              className={`flex-1 text-[11px] border ${borderCls} rounded px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 ${ringCls}`}
+            />
+            <button type="button" onClick={() => onChange(segments.filter((_, j) => j !== i))}
+              className="text-[10px] text-gray-300 hover:text-red-400 px-0.5 flex-shrink-0">✕</button>
+          </div>
+        ))}
+        {segments.length === 0 && (
+          <p className="text-[10px] text-gray-300 italic">No segments — click &ldquo;+ Add segment&rdquo; to log activity</p>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function SessionCard({
@@ -77,8 +225,9 @@ function SessionCard({
   const [expanded, setExpanded]   = useState(false)
   const [mode, setMode]           = useState<'idle' | 'create' | 'link'>('idle')
   const [pushing, setPushing]     = useState(false)
-  const [linkId, setLinkId]       = useState('')
+  const [linkId, setLinkId]       = useState(session.opTaskId ? String(session.opTaskId) : '')
   const [error, setError]         = useState<string | null>(null)
+  const [segments, setSegments] = useState<ActivitySegment[]>(() => bulletsToSegments(session.bullets, session.actualMins ?? session.estimatedMins ?? 60))
 
   const sprints = (cache.sprints ?? []).sort((a, b) => b.startDate.localeCompare(a.startDate))
   const currentSprint = sprints.find(s => s.isCurrent) ?? null
@@ -116,10 +265,12 @@ function SessionCard({
     setPushing(true); setError(null)
     try {
       const body: Record<string, unknown> = { sessionId: session.id, action }
+      const bullets = segmentsToBullets(segments)
       if (action === 'link_existing') {
         body.opTaskId = Number(linkId)
+        body.bullets  = bullets
       } else {
-        body.newTask = { ...form, userId }
+        body.newTask = { ...form, userId, bullets }
       }
       const r = await fetch('/api/op/push-session', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -139,7 +290,7 @@ function SessionCard({
       <div className="flex items-start gap-3 px-4 py-3 cursor-pointer" onClick={() => setExpanded(v => !v)}>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-semibold text-gray-800 dark:text-gray-100 leading-snug">{session.title}</p>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[10px] text-gray-400">{session.date}</span>
             <span className="text-[10px] text-indigo-500 font-medium">{dur}</span>
             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
@@ -147,6 +298,11 @@ function SessionCard({
               session.taskStatus === 'in_progress' ? 'bg-blue-100 dark:bg-blue-950 text-blue-600' :
               'bg-gray-100 dark:bg-gray-800 text-gray-500'
             }`}>{session.taskStatus}</span>
+            {session.opTaskId && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-600 dark:text-teal-400">
+                → OP #{session.opTaskId}
+              </span>
+            )}
           </div>
         </div>
 
@@ -176,20 +332,29 @@ function SessionCard({
       {/* Action bar */}
       {mode === 'idle' && (
         <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 flex-wrap">
-          {suggested && (
-            <button onClick={() => { setMode('link'); setLinkId(String(suggested.id)) }}
+          {session.opTaskId ? (
+            <button onClick={() => setMode('link')}
               className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 transition px-2.5 py-1.5 rounded-lg border border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-950">
-              🔗 Link ke #{suggested.id}
+              🔗 Push Log ke #{session.opTaskId}
             </button>
+          ) : (
+            <>
+              {suggested && (
+                <button onClick={() => { setMode('link'); setLinkId(String(suggested.id)) }}
+                  className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 transition px-2.5 py-1.5 rounded-lg border border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-950">
+                  🔗 Link ke #{suggested.id}
+                </button>
+              )}
+              <button onClick={() => setMode('create')}
+                className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 transition px-2.5 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950">
+                {t('pushqueue.create_new')}
+              </button>
+              <button onClick={() => setMode('link')}
+                className="text-[10px] text-gray-400 hover:text-gray-600 transition px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                🔗 Link ke Task Lain
+              </button>
+            </>
           )}
-          <button onClick={() => setMode('create')}
-            className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 transition px-2.5 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950">
-            {t('pushqueue.create_new')}
-          </button>
-          <button onClick={() => setMode('link')}
-            className="text-[10px] text-gray-400 hover:text-gray-600 transition px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
-            🔗 Link ke Task Lain
-          </button>
           <button
             onClick={() => onOpenChat({
               id: session.id,
@@ -213,26 +378,32 @@ function SessionCard({
 
       {/* Link existing form */}
       {mode === 'link' && (
-        <div className="px-4 py-3 border-t border-violet-100 dark:border-violet-900 bg-violet-50/30 dark:bg-violet-950/10 space-y-3">
-          <p className="text-[10px] font-bold text-violet-700 dark:text-violet-300">🔗 Link ke OP Task</p>
+        <div className="px-4 py-3 border-t border-teal-100 dark:border-teal-900 bg-teal-50/30 dark:bg-teal-950/10 space-y-3">
+          <p className="text-[10px] font-bold text-teal-700 dark:text-teal-300">🔗 Push Log ke OP Task</p>
+
+          {/* Task ID input */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-gray-500">#</span>
             <input
               value={linkId}
               onChange={e => setLinkId(e.target.value.replace(/\D/g, ''))}
               placeholder="Task ID dari OP"
-              className="w-32 text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              className="w-32 text-[11px] border border-teal-200 dark:border-teal-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-teal-400"
             />
             <a href={linkId ? `${opUrl}/work_packages/${linkId}` : '#'} target="_blank" rel="noopener"
               className="text-[10px] text-indigo-500 hover:underline">
               {linkId ? `Lihat #${linkId} ↗` : 'masukkan ID'}
             </a>
           </div>
+
+          {/* Activity timeline editor */}
+          <ActivityTimeline segments={segments} onChange={setSegments} totalMins={mins} accentColor="teal" taskTitle={session.title} />
+
           {error && <p className="text-[10px] text-red-500">{error}</p>}
           <div className="flex gap-2">
             <button onClick={() => doPush('link_existing')} disabled={!linkId || pushing}
               className="px-3 py-1.5 text-[10px] font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition disabled:opacity-40">
-              {pushing ? '⏳ Linking…' : '🔗 Link & Log ke OP'}
+              {pushing ? '⏳ Pushing…' : '🔗 Push Log ke OP →'}
             </button>
             <button onClick={() => { setMode('idle'); setError(null) }}
               className="text-[10px] text-gray-400 hover:text-gray-600 px-2">Cancel</button>
@@ -252,6 +423,9 @@ function SessionCard({
               <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
                 className="mt-1 w-full text-[12px] border border-violet-200 dark:border-violet-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-violet-400" />
             </div>
+
+            {/* Activity timeline */}
+            <ActivityTimeline segments={segments} onChange={setSegments} totalMins={form.estimatedMins} accentColor="violet" taskTitle={form.subject} />
 
             <div className="grid grid-cols-2 gap-3">
               {/* Type */}
@@ -345,10 +519,10 @@ function SessionCard({
               <div className="mt-1 pt-1 border-t border-gray-100 dark:border-gray-800">
                 <p className="text-[9px] text-gray-400 font-semibold mb-0.5">Description preview:</p>
                 <p className="text-[10px] text-gray-500 font-mono">{`**${form.subject}**`}</p>
-                {session.bullets.slice(0, 3).map((b, i) => (
+                {segmentsToBullets(segments).slice(0, 3).map((b, i) => (
                   <p key={i} className="text-[10px] text-gray-500 font-mono">{`- ${b}`}</p>
                 ))}
-                {session.bullets.length > 3 && <p className="text-[9px] text-gray-400">+{session.bullets.length - 3} more bullets</p>}
+                {segmentsToBullets(segments).length > 3 && <p className="text-[9px] text-gray-400">+{segmentsToBullets(segments).length - 3} more</p>}
               </div>
             </div>
           </div>

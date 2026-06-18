@@ -252,6 +252,14 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <span className="text-sm">⚙️</span>
           {open && <span className="text-[10px]">Settings</span>}
         </a>
+        <a
+          href="/terminal"
+          title="Terminal"
+          className="flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
+        >
+          <span className="text-sm">🖥️</span>
+          {open && <span className="text-[10px]">Terminal</span>}
+        </a>
         {onFeedback && (
           <button
             onClick={onFeedback}

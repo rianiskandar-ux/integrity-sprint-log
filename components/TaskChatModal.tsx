@@ -23,9 +23,10 @@ interface Props {
   task: TaskChatContext
   onClose: () => void
   onPush?: (id: string) => void
+  onAddToQueue?: (bullets: string[]) => void
 }
 
-export default function TaskChatModal({ task, onClose, onPush }: Props) {
+export default function TaskChatModal({ task, onClose, onPush, onAddToQueue }: Props) {
   const [messages,  setMessages]  = useState<Message[]>([])
   const [input,     setInput]     = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -188,6 +189,26 @@ export default function TaskChatModal({ task, onClose, onPush }: Props) {
               <button onClick={() => onPush(task.id)}
                 className="text-[11px] font-bold px-3 py-1 rounded-lg text-white border border-white/30 hover:bg-white/20 transition">
                 Push OP
+              </button>
+            )}
+            {task.taskType === 'incoming' && onAddToQueue && (
+              <button onClick={() => {
+                const reversed = [...messagesRef.current].reverse()
+                const lastAsst = reversed.find(m => m.role === 'assistant' && m.id !== 'greeting')
+                let bullets: string[] = []
+                if (lastAsst) {
+                  const lines = lastAsst.content.split('\n')
+                  bullets = lines
+                    .filter(l => /^[-•*]\s+/.test(l) || /^\d+\.\s+/.test(l))
+                    .map(l => l.replace(/^[-•*\d.]+\s+/, '').trim())
+                    .filter(l => l.length > 3)
+                  if (bullets.length === 0) bullets = [lastAsst.content.slice(0, 200).split('\n')[0]]
+                }
+                if (bullets.length === 0) bullets = [`Discussion: ${task.title}`]
+                onAddToQueue(bullets)
+              }}
+                className="text-[11px] font-bold px-3 py-1 rounded-lg text-white border border-white/30 hover:bg-white/20 transition">
+                ➕ Add to Queue
               </button>
             )}
             <button onClick={onClose}
