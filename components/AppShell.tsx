@@ -33,7 +33,7 @@ import SprintReportModal from './SprintReportModal'
 import FeedbackModal from './FeedbackModal'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import { loadSettings, saveSettings, loadAppConfig } from '@/lib/op-config'
-import { useI18n, LANG_OPTIONS } from '@/lib/i18n'
+import { useI18n } from '@/lib/i18n'
 
 interface Props {
   view: string
@@ -59,7 +59,7 @@ export default function AppShell({
   monthMap, allTopics,
 }: Props) {
   const router = useRouter()
-  const { lang, setLang, t } = useI18n()
+  const { t } = useI18n()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isPulling, startPull] = useTransition()
   const [toast, setToast] = useState<string | null>(null)
@@ -415,13 +415,13 @@ export default function AppShell({
                 {isPulling ? t('common.loading') : `↻ ${t('header.pull_op')}`}
               </button>
               <button onClick={doWrapup} disabled={wrapupLoading} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition" title={t('nav.wrapup')}>
-                {wrapupLoading ? t('wrapup.generating') : `✓ ${lang === 'id' ? 'Ringkasan' : 'Summary'}`}
+                {wrapupLoading ? t('wrapup.generating') : `✓ Summary`}
               </button>
               <button onClick={() => setAddOpen(true)} className="px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition" title={t('session.add_title')}>
                 {t('header.add_session')}
               </button>
               {selectedDate !== today && (
-                <a href={`/?view=daily&date=${today}`} className="px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">{lang === 'id' ? 'Hari Ini' : 'Today'}</a>
+                <a href={`/?view=daily&date=${today}`} className="px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">Today</a>
               )}
             </>
           )}
@@ -486,14 +486,6 @@ export default function AppShell({
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>
               </svg>
-            </button>
-
-            {/* Language flag — single button, cycles between id/en */}
-            <button
-              onClick={() => setLang(lang === 'id' ? 'en' : 'id')}
-              className="p-1.5 rounded-lg text-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition leading-none"
-              title={lang === 'id' ? 'Switch to English' : 'Ganti ke Bahasa Indonesia'}>
-              {lang === 'id' ? '🇮🇩' : '🇬🇧'}
             </button>
 
             {/* OP status dot */}
@@ -582,10 +574,10 @@ export default function AppShell({
       {showSetup && <SetupWizard onDone={() => { setShowSetup(false); setUserName(loadSettings().userName.split(' ')[0]) }} />}
       {confirmPull && (
         <ConfirmModal
-          title={lang === 'id' ? 'Refresh data dari OpenProject?' : 'Refresh data from OpenProject?'}
-          description={lang === 'id' ? `Ambil task & aktivitas terbaru dari OP untuk tanggal ${selectedDate}.` : `Pull latest tasks & activities from OP for ${selectedDate}.`}
-          whatHappens={lang === 'id' ? 'Data OpenProject di halaman ini akan diperbarui dengan yang terbaru dari server OP. Data yang sudah ada akan ditimpa. Catatan aktivitas kamu tidak akan terpengaruh.' : 'OpenProject data on this page will be updated with the latest from the OP server. Existing data will be overwritten. Your activity notes will not be affected.'}
-          confirmLabel={lang === 'id' ? 'Ya, Refresh Sekarang' : 'Yes, Refresh Now'}
+          title="Refresh data from OpenProject?"
+          description={`Pull latest tasks & activities from OP for ${selectedDate}.`}
+          whatHappens="OpenProject data on this page will be updated with the latest from the OP server. Existing data will be overwritten. Your activity notes will not be affected."
+          confirmLabel="Yes, Refresh Now"
           onConfirm={doPullOP}
           onCancel={() => setConfirmPull(false)}
         />

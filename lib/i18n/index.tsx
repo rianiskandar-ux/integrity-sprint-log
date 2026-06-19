@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { translations, type Lang, type TranslationKey } from './translations'
 
 interface I18nContextValue {
@@ -10,26 +10,16 @@ interface I18nContextValue {
 }
 
 const I18nContext = createContext<I18nContextValue>({
-  lang: 'id',
+  lang: 'en',
   setLang: () => {},
-  t: (key) => translations[key]?.id ?? key,
+  t: (key) => translations[key]?.en ?? key,
 })
 
-const LANG_KEY = 'isl_lang'
-
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>('en')
+  const [lang] = useState<Lang>('en')
 
-  useEffect(() => {
-    const saved = localStorage.getItem(LANG_KEY) as Lang | null
-    if (saved && ['id', 'en'].includes(saved)) setLangState(saved)
-    else localStorage.setItem(LANG_KEY, 'en')
-  }, [])
-
-  function setLang(l: Lang) {
-    setLangState(l)
-    localStorage.setItem(LANG_KEY, l)
-  }
+  // Language is fixed to English — no toggle
+  function setLang(_l: Lang) { /* no-op — English only */ }
 
   function t(key: TranslationKey, vars?: Record<string, string>): string {
     const entry = translations[key]

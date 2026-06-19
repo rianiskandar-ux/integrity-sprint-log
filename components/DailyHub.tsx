@@ -63,13 +63,13 @@ function TodayTab({ data, onRefresh }: { data: HubData; onRefresh: () => void })
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Kamu adalah AI assistant di ISL (Integrity Sprint Log).
+            content: `You are an AI assistant in ISL (Integrity Sprint Log).
 
-Berdasarkan data berikut, suggest 2-3 task yang paling penting untuk dikerjakan hari ini.
-Format: numbered list, tiap item: nama task + estimasi waktu + alasan singkat (1 kalimat).
-Jawab dalam bahasa Indonesia. Singkat dan actionable.
+Based on the data below, suggest 2-3 of the most important tasks to work on today.
+Format: numbered list, each item: task name + time estimate + one-sentence reason.
+Be concise and actionable. Reply in English.
 
-Data sprint & konteks:
+Sprint context data:
 ${JSON.stringify(context, null, 2)}`,
           }],
         }),
@@ -114,7 +114,7 @@ ${JSON.stringify(context, null, 2)}`,
           <span className="font-medium text-gray-700 dark:text-gray-300">{sprint.name}</span>
           <span>·</span>
           <span>{sprint.endDate} ends</span>
-          {pendingCount > 0 && <><span>·</span><span className="text-amber-600 dark:text-amber-400">{pendingCount} sesi butuh triage</span></>}
+          {pendingCount > 0 && <><span>·</span><span className="text-amber-600 dark:text-amber-400">{pendingCount} sessions need triage</span></>}
         </div>
       )}
 
@@ -123,7 +123,7 @@ ${JSON.stringify(context, null, 2)}`,
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-base">🤖</span>
-            <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Focus Hari Ini</span>
+            <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Today's Focus</span>
           </div>
           <button
             onClick={generateSuggest}
@@ -138,7 +138,7 @@ ${JSON.stringify(context, null, 2)}`,
           <div className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{suggest}</div>
         ) : (
           <p className="text-xs text-gray-400 dark:text-gray-500 italic">
-            Klik Generate untuk dapat saran AI berdasarkan sprint aktif + sesi terakhir lu.
+            Click Generate to get AI suggestions based on your active sprint and recent sessions.
           </p>
         )}
       </div>
@@ -153,7 +153,7 @@ ${JSON.stringify(context, null, 2)}`,
       {/* Recent hub sessions preview */}
       {data.hubSessions.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Sesi Terbaru (belum di-triage)</p>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Recent Sessions (not yet triaged)</p>
           {data.hubSessions.slice(0, 3).map(s => (
             <div key={s.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
               <span className="text-sm mt-0.5">📝</span>
@@ -164,7 +164,7 @@ ${JSON.stringify(context, null, 2)}`,
             </div>
           ))}
           {data.hubSessions.length > 3 && (
-            <p className="text-xs text-gray-400 text-center">+{data.hubSessions.length - 3} lagi — buka tab Sessions</p>
+            <p className="text-xs text-gray-400 text-center">+{data.hubSessions.length - 3} more — open Sessions tab</p>
           )}
         </div>
       )}
@@ -193,8 +193,8 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
         <span className="text-3xl">✨</span>
-        <p className="text-sm">Tidak ada sesi yang perlu di-triage</p>
-        <p className="text-xs text-center max-w-xs">Sesi riset dan diskusi panjang tanpa OP task match akan muncul di sini</p>
+        <p className="text-sm">No sessions need triage</p>
+        <p className="text-xs text-center max-w-xs">Research and discussion sessions without an OP task match will appear here</p>
       </div>
     )
   }
@@ -211,11 +211,11 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 dark:text-gray-400">{sessions.length} sesi belum di-triage · semua tersimpan sampai lu putuskan</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">{sessions.length} sessions pending triage · all saved until you decide</p>
       {sortedDates.map(date => (
         <div key={date} className="space-y-2">
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-            {date === today ? '📍 Hari Ini' : date}
+            {date === today ? '📍 Today' : date}
           </p>
           {grouped[date].map(s => (
             <SessionCard key={s.id} session={s} onTriage={onTriage} />
@@ -277,7 +277,7 @@ function TriageTab({ sessions, kbEntries, onTriage, onTriageKB }: {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
         <span className="text-3xl">🎉</span>
-        <p className="text-sm font-medium">Semua sudah di-triage!</p>
+        <p className="text-sm font-medium">All triaged!</p>
       </div>
     )
   }
@@ -285,15 +285,15 @@ function TriageTab({ sessions, kbEntries, onTriage, onTriageKB }: {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{all} item perlu keputusan</p>
+        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{all} items need a decision</p>
         <div className="flex gap-2">
           <button onClick={() => sessions.forEach(s => onTriage(s.id, 'queue'))}
             className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 transition">
-            Semua → Queue
+            All → Queue
           </button>
           <button onClick={() => sessions.forEach(s => onTriage(s.id, 'backlog'))}
             className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 transition">
-            Semua → Backlog
+            All → Backlog
           </button>
         </div>
       </div>
@@ -327,7 +327,7 @@ function TriageTab({ sessions, kbEntries, onTriage, onTriageKB }: {
               <p className="text-[10px] text-gray-400">{e.date} · KB Entry</p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{e.summary}</p>
               {e.suggestedTask && (
-                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">💡 Saran task: {e.suggestedTask}</p>
+                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">💡 Suggested task: {e.suggestedTask}</p>
               )}
             </div>
           </div>
@@ -384,7 +384,7 @@ export default function DailyHub() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId, action }),
     })
-    showToast(action === 'queue' ? '✅ Masuk Push Queue' : action === 'backlog' ? '📋 Masuk Backlog' : '🗑 Discarded')
+    showToast(action === 'queue' ? '✅ Added to Push Queue' : action === 'backlog' ? '📋 Moved to Backlog' : '🗑 Discarded')
     fetchData()
   }
 
@@ -394,7 +394,7 @@ export default function DailyHub() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kbId, action }),
     })
-    showToast(action === 'queue' ? '✅ Masuk Push Queue' : action === 'backlog' ? '📋 Masuk Backlog' : '🗑 Discarded')
+    showToast(action === 'queue' ? '✅ Added to Push Queue' : action === 'backlog' ? '📋 Moved to Backlog' : '🗑 Discarded')
     fetchData()
   }
 
@@ -440,7 +440,7 @@ export default function DailyHub() {
       {loading ? (
         <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading...</div>
       ) : !data ? (
-        <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Gagal load data</div>
+        <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Failed to load data</div>
       ) : (
         <div>
           {tab === 'today' && <TodayTab data={data} onRefresh={fetchData} />}

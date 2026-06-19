@@ -6,122 +6,67 @@ import { useI18n } from '@/lib/i18n'
 interface Props { onClose: () => void }
 
 export default function HelpModal({ onClose }: Props) {
-  const { t, lang } = useI18n()
+  const { t } = useI18n()
   const [tab, setTab] = useState<'guide' | 'shortcuts' | 'commands'>('guide')
 
-  const STEPS = lang === 'id' ? [
+  const MENU_GUIDE = [
     {
-      icon: '👤',
-      title: 'Setup Profil Kamu',
-      desc: 'Buka Pengaturan (⚙️ di kanan atas atau tekan ",") → tab Profil. Pilih nama kamu, set Accountable default, dan pilih project OP utama yang kamu kerjakan.',
-      tip: 'Setiap anggota tim punya pengaturannya sendiri — tersimpan di browser lokal, tidak shared.',
-    },
-    {
-      icon: '🔗',
-      title: 'Sync Data OpenProject',
-      desc: 'Masih di Pengaturan → tab Integrasi. Klik "Sync Now" untuk ambil data task dan user story dari OP. Data ini dipakai saat Tambah Aktivitas biar tidak perlu ketik manual.',
-      tip: 'Data otomatis refresh setiap hari jam 09:30. Kalau ada task baru dari OP, klik Sync Now.',
-    },
-    {
-      icon: '🤖',
-      title: 'Auto Catat (Otomatis dari Claude)',
-      desc: 'Setiap selesai chat di Claude Code, hook otomatis kirim ringkasan pekerjaan ke ISL. Indikator "Auto Catat" di header akan menyala (ungu) saat ada aktivitas yang siap dikirim ke OP.',
-      tip: 'Kalau indikator berubah kuning (idle 15+ menit), segera klik untuk review dan kirim ke OP sebelum terlupa.',
-    },
-    {
-      icon: '📝',
-      title: 'Tambah Aktivitas Manual',
-      desc: 'Klik "+ Aktivitas" (atau Ctrl+N). Isi judul pekerjaan, waktu, dan detail kegiatan (apa yang dilakukan). Pilih mode OP: Skip / Tautkan ke task / Buat task baru.',
-      tip: 'Judul otomatis di-suggest ke task OP yang relevan. Detail kegiatan = catatan progress di OP.',
-    },
-    {
-      icon: '🔗',
-      title: 'Kaitkan ke OpenProject',
-      desc: 'Di Tambah Aktivitas, pilih mode "Tautkan ke task" → cari task → pilih → Simpan. Waktu kerjamu otomatis di-log ke task tersebut di OP sebagai Time Entry.',
-      tip: 'Pilih "Buat task baru" kalau task belum ada di OP — otomatis buat User Story + Task sekaligus.',
+      icon: '📅',
+      title: 'Daily',
+      desc: 'Your main work log. Shows all activities for the selected date — linked to OP tasks or unlinked. Add activities manually with "+ Activity" (Ctrl+N) or let the Auto Record hook do it from Claude Code.',
+      tip: 'Navigate dates with ← / → keys. Press T to jump back to today.',
     },
     {
       icon: '🏃',
-      title: 'Lihat Progress Sprint',
-      desc: 'Klik SPRINT di sidebar. Pilih sprint yang ingin dilihat. Semua aktivitas dikelompokkan per project. Jadwal Sprint Review akan muncul H-1 sebelum meeting.',
-      tip: 'Hubungkan Google Calendar di Pengaturan → Integrasi untuk lihat jadwal Sprint Review otomatis.',
+      title: 'Sprint',
+      desc: 'Sprint-level overview. Shows all activities for the active sprint grouped by project. Tracks days remaining, logged hours, and open OP tasks. Sprint Review schedule appears H-1 before the meeting.',
+      tip: 'Use this before Sprint Review to compile your progress across the entire sprint.',
     },
     {
-      icon: '✅',
-      title: 'Ringkasan Harian',
-      desc: 'Klik "Ringkasan" di header. ISL akan generate summary harian dari semua aktivitas hari ini menggunakan AI. Edit jika perlu, lalu Copy untuk dibagikan ke tim.',
-      tip: 'Lakukan ini setiap hari ~17:30 sebelum tutup kerja. Butuh ANTHROPIC_API_KEY di .env.local.',
+      icon: '📆',
+      title: 'Month',
+      desc: 'Monthly calendar view. Each day shows total hours logged. Useful for spotting low-output days or tracking monthly work rhythm.',
+      tip: 'Click any day cell to jump directly to that date in Daily view.',
     },
     {
-      icon: '🔄',
-      title: 'Refresh Data OP (Opsional)',
-      desc: 'Klik "Refresh Data" untuk tarik data task & aktivitas terbaru dari OpenProject ke halaman harian. Berguna kalau ada update dari rekan tim yang belum kelihatan.',
-      tip: 'Refresh Data otomatis jalan setiap kamu buka halaman hari ini.',
-    },
-  ] : [
-    {
-      icon: '👤',
-      title: 'Set Up Your Profile',
-      desc: 'Open Settings (⚙️ top right or press ",") → Profile tab. Choose your name, set a default Accountable, and select the main OP project you work on.',
-      tip: 'Each team member has their own settings — saved locally in the browser, not shared.',
+      icon: '📥',
+      title: 'Hub',
+      desc: 'Triage center for Claude Code sessions that were auto-captured but not yet linked to an OP task. Three sub-tabs: Today (AI focus suggestions), Sessions (all pending), Triage (quick decide: Push Queue / Backlog / Discard).',
+      tip: 'Sessions in Hub are saved until you decide — nothing is lost. Review daily to keep it clean.',
     },
     {
-      icon: '🔗',
-      title: 'Sync OpenProject Data',
-      desc: 'In Settings → Integrations tab. Click "Sync Now" to pull task and user story data from OP. This data is used when adding activities so you don\'t need to type manually.',
-      tip: 'Data auto-refreshes daily at 09:30. If there are new tasks in OP, click Sync Now.',
+      icon: '🖥️',
+      title: 'Terminal',
+      desc: 'Embedded terminal that connects to the Launcher Dashboard (localhost:9000). Runs a real shell via node-pty over WebSocket. Useful for running npm commands, git, or scripts without leaving ISL.',
+      tip: 'Requires the Launcher Dashboard to be running (start-launcher.bat). If disconnected, refresh the tab.',
+    },
+    {
+      icon: '🧠',
+      title: 'Knowledge Base (KB)',
+      desc: 'Stores structured knowledge entries — decisions, findings, references — captured from Claude Code sessions. Each entry has a title, summary, tags, and optional suggested OP task.',
+      tip: 'KB entries that need triage appear in Hub → Triage tab alongside session logs.',
     },
     {
       icon: '🤖',
-      title: 'Auto Record (from Claude)',
-      desc: 'Every time you finish a chat in Claude Code, the hook automatically sends a work summary to ISL. The "Auto Record" indicator in the header lights up (purple) when an activity is ready to send to OP.',
-      tip: 'If the indicator turns yellow (idle 15+ minutes), click it to review and send to OP before you forget.',
+      title: 'Auto Record Indicator',
+      desc: 'The pulsing dot in the header shows the state of the Claude Code hook integration. Purple = active session detected. Yellow = idle 15+ minutes. Grey = no recent activity.',
+      tip: 'Click the indicator to review and push the pending session to OP before the context expires.',
     },
     {
-      icon: '📝',
-      title: 'Add Activity Manually',
-      desc: 'Click "+ Activity" (or Ctrl+N). Fill in the work title, time, and activity details (what was done). Choose OP mode: Skip / Link to task / Create new task.',
-      tip: 'The title is automatically suggested to the relevant OP task. Activity details = progress notes in OP.',
+      icon: '📤',
+      title: 'Push Queue',
+      desc: 'Sessions marked "→ Push Queue" are queued here waiting to be pushed to OpenProject. Review each one, confirm the OP task link, then push to log the time entry in OP.',
+      tip: 'Sessions stay in the queue until pushed or discarded — they will not auto-push without your confirmation.',
     },
     {
-      icon: '🔗',
-      title: 'Link to OpenProject',
-      desc: 'In Add Activity, choose "Link to task" → search task → select → Save. Your work time is automatically logged to that task in OP as a Time Entry.',
-      tip: 'Choose "Create new task" if the task doesn\'t exist in OP yet — automatically creates a User Story + Task at once.',
-    },
-    {
-      icon: '🏃',
-      title: 'View Sprint Progress',
-      desc: 'Click SPRINT in the sidebar. Choose the sprint to view. All activities are grouped by project. Sprint Review schedule appears 1 day before the meeting.',
-      tip: 'Connect Google Calendar in Settings → Integrations to see Sprint Review schedules automatically.',
-    },
-    {
-      icon: '✅',
-      title: 'Daily Summary',
-      desc: 'Click "Summary" in the header. ISL will generate a daily summary from all today\'s activities using AI. Edit if needed, then Copy to share with the team.',
-      tip: 'Do this every day ~17:30 before closing work. Requires ANTHROPIC_API_KEY in .env.local.',
-    },
-    {
-      icon: '🔄',
-      title: 'Refresh OP Data (Optional)',
-      desc: 'Click "Refresh Data" to pull the latest tasks & activities from OpenProject to the daily view. Useful if there are updates from teammates not yet visible.',
-      tip: 'Refresh Data runs automatically every time you open today\'s page.',
+      icon: '⚙️',
+      title: 'Settings',
+      desc: 'Two tabs: Profile (your name, default accountable, main OP project) and Integrations (OP URL + API key, sync data, Google Calendar). Required for OP time logging to work.',
+      tip: 'Press "," anytime to open Settings. Each team member has their own local settings — not shared.',
     },
   ]
 
-  const SHORTCUTS = lang === 'id' ? [
-    { key: 'D', desc: 'Ke tampilan Harian' },
-    { key: 'S', desc: 'Ke tampilan Sprint' },
-    { key: 'M', desc: 'Ke tampilan Bulan' },
-    { key: 'L', desc: 'Ke Rekap Topik' },
-    { key: '← / K', desc: 'Hari sebelumnya' },
-    { key: '→ / J', desc: 'Hari berikutnya' },
-    { key: 'T', desc: 'Ke hari ini' },
-    { key: '⌘K', desc: 'Cari aktivitas' },
-    { key: '⌘N', desc: 'Tambah aktivitas' },
-    { key: ',', desc: 'Buka Pengaturan' },
-    { key: 'Esc', desc: 'Tutup popup' },
-  ] : [
+  const SHORTCUTS = [
     { key: 'D', desc: 'Daily view' },
     { key: 'S', desc: 'Sprint view' },
     { key: 'M', desc: 'Month view' },
@@ -164,15 +109,12 @@ export default function HelpModal({ onClose }: Props) {
         <div className="px-5 py-4 max-h-[60vh] overflow-y-auto">
           {tab === 'guide' && (
             <div className="space-y-3">
-              {STEPS.map((s, i) => (
+              {MENU_GUIDE.map((s, i) => (
                 <div key={i} className="flex gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-sm">
                     {s.icon}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-wide">{t('help.step_label')} {i + 1}</span>
-                    </div>
                     <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-1">{s.title}</p>
                     <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed">{s.desc}</p>
                     <p className="mt-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-1 rounded-md">💡 {s.tip}</p>

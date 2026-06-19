@@ -60,7 +60,11 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
   useEffect(() => {
     load()
     window.addEventListener('isl:session-updated', load)
-    return () => window.removeEventListener('isl:session-updated', load)
+    const interval = setInterval(load, 30_000)
+    return () => {
+      window.removeEventListener('isl:session-updated', load)
+      clearInterval(interval)
+    }
   }, [])
 
   async function load() {
@@ -268,7 +272,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
       </div>
 
       {/* ── RIGHT SUMMARY PANEL ──────────────────────────────── */}
-      <div className="w-64 flex-shrink-0 hidden lg:flex flex-col gap-4 overflow-y-auto pb-6">
+      <div className="w-64 flex-shrink-0 hidden md:flex flex-col gap-4 overflow-y-auto pb-6">
 
         {/* Today summary card */}
         <div className="rounded-2xl border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800/80 p-5">

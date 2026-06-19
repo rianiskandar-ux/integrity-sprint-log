@@ -91,7 +91,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 // ── Session Detail Popup ──────────────────────────────────────────────────────
 function SessionDetailPopup({
-  session, opUrl, opStatus, onClose, onStatusChange, onUndo, onImprove, onSyncStatus,
+  session, opUrl, opStatus, onClose, onStatusChange, onUndo, onImprove, onSyncStatus, onConfirm,
 }: {
   session: Session
   opUrl: string
@@ -101,6 +101,7 @@ function SessionDetailPopup({
   onUndo: (session: Session) => void
   onImprove: (session: Session) => void
   onSyncStatus: (taskId: number, islStatus: string) => void
+  onConfirm?: (id: string) => void
 }) {
   const ps       = pushStatus(session)
   const isUndone = ps === 'discarded'
@@ -133,7 +134,7 @@ function SessionDetailPopup({
             </span>
             {/* Origin badge — most prominent label */}
             {(() => { const o = getOriginBadge(session); return o ? <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.cls}`}>{o.label}</span> : null })()}
-            {isUndone && <span className="text-[10px] font-semibold text-red-400 bg-red-50 dark:bg-red-950 px-2 py-0.5 rounded-full">↩ Backlogged</span>}
+            {isUndone && <span className="text-[10px] font-semibold text-red-400 bg-red-50 dark:bg-red-950 px-2 py-0.5 rounded-full">↩ Backlog</span>}
             {session.needsValidation && !session.hasExplicitCmd && (
               <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full">⚠️ Needs validation</span>
             )}
@@ -215,6 +216,12 @@ function SessionDetailPopup({
         {/* Actions */}
         {!isUndone && status !== 'abandoned' && (
           <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
+            {session.needsValidation && !session.hasExplicitCmd && onConfirm && (
+              <button onClick={() => { onConfirm(session.id); onClose() }}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition">
+                ✓ Confirm
+              </button>
+            )}
             {session.opTaskId && (status === 'in_progress' || status === 'on_hold') && (
               <button
                 onClick={() => { navigator.clipboard.writeText(`!ticket:${session.opTaskId}`); onClose() }}
@@ -671,6 +678,15 @@ export default function AutoLogView() {
     }
   }
 
+  async function doConfirm(id: string) {
+    await fetch(`/api/isl/sessions/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hasExplicitCmd: true }),
+    }).catch(() => {})
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, hasExplicitCmd: true } : s))
+    showToast('✅ Session confirmed')
+  }
+
   async function doUndo(session: Session) {
     if (!confirm(`Move "${session.title}" to backlog?\n\nOP task #${session.opTaskId} will be moved to [REVIEW]. Task will NOT be deleted.`)) return
     const r = await fetch(`/api/isl/sessions/${session.id}`, { method: 'DELETE' }).then(r => r.json()).catch(() => ({ error: 'Network error' }))
@@ -748,6 +764,7 @@ export default function AutoLogView() {
           onUndo={doUndo}
           onImprove={doImprove}
           onSyncStatus={doSyncStatus}
+          onConfirm={doConfirm}
         />
       )}
 
