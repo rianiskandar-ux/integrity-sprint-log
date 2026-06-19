@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { CachedWorkPackage } from '@/lib/op-cache'
-import { useI18n } from '@/lib/i18n'
+
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 
 interface Props {
@@ -64,8 +64,7 @@ function TaskRow({ t, opUrl, myUserId, onChat }: {
 }
 
 export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) {
-  const { lang } = useI18n()
-  const [tasks, setTasks]         = useState<CachedWorkPackage[]>([])
+const [tasks, setTasks]         = useState<CachedWorkPackage[]>([])
   const [expanded, setExpanded]   = useState(false)
   const [daysLeft, setDaysLeft]   = useState<number | null>(null)
   const [opUrl, setOpUrl]         = useState<string | null>(null)
@@ -136,9 +135,9 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
         {daysLeft !== null && (
           <span className={`text-xs font-bold ${textClass} flex-shrink-0`}>
             {opSprintName ?? `S${currentSprintNo}`}:{' '}
-            {daysLeft < 0  ? (lang === 'id' ? 'Selesai' : 'Ended')
-             : daysLeft === 0 ? (lang === 'id' ? 'Berakhir hari ini!' : 'Ends today!')
-             : (lang === 'id' ? `${daysLeft}h lagi` : `${daysLeft}d left`)}
+            {daysLeft < 0  ? 'Ended'
+             : daysLeft === 0 ? 'Ends today!'
+             : `${daysLeft}d left`}
           </span>
         )}
 
@@ -146,7 +145,7 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
           <span className="text-[11px] text-gray-500 dark:text-gray-400 flex-shrink-0">
             <span className="font-semibold text-gray-700 dark:text-gray-300">{actionable.length}</span> open
             {ownCount > 0 && othersCount > 0 && (
-              <span className="ml-1 text-[10px] text-gray-400">({ownCount} gw · {othersCount} orang)</span>
+              <span className="ml-1 text-[10px] text-gray-400">({ownCount} mine · {othersCount} others)</span>
             )}
           </span>
         )}
@@ -154,16 +153,16 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
         {/* Sprint suggestion — only show when critical */}
         {daysLeft !== null && daysLeft <= 3 && actionable.length > 0 && (
           <span className="text-[10px] text-gray-400 flex-shrink-0 hidden sm:inline">
-            {quickTasks.length > 0 && `✅ ${quickTasks.length} sprint ini`}
+            {quickTasks.length > 0 && `✅ ${quickTasks.length} this sprint`}
             {quickTasks.length > 0 && heavyTasks.length > 0 && ' · '}
-            {heavyTasks.length > 0 && `➡️ ${heavyTasks.length} geser next`}
+            {heavyTasks.length > 0 && `➡️ ${heavyTasks.length} move to next`}
           </span>
         )}
 
         {/* Incoming badge */}
         {incomingCount > 0 && (
           <span className="flex-shrink-0 text-[10px] font-semibold bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full">
-            📥 {incomingCount} masuk
+            📥 {incomingCount} incoming
           </span>
         )}
 
@@ -172,7 +171,7 @@ export default function SprintBanner({ currentSprintNo, sprintEndDate }: Props) 
             onClick={() => setExpanded(!expanded)}
             className="text-[10px] text-indigo-500 hover:text-indigo-600 underline flex-shrink-0 transition ml-auto"
           >
-            {expanded ? (lang === 'id' ? 'Tutup' : 'Hide') : (lang === 'id' ? 'Lihat' : 'Show')}
+            {expanded ? 'Hide' : 'Show'}
           </button>
         )}
       </div>

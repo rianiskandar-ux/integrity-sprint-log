@@ -204,7 +204,7 @@ export default function DailyLogView() {
   function weekLabel(mondayDate: string) {
     const d = new Date(mondayDate + 'T12:00:00')
     const end = new Date(d); end.setDate(d.getDate() + 4)
-    const fmt = (x: Date) => x.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+    const fmt = (x: Date) => x.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
     return `${fmt(d)} – ${fmt(end)}`
   }
 

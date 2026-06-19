@@ -447,7 +447,7 @@ export default function AppShell({
                 {opSprintName ?? `Sprint ${currentSprintNo}`}
                 {nextReviewDate && (
                   <span className="text-emerald-500 dark:text-emerald-400 font-normal hidden lg:inline">
-                    · {new Date(nextReviewDate + (nextReviewDate.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                    · {new Date(nextReviewDate + (nextReviewDate.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
                   </span>
                 )}
               </button>

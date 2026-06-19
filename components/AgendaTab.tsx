@@ -204,7 +204,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 4000) }
 
   function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
   }
 
   const matchedMeetings = meetings.filter(m => m.autoMatched)

@@ -22,7 +22,7 @@ interface Props {
 }
 
 export default function DailyView({ dayData, projects, isToday, onAddSession }: Props) {
-  const { t, lang } = useI18n()
+  const { t } = useI18n()
   const [detailSession, setDetailSession] = useState<(Session & { date?: string }) | null>(null)
   const detailProject = detailSession
     ? getProjectById(tagSessionToProject(detailSession.title, detailSession.bullets.join(' ')))

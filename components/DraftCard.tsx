@@ -109,7 +109,7 @@ export default function DraftCard({ onPushed }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         date, title: editTitle,
-        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         bullets: editBullets.filter(Boolean),
       }),
     }).catch(() => {})

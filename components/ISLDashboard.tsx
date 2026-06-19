@@ -84,7 +84,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
 
   const { queue, autoLog, incoming, sprint, backlog } = data
   const days  = sprint.current ? daysLeft(sprint.current.endDate) : null
-  const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     // Two-panel layout: main content + right summary panel

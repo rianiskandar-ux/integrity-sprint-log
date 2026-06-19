@@ -15,7 +15,7 @@ const ISL_STATUS_CONFIG: Record<string, { label: string; color: string; dot: str
 
 function formatDate(iso: string | null) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export default function IncomingTasksPanel() {

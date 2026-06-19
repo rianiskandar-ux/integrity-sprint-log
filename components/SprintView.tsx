@@ -566,8 +566,8 @@ function WorkLogTab({
                       <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug">{ev.summary}</p>
                       {ev.start.length > 10 && (
                         <p className="text-[10px] text-gray-400 mt-0.5">
-                          {new Date(ev.start).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                          {ev.end && ` – ${new Date(ev.end).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`}
+                          {new Date(ev.start).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          {ev.end && ` – ${new Date(ev.end).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
                         </p>
                       )}
                       {ev.description && (
