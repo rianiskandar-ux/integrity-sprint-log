@@ -217,7 +217,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
       <div className="flex items-start justify-between">
         <div>
           <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">📋 Sprint Agenda</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Ringkasan sprint — post otomatis ke meeting OP yang relevan</p>
+          <p className="text-xs text-gray-400 mt-0.5">Sprint summary — auto-posted to relevant OP meetings</p>
         </div>
         <button onClick={generate} disabled={loading}
           className="text-[10px] font-semibold px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition disabled:opacity-50">
@@ -340,7 +340,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
             {!meetLoading && matchedMeetings.length > 0 && (
               <div className="mb-3">
                 <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 mb-1.5 flex items-center gap-1">
-                  ✅ Auto-matched — project kamu
+                  ✅ Auto-matched — your project
                 </p>
                 <div className="space-y-1.5">
                   {matchedMeetings.map(m => (

@@ -140,7 +140,7 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
 
       {expanded && empty && (
         <div className="px-4 pb-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-          <p className="text-xs text-gray-400 text-center py-4">Tidak ada aktivitas tercatat hari ini.</p>
+          <p className="text-xs text-gray-400 text-center py-4">No activities logged today.</p>
         </div>
       )}
     </div>
@@ -238,9 +238,9 @@ export default function DailyLogView() {
       {entries.length === 0 ? (
         <div className="text-center text-gray-400 py-16 space-y-2">
           <p className="text-2xl">📭</p>
-          <p className="text-sm">Belum ada daily log.</p>
+          <p className="text-sm">No daily log yet.</p>
           <p className="text-xs text-gray-300 dark:text-gray-600">
-            Log dibuat otomatis via Stop hook setiap kamu selesai sesi kerja.
+            Logs are created automatically via the Stop hook when you finish a work session.
           </p>
         </div>
       ) : (

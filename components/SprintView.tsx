@@ -405,9 +405,9 @@ function AgendaBanner({ reviewEvent, projects, projectSprints, currentSprintNo, 
   projects.forEach(proj => {
     const sessions = projectSprints[proj.id]?.[currentSprintNo] ?? []
     if (!sessions.length) return
-    agendaLines.push(`**${proj.name}** (${sessions.length} ${lang === 'id' ? 'sesi' : 'sessions'})`)
+    agendaLines.push(`**${proj.name}** (${sessions.length} sessions)`)
     sessions.slice(0, 3).forEach(s => agendaLines.push(`  - ${s.title}`))
-    if (sessions.length > 3) agendaLines.push(`  - +${sessions.length - 3} ${lang === 'id' ? 'sesi lainnya' : 'more sessions'}`)
+    if (sessions.length > 3) agendaLines.push(`  - +${sessions.length - 3} more sessions`)
   })
 
   return (
@@ -611,7 +611,7 @@ function WorkLogTab({
                   <p className="text-[11px] text-gray-400">{proj.desc}</p>
                 </div>
                 <span className="text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full">
-                  {sessions.length} {lang === 'id' ? 'aktivitas' : 'activities'}
+                  {sessions.length} activities
                 </span>
                 <span className="text-gray-400 text-xs ml-1 transition-transform" style={{ transform: isCollapsed ? 'rotate(-90deg)' : '' }}>▾</span>
               </button>
@@ -633,7 +633,7 @@ function WorkLogTab({
                             <li key={j} className="text-[11px] text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-gray-200 dark:border-gray-600 leading-relaxed">{b}</li>
                           ))}
                           {s.bullets.length > 4 && (
-                            <li className="text-[10px] text-gray-400 italic pl-3">+{s.bullets.length - 4} {lang === 'id' ? 'lainnya' : 'more'}</li>
+                            <li className="text-[10px] text-gray-400 italic pl-3">+{s.bullets.length - 4} more</li>
                           )}
                         </ul>
                       )}

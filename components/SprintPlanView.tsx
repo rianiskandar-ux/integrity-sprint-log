@@ -333,7 +333,7 @@ export default function SprintPlanView() {
         <div>
           <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">🗓 Sprint Plan</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {currentSprint.name} — semua task assign ke kamu lintas project
+            {currentSprint.name} — all tasks assigned to you across projects
           </p>
         </div>
         <button onClick={load}

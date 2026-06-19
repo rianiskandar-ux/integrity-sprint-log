@@ -35,7 +35,7 @@ export default function ConfirmModal({
           </div>
 
           <div className={`rounded-xl p-3 text-xs leading-relaxed ${danger ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900' : 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900'}`}>
-            <span className="font-semibold block mb-1">Jika kamu klik "{confirmLabel}":</span>
+            <span className="font-semibold block mb-1">If you click "{confirmLabel}":</span>
             {whatHappens}
           </div>
         </div>

@@ -76,7 +76,7 @@ export default function SearchModal({ allTopics, onClose, onNavigate }: Props) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari tiket OP atau aktivitas ISL…"
+            placeholder="Search OP tickets or ISL activities…"
             className="flex-1 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400"
           />
           {opLoading && <span className="text-[10px] text-gray-400 animate-pulse">OP…</span>}
@@ -170,7 +170,7 @@ export default function SearchModal({ allTopics, onClose, onNavigate }: Props) {
           {localResults.length > 0 && (
             <>
               <div className="px-4 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
-                Log ISL · {localResults.length} aktivitas
+                ISL Log · {localResults.length} activities
               </div>
               {localResults.map((topic, i) => {
                 const proj = getProjectById(tagSessionToProject(topic.title, topic.bullets.join(' ')))

@@ -64,7 +64,7 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue }: P
   }, [messages])
 
   function buildGreeting(t: TaskChatContext): string {
-    const lines = [`Halo! Gw siap bantu kamu lanjutkan task ini:`]
+    const lines = [`Hi! I'm ready to help you continue this task:`]
     lines.push(`\n**${t.title}**`)
     if (t.sprintName) lines.push(`Sprint: ${t.sprintName}`)
     if (t.opTaskId)   lines.push(`OP Task: #${t.opTaskId}`)

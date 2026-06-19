@@ -98,20 +98,20 @@ export default function IncomingTasksPanel() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">📥 Tiket Masuk</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Task dari tim lain yang di-assign ke kamu di OP — disinkron otomatis</p>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">📥 Incoming Tickets</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Tasks assigned to you by others in OP — auto-synced</p>
         </div>
         {tasks.length > 0 && (
           <div className="text-right text-xs text-gray-400">
-            <div className="font-semibold text-gray-700 dark:text-gray-200">{tasks.length} tiket total</div>
-            <div>{tasks.filter(t => t.islStatus !== 'done' && t.islStatus !== 'rejected').length} masih open</div>
+            <div className="font-semibold text-gray-700 dark:text-gray-200">{tasks.length} total tickets</div>
+            <div>{tasks.filter(t => t.islStatus !== 'done' && t.islStatus !== 'rejected').length} open</div>
           </div>
         )}
       </div>
 
       {/* Sync notice */}
       <div className="text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2">
-        ℹ️ Tiket Masuk = task yang <strong>di-assign ke kamu</strong> di OP tapi <strong>dibuat oleh orang lain</strong>. Status yang kamu ubah di sini akan langsung sync ke OP.
+        ℹ️ Incoming Tickets = tasks <strong>assigned to you</strong> in OP but <strong>created by someone else</strong>. Status changes here sync directly to OP.
       </div>
 
       {/* Filter */}
