@@ -253,7 +253,7 @@ function TaskRow({
               </ul>
               <p className="mt-1 opacity-60 italic">{suggest.reasoning}</p>
               {decision && decision !== suggest.recommendation && (
-                <p className="mt-1 opacity-70 font-medium">ℹ️ Decision berbeda dari saran AI — pilihan kamu yang berlaku.</p>
+                <p className="mt-1 opacity-70 font-medium">ℹ️ Your decision differs from AI suggestion — your choice applies.</p>
               )}
             </div>
           )}

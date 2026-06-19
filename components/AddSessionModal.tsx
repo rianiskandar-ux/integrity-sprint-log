@@ -129,7 +129,7 @@ export default function AddSessionModal({ date, onClose, prefillTitle, prefillOp
       }
       // Post activity comment to OP
       const commentLines = cleanBullets.length > 0 ? cleanBullets.map(b => `• ${b}`).join('\n') : ''
-      const comment = `[ISL] Session: ${title.trim()}${commentLines ? '\n\n' + commentLines : ''}\n\nWaktu: ${time} | Tanggal: ${date}`
+      const comment = `[ISL] Session: ${title.trim()}${commentLines ? '\n\n' + commentLines : ''}\n\nDuration: ${time} | Date: ${date}`
       fetch('/api/op/comment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

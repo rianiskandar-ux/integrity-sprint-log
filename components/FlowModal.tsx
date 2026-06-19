@@ -103,8 +103,8 @@ export default function FlowModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-3">
             <span className="text-xl">🗺️</span>
             <div>
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">ISL Flow — 4 Sisi</h2>
-              <p className="text-[11px] text-gray-400 mt-0.5">Cara kerja sistem end-to-end</p>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">ISL Flow — 4 Sides</h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">How the system works end-to-end</p>
             </div>
           </div>
           {/* Live status pills */}
@@ -114,7 +114,7 @@ export default function FlowModal({ onClose }: { onClose: () => void }) {
             <StatusPill ok={null} label={live.modeLabel} />
             {live.pendingValidation > 0 && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
-                ⚠️ {live.pendingValidation} perlu validasi
+                ⚠️ {live.pendingValidation} need validation
               </span>
             )}
           </div>
@@ -138,173 +138,173 @@ export default function FlowModal({ onClose }: { onClose: () => void }) {
               <div className={`text-lg font-bold ${live.pendingValidation > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-300'}`}>
                 {live.pendingValidation > 0 ? live.pendingValidation : '✓'}
               </div>
-              <div className="text-[10px] text-gray-400">{live.pendingValidation > 0 ? 'butuh validasi' : 'semua tervalidasi'}</div>
+              <div className="text-[10px] text-gray-400">{live.pendingValidation > 0 ? 'need validation' : 'all validated'}</div>
             </div>
           </div>
 
           {/* Section: User */}
-          <SectionHeader icon="🧑" title="Sisi Kamu (User)" />
+          <SectionHeader icon="🧑" title="Your Side (User)" />
           <Tree lines={[
-            'MULAI KERJA',
+            'START WORKING',
             '│',
-            '├─ Buka Claude Code (chat baru)',
-            '│   ├─ Ada task lanjutan?  → ketik: !ticket:7XXX  di pesan pertama',
-            '│   └─ Task baru?         → langsung ngobrol aja',
+            '├─ Open Claude Code (new chat)',
+            '│   ├─ Continuing a task?  → type: !ticket:7XXX  in your first message',
+            '│   └─ New task?           → just start chatting',
             '│',
-            '├─ Kerja... (ngobrol, coding, debug, deploy)',
+            '├─ Work... (chat, code, debug, deploy)',
             '│',
-            '├─ Mau kasih status?  → ketik di pesan manapun:',
-            '│   !done       — selesai tuntas',
-            '│   !hold       — ada blocker',
-            '│   !wip        — lanjut besok',
-            '│   !abandon    — cancel, skip OP',
-            '│   !intermezzo — bukan kerja, jangan dicatat',
+            '├─ Want to set a status?  → type anywhere in the chat:',
+            '│   !done       — fully completed',
+            '│   !hold       — blocked',
+            '│   !wip        — continuing tomorrow',
+            '│   !abandon    — cancelled, skip OP',
+            '│   !intermezzo — not real work, do not log',
             '│',
-            '└─ Tutup chat / Claude selesai respond terakhir',
-            '    → OTOMATIS diproses hook (kamu tidak perlu lakukan apapun)',
+            '└─ Close chat / Claude finishes last response',
+            '    → AUTOMATICALLY processed by hook (you do not need to do anything)',
             '',
-            'SETELAH KERJA',
+            'AFTER WORKING',
             '│',
-            '├─ Buka ISL → Auto Log tab',
-            '│   ├─ Lihat entry baru masuk',
-            '│   ├─ Status AI perlu validasi? → klik ✅ Done / ⏸ Hold / ▶ Continue',
-            '│   ├─ Task WIP mau dilanjut?   → klik ▶ Continue → copy !ticket:ID → paste di chat baru',
-            '│   └─ Entry salah?              → klik ↩ Backlog (OP dipindah ke [REVIEW])',
+            '├─ Open ISL → Auto Log tab',
+            '│   ├─ Check new entries',
+            '│   ├─ AI status needs validation? → click ✅ Done / ⏸ Hold / ▶ Continue',
+            '│   ├─ WIP task to continue?       → click ▶ Continue → copy !ticket:ID → paste in new chat',
+            '│   └─ Wrong entry?                → click ↩ Backlog (OP task moved to [REVIEW])',
             '│',
-            '└─ Cek OP jika perlu (opsional)',
-            '    → Task sudah ada, activity sudah tercatat, time log sudah masuk',
+            '└─ Check OP if needed (optional)',
+            '    → Task exists, activity logged, time entry recorded',
           ]} />
 
           {/* Section: Hook */}
-          <SectionHeader icon="🤖" title="Sisi Claude Code (Hook)" />
+          <SectionHeader icon="🤖" title="Claude Code Side (Hook)" />
           <Tree lines={[
-            'EVENT: Claude session selesai (Stop hook)',
+            'EVENT: Claude session ends (Stop hook)',
             '│',
-            '├─ Baca transcript JSONL dari ~/.claude/projects/...',
+            '├─ Read transcript JSONL from ~/.claude/projects/...',
             '│',
             '├─ Guard checks:',
-            '│   ├─ < 3 pesan?            → EXIT (bukan sesi kerja)',
-            '│   ├─ < 2 menit?            → EXIT (terlalu singkat)',
-            '│   ├─ !intermezzo detected? → EXIT (user minta skip)',
-            '│   └─ sessionId sudah di processed-sessions.json? → EXIT (anti double-log)',
+            '│   ├─ < 3 messages?          → EXIT (not a real work session)',
+            '│   ├─ < 2 minutes?           → EXIT (too short)',
+            '│   ├─ !intermezzo detected?  → EXIT (user requested skip)',
+            '│   └─ sessionId in processed-sessions.json? → EXIT (anti double-log)',
             '│',
             '├─ Detect commands (!done, !hold, !wip, !abandon, !ticket:ID)',
             '│',
-            '├─ Kirim ke Anthropic API (claude-haiku) untuk:',
+            '├─ Send to Anthropic API (claude-haiku) to:',
             '│   ├─ Generate title: "[Project] Verb + Object"',
-            '│   ├─ Generate bullets: 4-10 langkah teknis spesifik',
-            '│   ├─ Determine isSubstantial (skip jika hanya Q&A)',
+            '│   ├─ Generate bullets: 4-10 specific technical steps',
+            '│   ├─ Determine isSubstantial (skip if Q&A only)',
             '│   └─ Determine taskStatus (conservative default: in_progress)',
             '│',
-            '├─ Cari task di OP:',
-            '│   ├─ !ticket:ID ada?   → fetch task itu langsung dari OP',
-            '│   ├─ Tidak ada ticket? → fuzzy match ke myOpenTasks + myClosedTasks',
-            '│   └─ Tidak ada match?  → isNewTask = true, cek related old task',
+            '├─ Find task in OP:',
+            '│   ├─ !ticket:ID present?  → fetch that task directly from OP',
+            '│   ├─ No ticket?           → fuzzy match against myOpenTasks + myClosedTasks',
+            '│   └─ No match?            → isNewTask = true, check related old task',
             '│',
-            '├─ Ke OP API:',
-            '│   ├─ Existing task → POST activity ke work_packages/{id}/activities',
+            '├─ Call OP API:',
+            '│   ├─ Existing task → POST activity to work_packages/{id}/activities',
             '│   ├─ New task      → POST /api/v3/work_packages (status: In Progress)',
-            '│   │   ├─ Estimasi: easy=60m / medium=120m / complex=240m',
-            '│   │   └─ Sprint cap check: total sprint < 60h, kalau >= skip create',
+            '│   │   ├─ Estimate: easy=60m / medium=120m / complex=240m',
+            '│   │   └─ Sprint cap check: total sprint < 60h, skip create if >=',
             '│   └─ Time entry   → POST /api/v3/time_entries',
             '│',
-            '├─ Tulis memory file:',
+            '├─ Write memory file:',
             '│   └─ memory/Epic-{id}-{slug}/Story-{id}-{slug}/Task-{id}-{slug}.md',
             '│',
-            '├─ POST ke ISL /api/isl/sessions',
-            '│   └─ Simpan ke session-logs/{date}_{sid8}.json',
+            '├─ POST to ISL /api/isl/sessions',
+            '│   └─ Saved to session-logs/{date}_{sid8}.json',
             '│',
-            '├─ Kirim email notifikasi (jika needsValidation = true)',
+            '├─ Send email notification (if needsValidation = true)',
             '│',
-            '└─ Tulis sessionId ke processed-sessions.json → selesai',
+            '└─ Write sessionId to processed-sessions.json → done',
           ]} />
 
           {/* Section: ISL */}
-          <SectionHeader icon="🖥️" title="Sisi ISL (Web App localhost:3000)" />
+          <SectionHeader icon="🖥️" title="ISL Side (Web App localhost:4891)" />
           <Tree lines={[
             'AUTO LOG VIEW  (/api/isl/sessions)',
             '│',
-            `├─ ${live.sessionCount} sessions dari session-logs/*.json`,
-            '├─ Filter: All | Pushed | Backlogged | Abandoned',
+            `├─ ${live.sessionCount} sessions from session-logs/*.json`,
+            '├─ Filter: All | Pushed | Backlog | Abandoned',
             '│',
-            '├─ Tiap entry card:',
+            '├─ Each entry card:',
             '│   ├─ Badge: story/area (ISL / KYV / Verif / Phoenix)',
             '│   ├─ Status badge: 🔵 In Progress / ✅ Done / ⏸ On Hold / 🚫 Abandoned',
-            '│   ├─ ⚠️ Validasi status AI → user belum confirm command',
-            '│   ├─ Link #OPID → buka OP task di browser',
-            '│   ├─ Bullets (3 terlihat, sisanya collapsed)',
-            '│   ├─ 🔗 Related old task panel (jika AI detect task lama)',
-            '│   ├─ Meta: durasi aktual, tanggal, token usage, ticket binding',
+            '│   ├─ ⚠️ Needs validation → AI status, user has not confirmed yet',
+            '│   ├─ Link #OPID → open OP task in browser',
+            '│   ├─ Bullets (3 visible, rest collapsed)',
+            '│   ├─ 🔗 Related old task panel (if AI detects a related past task)',
+            '│   ├─ Meta: actual duration, date, token usage, ticket binding',
             '│   │',
             '│   └─ Action buttons:',
-            '│       ▶ Continue → copy !ticket:ID ke clipboard (WIP/Hold only)',
+            '│       ▶ Continue → copy !ticket:ID to clipboard (WIP/Hold only)',
             '│       ✅ Done    → PATCH session + POST OP status sync',
             '│       ⏸ Hold    → PATCH session + POST OP status sync',
-            '│       🚫 Abandon → PATCH session (ISL only, OP tidak berubah)',
+            '│       🚫 Abandon → PATCH session (ISL only, OP unchanged)',
             '│       ✨ Improve → AI improve title+bullets → PATCH session',
-            '│       ↩ Backlog → DELETE session (OP task → [REVIEW] + sprint null)',
+            '│       ↩ Backlog → move session to backlog (OP task → [REVIEW])',
             '│',
-            '├─ Manual Input Form (untuk non-Claude AI):',
-            '│   └─ POST /api/isl/sessions → tersimpan, bisa review + push ke OP',
+            '├─ Manual Input Form (for non-Claude AI work):',
+            '│   └─ POST /api/isl/sessions → saved, can review + push to OP',
             '│',
             'OTHER VIEWS:',
-            '├─ Daily View  — aktivitas per hari dari sprint markdown files',
-            '├─ Sprint View — progress sprint, tasks per project',
-            '├─ Month View  — kalender aktivitas bulanan',
-            '├─ Incoming    — task OP yang masuk tapi belum dikerjain',
-            '├─ Old Tasks   — epic/story/task sprint lama (read-only reference)',
+            '├─ Daily View  — activities per day',
+            '├─ Sprint View — sprint progress, tasks per project',
+            '├─ Month View  — monthly activity calendar',
+            '├─ Hub         — triage auto-captured sessions from Claude Code',
+            '├─ Incoming    — OP tasks assigned to you, not yet worked on',
             '└─ Settings    — OP config, userId, watched projects',
           ]} />
 
           {/* Section: OP */}
-          <SectionHeader icon="🗃️" title="Sisi OpenProject (OP)" />
+          <SectionHeader icon="🗃️" title="OpenProject (OP) Side" />
           <Tree lines={[
             `OP: ${live.opStatus === 'ok' ? '✅ Connected' : live.opStatus === 'checking' ? '⏳ Checking...' : '❌ ' + live.opStatus}`,
             `Project: ${live.opProject}`,
             '',
-            'YANG OTOMATIS DIBUAT/DIUPDATE OLEH ISL:',
+            'AUTO-CREATED/UPDATED BY ISL:',
             '',
-            'Task baru (jika tidak ada match):',
-            '├─ Subject: title dari AI',
-            '├─ Description: scope 3 bullets + "Created by ISL"',
+            'New task (if no match found):',
+            '├─ Subject: AI-generated title',
+            '├─ Description: 3 scope bullets + "Created by ISL"',
             '├─ Status: In Progress (#7)',
-            '├─ Assignee: kamu (userId dari OP /users/me)',
-            '├─ Parent: User Story sesuai (berdasarkan keyword match)',
-            '├─ Version: sprint aktif',
-            '└─ Estimated time: 60 / 120 / 240 menit (KPI-aware)',
+            '├─ Assignee: you (userId from OP /users/me)',
+            '├─ Parent: matching User Story (keyword-based)',
+            '├─ Version: active sprint',
+            '└─ Estimated time: 60 / 120 / 240 min (KPI-aware)',
             '',
-            'Activity/comment (setiap session):',
-            '└─ Markdown: tanggal, durasi, status, bullets, token usage',
+            'Activity/comment (every session):',
+            '└─ Markdown: date, duration, status, bullets, token usage',
             '',
             'Time entry:',
-            '└─ Waktu aktual dari transcript timestamp, linked ke task',
+            '└─ Actual time from transcript timestamps, linked to task',
             '',
-            'YANG TIDAK OTOMATIS (kamu validasi via ISL):',
-            '├─ Status CLOSED  → klik ✅ Done di ISL → sync ke OP Closed',
-            '├─ Status ON HOLD → klik ⏸ Hold di ISL → sync ke OP On Hold',
-            '├─ Status REJECTED → tidak pernah otomatis (abandon = ISL-only)',
-            '└─ Delete task → tidak bisa via API (403), manual di OP',
+            'NOT AUTO (you validate via ISL):',
+            '├─ Status CLOSED  → click ✅ Done in ISL → syncs to OP Closed',
+            '├─ Status ON HOLD → click ⏸ Hold in ISL → syncs to OP On Hold',
+            '├─ Status REJECTED → never automatic (abandon = ISL-only)',
+            '└─ Delete task → not possible via API (403), do it manually in OP',
           ]} />
 
           {/* Section: Storage */}
-          <SectionHeader icon="📁" title="Storage Lokal" />
+          <SectionHeader icon="📁" title="Local Storage" />
           <Tree lines={[
             'daily-sprint-next/',
-            '├─ session-logs/         ← satu .json per sesi Claude',
+            '├─ session-logs/         ← one .json per Claude session',
             `│   └─ ${live.sessionCount} files`,
             '│',
-            '├─ memory/               ← notes per task, terpisah per epic/story',
+            '├─ memory/               ← notes per task, split by epic/story',
             '│   └─ Epic-{id}-{slug}/',
             '│       └─ Story-{id}-{slug}/',
             '│           └─ Task-{id}-{slug}.md',
             '│',
-            '├─ op-cache.json         ← snapshot OP (epics, stories, tasks, sprints)',
+            '├─ op-cache.json         ← OP snapshot (epics, stories, tasks, sprints)',
             '├─ processed-sessions.json ← anti double-log tracker',
             '└─ op-mode.json          ← config: test/live, userId, projectId',
           ]} />
 
           <div className="text-[10px] text-gray-300 dark:text-gray-600 text-center pt-4 pb-2">
-            Auto-refresh setiap 30 detik · Terakhir update: {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            Auto-refresh every 30 seconds · Last update: {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
         </div>
       </div>
