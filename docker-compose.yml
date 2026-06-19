@@ -26,8 +26,8 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      # Sprint markdown files (one folder per user on their own PC)
-      - isl-sprints:/app/daily-sprints
+      # Sprint markdown files — bind mount langsung dari host
+      - ../daily-sprints:/app/daily-sprints
       # Google OAuth token & profile (per user)
       - isl-auth:/app/auth-data
       # user-config.json + op-cache.json (persisted across restarts)
@@ -50,6 +50,5 @@ services:
 
 volumes:
   isl-pgdata:
-  isl-sprints:
   isl-auth:
   isl-data:
