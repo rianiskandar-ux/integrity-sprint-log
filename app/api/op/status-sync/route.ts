@@ -30,7 +30,7 @@ export async function GET() {
     return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
   }
 
-  const sessions = getAllSessions()
+  const sessions = await getAllSessions()
   // Only sessions that were pushed to OP, have an opTaskId, and aren't already done
   const candidates = sessions.filter(
     s => s.opTaskId && s.pushStatus === 'pushed' && s.taskStatus !== 'done' && s.taskStatus !== 'abandoned'
@@ -50,7 +50,7 @@ export async function GET() {
         taskStatus: 'done' as const,
         updatedAt: new Date().toISOString(),
       }
-      saveSession(updated)
+      await saveSession(updated)
       synced++
     }
   }

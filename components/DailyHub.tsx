@@ -1,0 +1,460 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import type { SessionLog } from '@/lib/session-store'
+import type { KBEntry } from '@/lib/kb-store'
+
+interface SprintContext {
+  sprint?: { id: number; name: string; startDate: string; endDate: string }
+  openTasks?: Array<{ id: number; subject: string; status?: string; estimatedTime?: string }>
+}
+
+interface HubData {
+  hubSessions: SessionLog[]
+  kbEntries: KBEntry[]
+  sprintContext: SprintContext | null
+  date: string
+}
+
+type Tab = 'today' | 'sessions' | 'triage'
+
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+function durationLabel(mins?: number | null) {
+  if (!mins) return null
+  if (mins >= 60) return `${Math.floor(mins / 60)}h${mins % 60 > 0 ? ` ${mins % 60}m` : ''}`
+  return `${mins}m`
+}
+
+// ── Today Tab — AI Suggest ───────────────────────────────────────────────────
+const SUGGEST_KEY = 'isl-daily-hub-suggest'
+
+function TodayTab({ data, onRefresh }: { data: HubData; onRefresh: () => void }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [suggest, setSuggest] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem(SUGGEST_KEY)
+      if (!saved) return null
+      const { date, text } = JSON.parse(saved)
+      return date === today ? text : null
+    } catch { return null }
+  })
+  const [loading, setLoading] = useState(false)
+
+  const generateSuggest = useCallback(async () => {
+    setLoading(true)
+    try {
+      const context = {
+        sprint: data.sprintContext?.sprint,
+        openTasks: data.sprintContext?.openTasks?.slice(0, 5),
+        hubSessions: data.hubSessions.slice(0, 5).map(s => ({ title: s.title, bullets: s.bullets.slice(0, 3), actualMins: s.actualMins, date: s.date })),
+        kbEntries: data.kbEntries.slice(0, 3).map(e => ({ title: e.title, summary: e.summary, keyPoints: e.keyPoints.slice(0, 3) })),
+      }
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Kamu adalah AI assistant di ISL (Integrity Sprint Log).
+
+Berdasarkan data berikut, suggest 2-3 task yang paling penting untuk dikerjakan hari ini.
+Format: numbered list, tiap item: nama task + estimasi waktu + alasan singkat (1 kalimat).
+Jawab dalam bahasa Indonesia. Singkat dan actionable.
+
+Data sprint & konteks:
+${JSON.stringify(context, null, 2)}`,
+          }],
+        }),
+      })
+      if (res.ok) {
+        // Handle streaming response
+        const reader = res.body?.getReader()
+        if (!reader) { setSuggest(await res.text()); return }
+        const decoder = new TextDecoder()
+        let full = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value, { stream: true })
+          // Strip SSE prefix if present
+          const lines = chunk.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try { const d = JSON.parse(line.slice(6)); full += d.text ?? d.content ?? '' } catch { full += line.slice(6) }
+            } else if (!line.startsWith(':') && line.trim()) {
+              full += line
+            }
+          }
+          setSuggest(full)
+          try { localStorage.setItem(SUGGEST_KEY, JSON.stringify({ date: today, text: full })) } catch {}
+        }
+      }
+    } catch {}
+    setLoading(false)
+  }, [data, today])
+
+  const sprint = data.sprintContext?.sprint
+  const pendingCount = data.hubSessions.length
+  const kbCount = data.kbEntries.length
+
+  return (
+    <div className="space-y-4">
+      {/* Sprint status */}
+      {sprint && (
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+          <span className="font-medium text-gray-700 dark:text-gray-300">{sprint.name}</span>
+          <span>·</span>
+          <span>{sprint.endDate} ends</span>
+          {pendingCount > 0 && <><span>·</span><span className="text-amber-600 dark:text-amber-400">{pendingCount} sesi butuh triage</span></>}
+        </div>
+      )}
+
+      {/* AI Suggest card */}
+      <div className="border border-indigo-100 dark:border-indigo-900 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🤖</span>
+            <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Focus Hari Ini</span>
+          </div>
+          <button
+            onClick={generateSuggest}
+            disabled={loading}
+            className="text-xs px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition font-medium"
+          >
+            {loading ? 'Generating...' : suggest ? 'Refresh' : 'Generate'}
+          </button>
+        </div>
+
+        {suggest ? (
+          <div className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{suggest}</div>
+        ) : (
+          <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+            Klik Generate untuk dapat saran AI berdasarkan sprint aktif + sesi terakhir lu.
+          </p>
+        )}
+      </div>
+
+      {/* Quick stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Hub Sessions" value={pendingCount} color="amber" icon="📥" />
+        <StatCard label="KB Entries" value={kbCount} color="violet" icon="🧠" />
+        <StatCard label="OP Open Tasks" value={data.sprintContext?.openTasks?.length ?? 0} color="blue" icon="📋" />
+      </div>
+
+      {/* Recent hub sessions preview */}
+      {data.hubSessions.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Sesi Terbaru (belum di-triage)</p>
+          {data.hubSessions.slice(0, 3).map(s => (
+            <div key={s.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+              <span className="text-sm mt-0.5">📝</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{s.title}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{s.date} · {durationLabel(s.actualMins) ?? '?'}</p>
+              </div>
+            </div>
+          ))}
+          {data.hubSessions.length > 3 && (
+            <p className="text-xs text-gray-400 text-center">+{data.hubSessions.length - 3} lagi — buka tab Sessions</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
+  const colors: Record<string, string> = {
+    amber: 'border-amber-100 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300',
+    violet: 'border-violet-100 dark:border-violet-900 bg-violet-50/40 dark:bg-violet-950/20 text-violet-700 dark:text-violet-300',
+    blue: 'border-blue-100 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300',
+  }
+  return (
+    <div className={`rounded-xl border p-3 text-center ${colors[color] ?? ''}`}>
+      <div className="text-xl">{icon}</div>
+      <div className="text-xl font-bold mt-1">{value}</div>
+      <div className="text-[10px] mt-0.5 opacity-80">{label}</div>
+    </div>
+  )
+}
+
+// ── Sessions Tab — semua hub sessions ────────────────────────────────────────
+function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage: (id: string, action: string) => void }) {
+  if (!sessions.length) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
+        <span className="text-3xl">✨</span>
+        <p className="text-sm">Tidak ada sesi yang perlu di-triage</p>
+        <p className="text-xs text-center max-w-xs">Sesi riset dan diskusi panjang tanpa OP task match akan muncul di sini</p>
+      </div>
+    )
+  }
+
+  // Group by date, newest first
+  const grouped = sessions.reduce<Record<string, SessionLog[]>>((acc, s) => {
+    const d = s.date ?? s.startedAt?.slice(0, 10) ?? 'unknown'
+    if (!acc[d]) acc[d] = []
+    acc[d].push(s)
+    return acc
+  }, {})
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a))
+  const today = new Date().toISOString().slice(0, 10)
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-500 dark:text-gray-400">{sessions.length} sesi belum di-triage · semua tersimpan sampai lu putuskan</p>
+      {sortedDates.map(date => (
+        <div key={date} className="space-y-2">
+          <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            {date === today ? '📍 Hari Ini' : date}
+          </p>
+          {grouped[date].map(s => (
+            <SessionCard key={s.id} session={s} onTriage={onTriage} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SessionCard({ session: s, onTriage }: { session: SessionLog; onTriage: (id: string, action: string) => void }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"
+      >
+        <span className="text-sm mt-0.5">📝</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug">{s.title}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            {s.date} · {durationLabel(s.actualMins) ?? '?'} · {timeAgo(s.createdAt)}
+          </p>
+        </div>
+        <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0 mt-1">{expanded ? '▲' : '▼'}</span>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-3 space-y-3 border-t border-gray-50 dark:border-gray-800">
+          {s.bullets.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {s.bullets.map((b, i) => (
+                <li key={i} className="text-[11px] text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-gray-200 dark:border-gray-700">{b}</li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-2 flex-wrap pt-1">
+            <ActionBtn onClick={() => onTriage(s.id, 'queue')} color="indigo" label="→ Push Queue" />
+            <ActionBtn onClick={() => onTriage(s.id, 'backlog')} color="gray" label="→ Backlog" />
+            <ActionBtn onClick={() => onTriage(s.id, 'discard')} color="red" label="Discard" />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Triage Tab — semua sekaligus ─────────────────────────────────────────────
+function TriageTab({ sessions, kbEntries, onTriage, onTriageKB }: {
+  sessions: SessionLog[]
+  kbEntries: KBEntry[]
+  onTriage: (id: string, action: string) => void
+  onTriageKB: (id: string, action: string) => void
+}) {
+  const all = sessions.length + kbEntries.length
+
+  if (!all) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
+        <span className="text-3xl">🎉</span>
+        <p className="text-sm font-medium">Semua sudah di-triage!</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{all} item perlu keputusan</p>
+        <div className="flex gap-2">
+          <button onClick={() => sessions.forEach(s => onTriage(s.id, 'queue'))}
+            className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 transition">
+            Semua → Queue
+          </button>
+          <button onClick={() => sessions.forEach(s => onTriage(s.id, 'backlog'))}
+            className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 transition">
+            Semua → Backlog
+          </button>
+        </div>
+      </div>
+
+      {sessions.map(s => (
+        <div key={s.id} className="border border-amber-100 dark:border-amber-900/50 rounded-xl p-4 bg-amber-50/30 dark:bg-amber-950/10 space-y-2">
+          <div className="flex items-start gap-2">
+            <span className="text-sm">📝</span>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{s.title}</p>
+              <p className="text-[10px] text-gray-400">{s.date} · {durationLabel(s.actualMins) ?? '?'}</p>
+              {s.bullets.slice(0, 2).map((b, i) => (
+                <p key={i} className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 pl-2 border-l border-gray-200 dark:border-gray-700">{b}</p>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <ActionBtn onClick={() => onTriage(s.id, 'queue')} color="indigo" label="→ Push Queue" />
+            <ActionBtn onClick={() => onTriage(s.id, 'backlog')} color="gray" label="→ Backlog" />
+            <ActionBtn onClick={() => onTriage(s.id, 'discard')} color="red" label="Discard" />
+          </div>
+        </div>
+      ))}
+
+      {kbEntries.map(e => (
+        <div key={e.id} className="border border-violet-100 dark:border-violet-900/50 rounded-xl p-4 bg-violet-50/30 dark:bg-violet-950/10 space-y-2">
+          <div className="flex items-start gap-2">
+            <span className="text-sm">🧠</span>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{e.title}</p>
+              <p className="text-[10px] text-gray-400">{e.date} · KB Entry</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{e.summary}</p>
+              {e.suggestedTask && (
+                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">💡 Saran task: {e.suggestedTask}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <ActionBtn onClick={() => onTriageKB(e.id, 'queue')} color="indigo" label="→ Push Queue" />
+            <ActionBtn onClick={() => onTriageKB(e.id, 'backlog')} color="gray" label="→ Backlog" />
+            <ActionBtn onClick={() => onTriageKB(e.id, 'discard')} color="red" label="Discard" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ActionBtn({ onClick, color, label }: { onClick: () => void; color: string; label: string }) {
+  const styles: Record<string, string> = {
+    indigo: 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900',
+    gray: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700',
+    red: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60',
+  }
+  return (
+    <button onClick={onClick} className={`text-xs px-3 py-1 rounded-lg font-medium transition ${styles[color] ?? ''}`}>
+      {label}
+    </button>
+  )
+}
+
+// ── Main DailyHub Component ──────────────────────────────────────────────────
+export default function DailyHub() {
+  const [tab, setTab] = useState<Tab>('today')
+  const [data, setData] = useState<HubData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState<string | null>(null)
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/daily-hub')
+      if (res.ok) setData(await res.json())
+    } catch {}
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const handleTriage = async (sessionId: string, action: string) => {
+    await fetch('/api/daily-hub', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, action }),
+    })
+    showToast(action === 'queue' ? '✅ Masuk Push Queue' : action === 'backlog' ? '📋 Masuk Backlog' : '🗑 Discarded')
+    fetchData()
+  }
+
+  const handleTriageKB = async (kbId: string, action: string) => {
+    await fetch('/api/daily-hub', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kbId, action }),
+    })
+    showToast(action === 'queue' ? '✅ Masuk Push Queue' : action === 'backlog' ? '📋 Masuk Backlog' : '🗑 Discarded')
+    fetchData()
+  }
+
+  const tabs: Array<{ id: Tab; label: string; icon: string; count?: number }> = [
+    { id: 'today', label: 'Today', icon: '🤖' },
+    { id: 'sessions', label: 'Sessions', icon: '📝', count: data?.hubSessions.length },
+    { id: 'triage', label: 'Triage', icon: '⚡', count: (data?.hubSessions.length ?? 0) + (data?.kbEntries.length ?? 0) },
+  ]
+
+  return (
+    <div className="space-y-4 relative">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition ${
+              tab === t.id
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <span>{t.icon}</span>
+            <span>{t.label}</span>
+            {t.count !== undefined && t.count > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 text-[9px] font-bold">
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading...</div>
+      ) : !data ? (
+        <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Gagal load data</div>
+      ) : (
+        <div>
+          {tab === 'today' && <TodayTab data={data} onRefresh={fetchData} />}
+          {tab === 'sessions' && <SessionsTab sessions={data.hubSessions} onTriage={handleTriage} />}
+          {tab === 'triage' && (
+            <TriageTab
+              sessions={data.hubSessions}
+              kbEntries={data.kbEntries}
+              onTriage={handleTriage}
+              onTriageKB={handleTriageKB}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

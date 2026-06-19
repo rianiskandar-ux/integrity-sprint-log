@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   const workPackages = Array.from(wpMap.values())
 
   // Pull ISL session logs for this date
-  const daySessions = getAllSessions().filter(s => s.date === today && s.pushStatus !== 'discarded')
+  const daySessions = (await getAllSessions()).filter(s => s.date === today && s.pushStatus !== 'discarded')
   const sessionLines: string[] = []
   for (const s of daySessions) {
     const dur  = s.actualMins ? `${s.actualMins}m` : ''

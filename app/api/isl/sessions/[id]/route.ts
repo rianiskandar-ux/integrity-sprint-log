@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import { getSession, updateSession, SESSION_LOGS_DIR } from '@/lib/session-store'
+import { eq } from 'drizzle-orm'
+import { db, sessions as sessionsTable } from '@/lib/db'
+import { getSession, updateSession } from '@/lib/session-store'
 import { getOpToken } from '@/lib/user-config'
 
 const MODE_FILE = path.join(process.env.CACHE_DATA_DIR ?? process.cwd(), 'op-mode.json')
@@ -23,7 +25,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params
     const body = await req.json()
-    const updated = updateSession(id, body)
+    const updated = await updateSession(id, body)
     if (!updated) return NextResponse.json({ error: 'not found' }, { status: 404 })
     return NextResponse.json({ ok: true, session: updated })
   } catch (e) {
@@ -44,7 +46,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Hard delete only allowed in TEST mode' }, { status: 403 })
     }
 
-    const session = getSession(id)
+    const session = await getSession(id)
     if (!session) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
     const errors: string[] = []
@@ -60,29 +62,25 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         const wpRes = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, { headers: opHeaders() })
         if (wpRes.ok) {
           const wp = await wpRes.json()
-          await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, {
+          const patchRes = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, {
             method: 'PATCH', headers: opHeaders(),
             body: JSON.stringify({
               lockVersion: wp.lockVersion,
               subject: wp.subject.startsWith('[REVIEW] ') ? wp.subject : `[REVIEW] ${wp.subject}`,
               _links: { status: { href: '/api/v3/statuses/1' }, version: { href: null } },
             }),
-          }).catch(() => {})
+          }).catch(() => null)
+          if (!patchRes?.ok) errors.push(`OP task #${session.opTaskId} could not be moved to [REVIEW]`)
+        } else {
+          errors.push(`OP task #${session.opTaskId} not accessible`)
         }
       }
     }
 
     if (doHard) {
-      // Remove the session file entirely
-      const files = fs.readdirSync(SESSION_LOGS_DIR).filter(f => f.endsWith('.json'))
-      for (const f of files) {
-        try {
-          const raw = JSON.parse(fs.readFileSync(path.join(SESSION_LOGS_DIR, f), 'utf-8'))
-          if (raw.id === id) { fs.unlinkSync(path.join(SESSION_LOGS_DIR, f)); break }
-        } catch {}
-      }
+      await db.delete(sessionsTable).where(eq(sessionsTable.id, id))
     } else {
-      updateSession(id, { pushStatus: 'discarded', undoneAt: new Date().toISOString() })
+      await updateSession(id, { pushStatus: 'discarded', undoneAt: new Date().toISOString() })
     }
 
     return NextResponse.json({ ok: true, errors })

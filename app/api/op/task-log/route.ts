@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
 
   // ISL sessions linked to this task
-  const islSessions = getAllSessions()
+  const islSessions = (await getAllSessions())
     .filter(s => s.opTaskId === taskId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(s => ({

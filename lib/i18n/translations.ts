@@ -52,6 +52,7 @@ export const translations = {
   'nav.autolog':  { id: 'Auto Log',     en: 'Auto Log' },
   'nav.incoming': { id: 'Tiket Masuk',  en: 'Incoming' },
   'nav.isldash':    { id: 'Dashboard',    en: 'Dashboard' },
+  'nav.dailyhub':   { id: 'Daily Hub',   en: 'Daily Hub' },
   'nav.pushqueue':  { id: 'Push Queue',  en: 'Push Queue' },
   'nav.sprintplan': { id: 'Sprint Plan', en: 'Sprint Plan' },
   'nav.dailylog':   { id: 'Daily Log',   en: 'Daily Log' },

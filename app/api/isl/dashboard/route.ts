@@ -4,7 +4,7 @@ import { loadCache } from '@/lib/op-cache'
 
 export async function GET() {
   try {
-    const sessions = getAllSessions()
+    const sessions = await getAllSessions()
     const cache    = loadCache()
 
     // Push Queue — pending sessions awaiting approval

@@ -675,8 +675,8 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
         } catch {}
       }
     } else {
-      // No match — save to ISL pending
-      process.stderr.write(`[ISL] No matching OP task found — saved to ISL pending.\n`)
+      // No match — save to Daily Hub for triage
+      process.stderr.write(`[ISL] No matching OP task found — saved to Daily Hub.\n`)
       isNewTask = false
     }
 
@@ -752,8 +752,8 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
         sessionId, title, bullets,
         estimatedMins: durationMins, actualMins,
         isNewTask, taskStatus: finalStatus,
-        // 'pushed' = logged to existing OP task. 'pending' = no OP task linked yet, user must approve.
-        pushStatus: taskId ? 'pushed' : 'pending',
+        // 'pushed' = logged to existing OP task. 'pending' = user approved via Push Queue. 'hub' = no OP match, needs triage in Daily Hub.
+        pushStatus: taskId ? 'pushed' : (hasExplicitCmd ? 'pending' : 'hub'),
         needsValidation: taskId ? needsValidation : true,
         hasExplicitCmd, aiStatus,
         opTaskId: taskId, opStoryId: storyId, autoPushed: !!taskId,
@@ -793,4 +793,12 @@ function extractParagraphBullets(text) {
     .slice(0, 4)
 }
 
-main().catch(() => process.exit(0))
+main()
+  .then(async () => {
+    // Regenerate CLAUDE.md setelah session selesai (non-blocking)
+    const { spawn } = await import('child_process')
+    const { fileURLToPath } = await import('url')
+    const rootDir = fileURLToPath(new URL('../', import.meta.url))
+    spawn('npm', ['run', 'context'], { cwd: rootDir, stdio: 'ignore', detached: true }).unref()
+  })
+  .catch(() => process.exit(0))

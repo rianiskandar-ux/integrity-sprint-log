@@ -23,6 +23,7 @@ export async function POST(req: Request) {
   const body = await req.json() as {
     sessionId: string           // ISL session id
     action: 'create_new' | 'link_existing'
+    bullets?: string[]          // activity timeline bullets from frontend
     opTaskId?: number           // for link_existing
     newTask?: {
       subject: string
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const session = getAllSessions().find(s => s.id === body.sessionId)
+  const session = (await getAllSessions()).find(s => s.id === body.sessionId)
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   const headers = opHeaders()
@@ -87,13 +88,14 @@ export async function POST(req: Request) {
 
   if (!taskId) return NextResponse.json({ error: 'No task ID resolved' }, { status: 500 })
 
-  // Post activity comment
+  // Post activity comment — prefer bullets from frontend (Activity Timeline edits), fall back to session bullets
   const h = Math.floor(mins / 60), m = mins % 60
   const durLabel = mins >= 60 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${mins}m`
+  const bulletLines = (body.bullets?.length ? body.bullets : session.bullets).map(b => `- ${b}`)
   const activityLines = [
     `**Work Log — ${date}** | ${durLabel}`,
     '',
-    ...session.bullets.map(b => `- ${b}`),
+    ...bulletLines,
     `*Session: ${(session.sessionId ?? session.id).slice(0, 8)} · via ISL Push Queue*`,
   ]
   await fetch(`${OP_BASE}/api/v3/work_packages/${taskId}/activities`, {
@@ -113,7 +115,7 @@ export async function POST(req: Request) {
 
   // Update ISL session
   const updated = { ...session, opTaskId: taskId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: false, updatedAt: new Date().toISOString() }
-  saveSession(updated)
+  await saveSession(updated)
 
   // Telegram notification — fire and forget
   const tg = getTelegramConfig()

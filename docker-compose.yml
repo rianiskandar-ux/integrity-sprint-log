@@ -1,31 +1,55 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: isl-postgres
+    environment:
+      POSTGRES_DB: isl
+      POSTGRES_USER: isl
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-isl-local-2026}
+    ports:
+      - "127.0.0.1:5432:5432"     # localhost only — tidak accessible dari jaringan luar
+    volumes:
+      - isl-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isl -d isl"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   integrity-sprint-log:
     build: .
     container_name: integrity-sprint-log
     ports:
-      - "3000:3000"
+      - "4891:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       # Sprint markdown files (one folder per user on their own PC)
       - isl-sprints:/app/daily-sprints
       # Google OAuth token & profile (per user)
       - isl-auth:/app/auth-data
-      # OP cache
-      - isl-cache:/app/cache-data
+      # user-config.json + op-cache.json (persisted across restarts)
+      - isl-data:/app/data
     environment:
+      - DATABASE_URL=postgresql://isl:${POSTGRES_PASSWORD:-isl-local-2026}@postgres:5432/isl
       - OP_BASE_URL=${OP_BASE_URL:-https://tokek.integrity-asia.com}
       - OP_PROJECT_ID=${OP_PROJECT_ID:-integritys-websites}
-      # OP_API_TOKEN is optional here — each user sets their own via Setup Wizard
       - OP_API_TOKEN=${OP_API_TOKEN:-}
-      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_URL=http://localhost:4891
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-isl-local-secret-2026}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_LOGIN_HINT=${GOOGLE_LOGIN_HINT:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:4891/api/auth/callback/google}
       - SPRINT_OUTPUT_DIR=/app/daily-sprints
       - AUTH_DATA_DIR=/app/auth-data
-      - CACHE_DATA_DIR=/app/cache-data
+      - CACHE_DATA_DIR=/app/data
     restart: unless-stopped
 
 volumes:
+  isl-pgdata:
   isl-sprints:
   isl-auth:
-  isl-cache:
+  isl-data:

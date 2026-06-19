@@ -10,7 +10,7 @@ export async function GET(req: Request) {
     const status   = searchParams.get('status')
     const validate = searchParams.get('needsValidation')
 
-    let sessions = getAllSessions()
+    let sessions = await getAllSessions()
     if (taskId)   sessions = sessions.filter(s => s.opTaskId === Number(taskId))
     if (status)   sessions = sessions.filter(s => s.pushStatus === status)
     if (validate) sessions = sessions.filter(s => s.needsValidation === (validate === 'true'))
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const date = (body.startedAt ?? now).slice(0, 10)
 
     // Upsert by sessionId
-    const existing = body.sessionId ? getSessionBySessionId(body.sessionId) : null
+    const existing = body.sessionId ? await getSessionBySessionId(body.sessionId) : null
 
     if (existing) {
       const updated: SessionLog = {
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
         autoPushed:       body.autoPushed       ?? existing.autoPushed,
         updatedAt:        now,
       }
-      saveSession(updated)
+      await saveSession(updated)
       return NextResponse.json({ ok: true, session: updated })
     }
 
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       updatedAt:        now,
     }
 
-    saveSession(session)
+    await saveSession(session)
     return NextResponse.json({ ok: true, session })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

@@ -15,7 +15,7 @@ function fmtMins(m: number) {
 // GET /api/sprint/report — returns structured report data
 export async function GET() {
   try {
-    const sessions = getAllSessions()
+    const sessions = await getAllSessions()
     const cache    = loadCache()
     const userCfg  = loadUserConfig()
 

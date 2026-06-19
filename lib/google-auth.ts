@@ -53,7 +53,7 @@ export function getAuthUrl(): string {
     response_type: 'code',
     scope:         'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/gmail.send',
     access_type:   'offline',
-    prompt:        'consent',
+    prompt:        'select_account consent',
   })
   if (hint) params.set('login_hint', hint)
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`

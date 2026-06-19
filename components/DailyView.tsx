@@ -80,7 +80,7 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
             return (
               <button
                 key={i}
-                onClick={() => setDetailSession(s)}
+                onClick={() => setDetailSession({ ...s, date: dayData.date })}
                 className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 p-3 bg-white dark:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-sm transition"
               >
                 <div className="flex items-start gap-2 mb-1">

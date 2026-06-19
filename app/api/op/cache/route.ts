@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       // Notify sprint deadline (1d and 3d warnings)
       const sprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) as { name: string; endDate: string } | undefined
       if (sprint) {
-        const daysLeft = Math.ceil((new Date(sprint.endDate).getTime() - Date.now()) / 86400000)
+        const daysLeft = Math.max(0, Math.floor((new Date(sprint.endDate).getTime() - Date.now()) / 86400000))
         const myOpen   = ((cache.myOpenTasks ?? []) as { versionId?: number | null; id?: number }[])
         const myClosed = ((cache.myClosedTasks ?? []) as { versionId?: number | null; id?: number }[])
         const sprintId = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent)?.id
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     }
 
     // Fire status-sync after cache rebuild (fire-and-forget)
-    fetch('http://localhost:3000/api/op/status-sync').catch(() => {})
+    fetch(`${process.env.NEXTAUTH_URL ?? 'http://localhost:3000'}/api/op/status-sync`).catch(() => {})
 
     return NextResponse.json({ ok: true, ...cache })
   } catch (e) {

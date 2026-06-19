@@ -6,21 +6,30 @@
     "dev": "next dev",
     "build": "next build && node scripts/post-build.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:import": "npx tsx scripts/migrate-json-to-pg.ts",
+    "context": "npx tsx --env-file=.env.local scripts/gen-context.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
     "date-fns": "^4.4.0",
+    "drizzle-orm": "^0.45.2",
     "gray-matter": "^4.0.3",
     "next": "16.2.7",
+    "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",

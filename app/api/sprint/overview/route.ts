@@ -9,7 +9,7 @@ export async function GET(req: Request) {
     const startDateParam = searchParams.get('startDate') ?? ''
     const endDateParam   = searchParams.get('endDate') ?? ''
 
-    const sessions = getAllSessions()
+    const sessions = await getAllSessions()
     const cache    = loadCache()
 
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null
@@ -86,7 +86,7 @@ export async function GET(req: Request) {
 
     // Days remaining
     const daysLeft = targetSprint
-      ? Math.ceil((new Date(targetSprint.endDate).getTime() - Date.now()) / 86400000)
+      ? Math.max(0, Math.floor((new Date(targetSprint.endDate).getTime() - Date.now()) / 86400000))
       : null
 
     // Recent sessions (last 5)

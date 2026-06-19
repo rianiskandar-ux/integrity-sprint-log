@@ -1,22 +1,19 @@
-import fs from 'fs'
-import path from 'path'
-
-const DATA_DIR = process.env.CACHE_DATA_DIR ?? process.cwd()
-export const SESSION_LOGS_DIR = path.join(DATA_DIR, 'session-logs')
+import { db, sessions } from './db'
+import { eq, desc } from 'drizzle-orm'
 
 export interface SessionLog {
   id: string
   sessionId?: string
-  userId?: number
-  date: string                   // YYYY-MM-DD
+  userId?: number | null
+  date: string
 
   title: string
   bullets: string[]
   source?: string
 
   startedAt: string
-  endedAt?: string
-  actualMins?: number
+  endedAt?: string | null
+  actualMins?: number | null
   estimatedMins: number
 
   opTaskId?: number | null
@@ -24,8 +21,8 @@ export interface SessionLog {
   opEpicId?: number | null
   isNewTask?: boolean
 
-  taskStatus?: string            // ISL-local: in_progress | on_hold | done | abandoned
-  aiStatus?: string
+  taskStatus?: string | null
+  aiStatus?: string | null
   hasExplicitCmd?: boolean
   needsValidation?: boolean
   command?: string | null
@@ -34,82 +31,137 @@ export interface SessionLog {
 
   tokenUsage?: { inputTokens: number; outputTokens: number } | null
 
-  pushStatus: 'pending' | 'pushed' | 'discarded'
+  pushStatus: 'pending' | 'pushed' | 'discarded' | 'hub'
   autoPushed?: boolean
   undoneAt?: string | null
   createdAt: string
   updatedAt: string
 }
 
-function ensureDir() {
-  if (!fs.existsSync(SESSION_LOGS_DIR)) fs.mkdirSync(SESSION_LOGS_DIR, { recursive: true })
+function normalizeBullets(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map(String)
+  if (typeof raw === 'string' && raw.length > 0) return raw.split('\n').map(s => s.trim()).filter(Boolean)
+  return []
 }
 
-function fileNameFor(date: string, sessionId?: string): string {
-  const sid = sessionId ? sessionId.slice(0, 8) : `${Date.now()}`
-  return `${date}_${sid}.json`
-}
-
-export function getAllSessions(): SessionLog[] {
-  ensureDir()
-  const files = fs.readdirSync(SESSION_LOGS_DIR).filter(f => f.endsWith('.json'))
-  const sessions: SessionLog[] = []
-  for (const f of files) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(SESSION_LOGS_DIR, f), 'utf-8'))
-      sessions.push(raw)
-    } catch {}
+function rowToLog(r: typeof sessions.$inferSelect): SessionLog {
+  return {
+    id:               r.id,
+    sessionId:        r.sessionId ?? undefined,
+    userId:           r.userId,
+    date:             r.date,
+    title:            r.title,
+    bullets:          normalizeBullets(r.bullets),
+    source:           r.source ?? undefined,
+    startedAt:        r.startedAt,
+    endedAt:          r.endedAt,
+    actualMins:       r.actualMins,
+    estimatedMins:    r.estimatedMins,
+    opTaskId:         r.opTaskId,
+    opStoryId:        r.opStoryId,
+    opEpicId:         r.opEpicId,
+    isNewTask:        r.isNewTask ?? false,
+    taskStatus:       r.taskStatus,
+    aiStatus:         r.aiStatus,
+    hasExplicitCmd:   r.hasExplicitCmd ?? false,
+    needsValidation:  r.needsValidation ?? false,
+    command:          r.command,
+    ticketBinding:    r.ticketBinding,
+    relatedOldTaskId: r.relatedOldTaskId,
+    tokenUsage:       r.tokenUsage as SessionLog['tokenUsage'],
+    pushStatus:       (r.pushStatus as SessionLog['pushStatus']) ?? 'pending',
+    autoPushed:       r.autoPushed ?? false,
+    undoneAt:         r.undoneAt,
+    createdAt:        r.createdAt.toISOString(),
+    updatedAt:        r.updatedAt.toISOString(),
   }
-  return sessions.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
 }
 
-export function getSession(id: string): SessionLog | null {
-  ensureDir()
-  const files = fs.readdirSync(SESSION_LOGS_DIR).filter(f => f.endsWith('.json'))
-  for (const f of files) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(SESSION_LOGS_DIR, f), 'utf-8'))
-      if (raw.id === id) return raw
-    } catch {}
-  }
-  return null
+export async function getAllSessions(): Promise<SessionLog[]> {
+  const rows = await db.select().from(sessions).orderBy(desc(sessions.startedAt))
+  return rows.map(rowToLog)
 }
 
-export function getSessionBySessionId(sessionId: string): SessionLog | null {
-  ensureDir()
-  const files = fs.readdirSync(SESSION_LOGS_DIR).filter(f => f.endsWith('.json'))
-  for (const f of files) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(SESSION_LOGS_DIR, f), 'utf-8'))
-      if (raw.sessionId === sessionId) return raw
-    } catch {}
-  }
-  return null
+export async function getSession(id: string): Promise<SessionLog | null> {
+  const rows = await db.select().from(sessions).where(eq(sessions.id, id)).limit(1)
+  return rows[0] ? rowToLog(rows[0]) : null
 }
 
-export function saveSession(session: SessionLog) {
-  ensureDir()
-  const fileName = fileNameFor(session.date, session.sessionId)
-  fs.writeFileSync(path.join(SESSION_LOGS_DIR, fileName), JSON.stringify(session, null, 2), 'utf-8')
+export async function getSessionBySessionId(sessionId: string): Promise<SessionLog | null> {
+  const rows = await db.select().from(sessions).where(eq(sessions.sessionId, sessionId)).limit(1)
+  return rows[0] ? rowToLog(rows[0]) : null
 }
 
-export function updateSession(id: string, updates: Partial<SessionLog>): SessionLog | null {
-  ensureDir()
-  const files = fs.readdirSync(SESSION_LOGS_DIR).filter(f => f.endsWith('.json'))
-  for (const f of files) {
-    try {
-      const filePath = path.join(SESSION_LOGS_DIR, f)
-      const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      if (raw.id === id) {
-        const updated = { ...raw, ...updates, updatedAt: new Date().toISOString() }
-        fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf-8')
-        return updated
-      }
-    } catch {}
-  }
-  return null
+export async function getSessionsByStatus(status: SessionLog['pushStatus']): Promise<SessionLog[]> {
+  const rows = await db.select().from(sessions)
+    .where(eq(sessions.pushStatus, status))
+    .orderBy(desc(sessions.startedAt))
+  return rows.map(rowToLog)
+}
+
+export async function saveSession(session: SessionLog): Promise<void> {
+  await db.insert(sessions).values({
+    id:               session.id,
+    sessionId:        session.sessionId ?? null,
+    userId:           session.userId ?? null,
+    date:             session.date,
+    title:            session.title,
+    bullets:          session.bullets,
+    source:           session.source ?? null,
+    startedAt:        session.startedAt,
+    endedAt:          session.endedAt ?? null,
+    actualMins:       session.actualMins ?? null,
+    estimatedMins:    session.estimatedMins,
+    opTaskId:         session.opTaskId ?? null,
+    opStoryId:        session.opStoryId ?? null,
+    opEpicId:         session.opEpicId ?? null,
+    isNewTask:        session.isNewTask ?? false,
+    taskStatus:       session.taskStatus ?? null,
+    aiStatus:         session.aiStatus ?? null,
+    hasExplicitCmd:   session.hasExplicitCmd ?? false,
+    needsValidation:  session.needsValidation ?? false,
+    command:          session.command ?? null,
+    ticketBinding:    session.ticketBinding ?? null,
+    relatedOldTaskId: session.relatedOldTaskId ?? null,
+    tokenUsage:       session.tokenUsage ?? null,
+    pushStatus:       session.pushStatus,
+    autoPushed:       session.autoPushed ?? false,
+    undoneAt:         session.undoneAt ?? null,
+    createdAt:        new Date(session.createdAt),
+    updatedAt:        new Date(session.updatedAt),
+  }).onConflictDoUpdate({
+    target: sessions.id,
+    set: {
+      title:           session.title,
+      bullets:         session.bullets,
+      actualMins:      session.actualMins ?? null,
+      estimatedMins:   session.estimatedMins,
+      opTaskId:        session.opTaskId ?? null,
+      opStoryId:       session.opStoryId ?? null,
+      opEpicId:        session.opEpicId ?? null,
+      taskStatus:      session.taskStatus ?? null,
+      aiStatus:        session.aiStatus ?? null,
+      pushStatus:      session.pushStatus,
+      autoPushed:      session.autoPushed ?? false,
+      undoneAt:        session.undoneAt ?? null,
+      needsValidation: session.needsValidation ?? false,
+      updatedAt:       new Date(session.updatedAt),
+    }
+  })
+}
+
+export async function updateSession(id: string, updates: Partial<SessionLog>): Promise<SessionLog | null> {
+  const patch: Record<string, unknown> = { ...updates, updatedAt: new Date() }
+  if (patch.createdAt) patch.createdAt = new Date(patch.createdAt as string)
+  delete patch.id
+
+  const rows = await db.update(sessions).set(patch).where(eq(sessions.id, id)).returning()
+  return rows[0] ? rowToLog(rows[0]) : null
 }
 
 export function createSessionId(): string {
   return `sl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
+
+// No longer used — kept for import compatibility during migration
+export const SESSION_LOGS_DIR = ''

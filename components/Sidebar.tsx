@@ -13,6 +13,7 @@ const VIEW_ITEMS = [
 ]
 
 const ISL_ITEMS = [
+  { id: 'dailyhub',  key: 'nav.dailyhub'  as const, icon: '🧠', shortcut: 'H', color: 'text-indigo-500'  },
   { id: 'incoming',  key: 'nav.incoming'  as const, icon: '📥', shortcut: 'I', color: 'text-blue-500'   },
   { id: 'pushqueue', key: 'nav.pushqueue' as const, icon: '📤', shortcut: 'Q', color: 'text-amber-500'  },
   { id: 'autolog',   key: 'nav.autolog'   as const, icon: '🤖', shortcut: 'A', color: 'text-emerald-500' },
@@ -20,7 +21,7 @@ const ISL_ITEMS = [
   { id: 'backlog',   key: 'nav.backlog'   as const, icon: '🗃', shortcut: 'B', color: 'text-orange-500'  },
 ]
 
-const ISL_VIEWS = new Set(['isldash', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
+const ISL_VIEWS = new Set(['isldash', 'dailyhub', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
 
 interface Props {
   open: boolean
@@ -252,14 +253,14 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <span className="text-sm">⚙️</span>
           {open && <span className="text-[10px]">Settings</span>}
         </a>
-        <a
-          href="/terminal"
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('isl:toggle-terminal'))}
           title="Terminal"
-          className="flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
+          className="w-full flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
         >
-          <span className="text-sm">🖥️</span>
+          <span className="text-sm">⬛</span>
           {open && <span className="text-[10px]">Terminal</span>}
-        </a>
+        </button>
         {onFeedback && (
           <button
             onClick={onFeedback}

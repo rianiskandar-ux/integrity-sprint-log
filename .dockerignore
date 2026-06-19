@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+*.log
+.env.local
+.env*.local
+daily-sprints
+data
+auth-data
+cache-data
+README.md

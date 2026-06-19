@@ -6,6 +6,7 @@ import type { SprintDay, Session } from '@/lib/parser'
 import type { Project } from '@/lib/projects'
 import Sidebar from './Sidebar'
 import DailyView from './DailyView'
+import DailyHub from './DailyHub'
 import SprintView from './SprintView'
 import MonthView from './MonthView'
 import SkillsView from './SkillsView'
@@ -544,6 +545,7 @@ export default function AppShell({
         {/* View content */}
         <main className={`flex-1 p-4 lg:p-6 ${view === 'isldash' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           {view === 'daily' && <DailyView dayData={dayData} projects={projects} isToday={selectedDate === today} onAddSession={() => setAddOpen(true)} />}
+          {view === 'dailyhub' && <DailyHub />}
           {view === 'sprint' && (
             <SprintView
               projectSprints={projectSprints}

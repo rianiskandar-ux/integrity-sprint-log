@@ -18,8 +18,9 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 # Create writable data dirs
-RUN mkdir -p /app/daily-sprints /app/auth-data /app/cache-data \
-    && chown -R nextjs:nodejs /app/daily-sprints /app/auth-data /app/cache-data
+RUN mkdir -p /app/daily-sprints /app/auth-data /app/cache-data /app/data \
+    && echo '{"mode":"live"}' > /app/data/op-mode.json \
+    && chown -R nextjs:nodejs /app/daily-sprints /app/auth-data /app/cache-data /app/data
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

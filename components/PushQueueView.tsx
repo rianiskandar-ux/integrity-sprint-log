@@ -264,13 +264,12 @@ function SessionCard({
   async function doPush(action: 'create_new' | 'link_existing') {
     setPushing(true); setError(null)
     try {
-      const body: Record<string, unknown> = { sessionId: session.id, action }
       const bullets = segmentsToBullets(segments)
+      const body: Record<string, unknown> = { sessionId: session.id, action, bullets }
       if (action === 'link_existing') {
         body.opTaskId = Number(linkId)
-        body.bullets  = bullets
       } else {
-        body.newTask = { ...form, userId, bullets }
+        body.newTask = { ...form, userId }
       }
       const r = await fetch('/api/op/push-session', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -583,12 +582,16 @@ export default function PushQueueView() {
   }
 
   async function onDiscard(id: string) {
-    await fetch(`/api/isl/sessions/${id}`, {
+    const r = await fetch(`/api/isl/sessions/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pushStatus: 'discarded' }),
-    }).catch(() => {})
-    setSessions(prev => prev.filter(s => s.id !== id))
-    showToast('🗑 Discarded dari queue')
+    }).then(r => r.json()).catch(() => ({ error: 'Network error' }))
+    if (r.ok) {
+      setSessions(prev => prev.filter(s => s.id !== id))
+      showToast('🗑 Discarded dari queue')
+    } else {
+      showToast(`❌ Discard gagal: ${r.error ?? 'Server error'}`)
+    }
   }
 
   const visible = sessions.filter(s => !pushed.has(s.id))
