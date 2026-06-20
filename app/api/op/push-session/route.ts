@@ -39,8 +39,8 @@ const THEMES: Array<{ label: string; keywords: string[] }> = [
 
 function clusterIntoTasks(sessionTitle: string, bullets: string[], totalMins: number): ClusterResult {
   const clean = bullets.filter(b => b.trim())
-  if (!clean.length) return [{ label: sessionTitle, bullets: [], mins: totalMins }]
-  if (clean.length <= 2) return [{ label: sessionTitle, bullets: clean, mins: totalMins }]
+  if (!clean.length) return { groups: [{ label: sessionTitle, bullets: [], mins: totalMins }], needsEpic: false }
+  if (clean.length <= 2) return { groups: [{ label: sessionTitle, bullets: clean, mins: totalMins }], needsEpic: false }
 
   // Parse time prefixes [Xm] for proportional distribution
   const parsed = clean.map(b => {
