@@ -478,6 +478,8 @@ Rules for isSubstantial=false (skip):
 - Only conversation, Q&A, pure planning without implementation
 - Failed attempts with no resolution
 
+MULTI-TOPIC DETECTION: If this session clearly covered 2-3 DISTINCT, unrelated topics (e.g. fixed a WordPress bug AND deployed a new feature AND updated server config), split into separate topic objects. Each topic must be genuinely different — don't split sub-tasks of the same task. If in doubt: keep as 1 topic.
+
 taskStatus rules (CONSERVATIVE):
 - "done": ONLY if !done command OR very clear: "deployed", "fixed and verified", "merged", "selesai"
 - "on_hold": ONLY if !hold OR clear blocker: "waiting for", "blocked by", "nanti setelah"
@@ -487,12 +489,16 @@ title: "[Project] Verb + Object" — specific, max 70 chars, English only
 activities: 4-10 specific completed steps, past tense, technical detail, English only
 
 Return ONLY valid JSON, no markdown, no extra text:
-{"title":"...","activities":["step 1","..."],"isSubstantial":true,"taskStatus":"in_progress"}`
+{"isSubstantial":true,"topics":[{"title":"...","activities":["step 1","..."],"taskStatus":"in_progress"}]}`
 
     const raw  = await callClaudeCLI(prompt)
     const json = JSON.parse((raw ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '{}')
-    if (json.isSubstantial && json.title) {
-      taskInfo = { title: json.title.slice(0, 80), bullets: (json.activities ?? []).slice(0, 8).filter(Boolean), aiStatus: json.taskStatus || 'in_progress' }
+    if (json.isSubstantial && Array.isArray(json.topics) && json.topics.length > 0) {
+      // Multi-topic: return array; single-topic: wrap in array for uniform handling
+      taskInfo = json.topics
+        .filter(t => t.title)
+        .map(t => ({ title: t.title.slice(0, 80), bullets: (t.activities ?? []).slice(0, 8).filter(Boolean), aiStatus: t.taskStatus || 'in_progress' }))
+      if (taskInfo.length === 0) taskInfo = null
     }
   } catch {}
 
@@ -500,17 +506,24 @@ Return ONLY valid JSON, no markdown, no extra text:
     const allAssistant = messages.filter(m => m.role === 'assistant').map(m => m.text).join(' ')
     const hasCode = /```|\.tsx?|\.mjs|function |const |import |export |PATCH|POST|fetch\(/.test(allAssistant)
     if (!hasCode || messages.filter(m => m.role === 'assistant').length < 3) process.exit(0)
-    taskInfo = { title: extractTitle(lastAssistant.text), bullets: extractBullets(lastAssistant.text) || extractParagraphBullets(lastAssistant.text), aiStatus: 'in_progress' }
+    taskInfo = [{ title: extractTitle(lastAssistant.text), bullets: extractBullets(lastAssistant.text) || extractParagraphBullets(lastAssistant.text), aiStatus: 'in_progress' }]
   }
 
-  const finalStatus    = command ? command.islStatus : taskInfo.aiStatus
+  // Normalize to array
+  const topics = Array.isArray(taskInfo) ? taskInfo : [taskInfo]
+
   const hasExplicitCmd = !!command || !!ticketBinding
   const needsValidation = !hasExplicitCmd
-
   const opMode = getOPMode()
   const userId = await resolveUserId(opMode)
 
-  await autoPush({ sessionId, actualMins, userId, finalStatus, hasExplicitCmd, needsValidation, ticketBinding, tokenUsage, ...taskInfo })
+  for (let i = 0; i < topics.length; i++) {
+    const topic = topics[i]
+    const finalStatus = command ? command.islStatus : topic.aiStatus
+    // Topic 1 uses original sessionId (replaces live session), topics 2+ get unique suffix
+    const topicSessionId = i === 0 ? sessionId : `${sessionId}-t${i + 1}`
+    await autoPush({ sessionId: topicSessionId, actualMins: i === 0 ? actualMins : null, userId, finalStatus, hasExplicitCmd, needsValidation, ticketBinding: i === 0 ? ticketBinding : null, tokenUsage: i === 0 ? tokenUsage : null, title: topic.title, bullets: topic.bullets, aiStatus: topic.aiStatus })
+  }
   if (sessionId) markProcessed(sessionId)
   process.exit(0)
 }
@@ -763,6 +776,14 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
       }),
     })
   } catch {}
+
+  // Append to Daily Log — fire and forget
+  const logDate = new Date().toISOString().slice(0, 10)
+  fetch(`${ISL_URL}/api/daily-log/append`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title, bullets, date: logDate, sessionId }),
+  }).catch(() => {})
 
   // Email notification jika needsValidation
   if (needsValidation && taskId) {

@@ -5,14 +5,19 @@ import path from 'path'
 const SPRINT_DIR = process.env.SPRINT_OUTPUT_DIR
   ?? path.join(process.env.CACHE_DATA_DIR ?? process.cwd(), 'daily-sprints')
 
+export interface DailyLogNote {
+  text: string           // raw note block text
+  sessionId: string | null  // ISL session id if this came from a closed chat
+}
+
 export interface DailyLogEntry {
   date: string        // YYYY-MM-DD
   label: string       // "Senin, 10 Jun 2026"
   generated: string   // time string from file
   sections: {
-    worked: string[]   // "Dikerjakan Hari Ini" bullets
-    tasks: string[]    // "Open Tasks" bullets
-    notes: string[]    // "Technical Notes" blocks
+    worked: string[]
+    tasks: string[]
+    notes: DailyLogNote[]  // enriched with sessionId
   }
   raw: string
 }
@@ -27,7 +32,8 @@ function parseMarkdown(raw: string, date: string): DailyLogEntry {
   // Parse sections
   type SectionKey = 'worked' | 'tasks' | 'notes' | null
   let currentSection: SectionKey = null
-  const sections = { worked: [] as string[], tasks: [] as string[], notes: [] as string[] }
+  const sections: { worked: string[]; tasks: string[]; notes: DailyLogNote[] } = { worked: [], tasks: [], notes: [] }
+  const rawNotes: string[] = [] // intermediate before enrichment
   const noteBuffer: string[] = []
 
   for (const line of lines) {
@@ -36,7 +42,7 @@ function parseMarkdown(raw: string, date: string): DailyLogEntry {
     if (line.startsWith('## Technical')) { currentSection = 'notes'; continue }
     if (line.startsWith('## ') || line.startsWith('# ') || line.startsWith('---')) {
       if (currentSection === 'notes' && noteBuffer.length) {
-        sections.notes.push(noteBuffer.join('\n').trim())
+        rawNotes.push(noteBuffer.join('\n').trim())
         noteBuffer.length = 0
       }
       if (line.startsWith('---')) {
@@ -54,11 +60,25 @@ function parseMarkdown(raw: string, date: string): DailyLogEntry {
       const t = line.trim()
       if (t && t !== '_Tidak ada open tasks._') sections.tasks.push(t)
     } else if (currentSection === 'notes') {
-      const t = line.trimEnd()
-      if (t && t !== '_Tambahkan catatan teknis di sini._') noteBuffer.push(t)
+      // Each ### header starts a new note block
+      if (line.startsWith('### ')) {
+        if (noteBuffer.length) { rawNotes.push(noteBuffer.join('\n').trim()); noteBuffer.length = 0 }
+        noteBuffer.push(line)
+      } else {
+        const t = line.trimEnd()
+        if (t && t !== '_Tambahkan catatan teknis di sini._') noteBuffer.push(t)
+      }
     }
   }
-  if (noteBuffer.length) sections.notes.push(noteBuffer.join('\n').trim())
+  if (noteBuffer.length) rawNotes.push(noteBuffer.join('\n').trim())
+
+  // Enrich notes with sessionId extracted from <!-- isl:ID --> comments
+  sections.notes = rawNotes.map(rawNote => {
+    const match = rawNote.match(/<!--\s*isl:([\w-]+)\s*-->/)
+    const sessionId = match ? match[1] : null
+    const text = rawNote.replace(/\n?<!--\s*isl:[^>]+-->/g, '').trim()
+    return { text, sessionId }
+  })
 
   const d = new Date(date + 'T12:00:00')
   const label = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })

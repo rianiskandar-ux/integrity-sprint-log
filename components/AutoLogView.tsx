@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import MyOPTasksTab from './MyOPTasksTab'
+import QuickLogModal from './QuickLogModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Session {
@@ -59,8 +60,8 @@ interface OPCache {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function pushStatus(s: Session): 'pending' | 'pushed' | 'discarded' {
-  return s.pushStatus ?? (s as any).status ?? 'pending'
+function pushStatus(s: Session): 'pending' | 'pushed' | 'discarded' | 'hub' | 'live' {
+  return (s.pushStatus ?? (s as any).status ?? 'pending') as any
 }
 
 function formatDur(mins: number | undefined) {
@@ -351,6 +352,14 @@ function TaskGroup({
           )}
           <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate">{taskName}</span>
           {hasWarning && <span className="text-amber-500 text-[10px] flex-shrink-0">⚠️</span>}
+          {islStatus === 'in_progress' && sessions.some(s => pushStatus(s) === 'pushed') && (
+            <button
+              onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('isl:navigate', { detail: 'sprint-plan' })) }}
+              title="Task still in progress — view in Sprint Plan"
+              className="text-[9px] text-violet-500 bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded font-semibold hover:bg-violet-100 transition flex-shrink-0">
+              ▶ Sprint Plan
+            </button>
+          )}
           {outOfSync && (
             <button
               onClick={e => { e.stopPropagation(); onSyncStatus(sessions[0].opTaskId!, islStatus) }}
@@ -527,12 +536,11 @@ export default function AutoLogView() {
   const [detail, setDetail]         = useState<Session | null>(null)
   const [toast, setToast]           = useState<string | null>(null)
   const [improvingId, setImprovingId] = useState<string | null>(null)
-  const [showManualForm, setShowManualForm] = useState(false)
-  const [manualForm, setManualForm] = useState({ title: '', bullets: '', actualMins: '' })
+  const [quickLogOpen, setQuickLogOpen] = useState(false)
 
   const opUrl = (cache as { _opUrl?: string })._opUrl ?? 'https://tokek.integrity-asia.com'
 
-  async function load() {
+  async function load(isInitial = false) {
     const [sessRes, cacheRes, modeRes, statsRes, timerRes] = await Promise.all([
       fetch('/api/isl/sessions').then(r => r.json()).catch(() => ({ sessions: [] })),
       fetch('/api/op/cache').then(r => r.json()).catch(() => ({})),
@@ -546,9 +554,15 @@ export default function AutoLogView() {
     setSprintStats(statsRes?.sprint ? statsRes : null)
     setActiveTimer(timerRes?.active ?? null)
     setLoading(false)
+    // Auto-select current sprint on first load
+    if (isInitial) {
+      const sprints = (cacheRes.sprints ?? []) as OPSprint[]
+      const cur = sprints.find(s => s.isCurrent)
+      if (cur) setSprintFilter(cur.id)
+    }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(true) }, [])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 4000) }
 
@@ -574,19 +588,44 @@ export default function AutoLogView() {
   }
 
   // Available sprints — dedupe by id, sort by startDate desc
-  const availableSprints = Array.from(
+  const allSprints = Array.from(
     new Map((cache.sprints ?? []).map(s => [s.id, s])).values()
   ).sort((a, b) => b.startDate.localeCompare(a.startDate))
-  const currentSprint = availableSprints.find(s => s.isCurrent) ?? null
+  const currentSprint = allSprints.find(s => s.isCurrent) ?? null
+
+  // Only show sprints that have ISL sessions linked to them, plus the current sprint
+  const sprintIdsWithSessions = new Set(
+    sessions.map(s => s.opTaskId ? taskSprintMap.get(s.opTaskId) ?? null : null).filter((id): id is number => id !== null)
+  )
+  // Current sprint always first, then up to 3 most recent past sprints with sessions
+  const pastSprintsWithSessions = allSprints
+    .filter(s => !s.isCurrent && sprintIdsWithSessions.has(s.id))
+    .slice(0, 3)
+  const availableSprints = [
+    ...(currentSprint ? [currentSprint] : []),
+    ...pastSprintsWithSessions,
+  ]
 
   // ── Compute hierarchy ──────────────────────────────────────────────────────
   const filtered = sessions.filter(s => {
     const ps = pushStatus(s)
+    // Exclude live/hub sessions from Auto Log — they belong in Daily Hub
+    if (ps === 'live' || ps === 'hub') return false
     if (filter === 'pushed')         { if (!(ps === 'pushed' && s.taskStatus !== 'abandoned')) return false }
     else if (filter === 'discarded') { if (ps !== 'discarded') return false }
     else if (filter === 'abandoned') { if (s.taskStatus !== 'abandoned') return false }
-    if (sprintFilter !== null && s.opTaskId) {
-      if (taskSprintMap.get(s.opTaskId) !== sprintFilter) return false
+    if (sprintFilter !== null) {
+      if (s.opTaskId) {
+        // Task-linked: filter by sprint assignment
+        if (taskSprintMap.get(s.opTaskId) !== sprintFilter) return false
+      } else {
+        // No OP task: filter by date range of selected sprint
+        const sp = allSprints.find(sp => sp.id === sprintFilter)
+        if (sp && s.startedAt) {
+          const d = s.startedAt.slice(0, 10)
+          if (d < sp.startDate || d > sp.endDate) return false
+        }
+      }
     }
     return true
   })
@@ -611,10 +650,8 @@ export default function AutoLogView() {
       ? ((cache.userStories ?? []).find(st => st.id === storyId) as any)?.epicId ?? null
       : null
     const epicId  = s.opEpicId ?? (s.opTaskId ? taskEpicMap.get(s.opTaskId) ?? null : null) ?? storyEpicId
-    // Sessions with no OP task/epic: group by source instead of a single "Uncategorized" bucket
-    const sourceGroup = (!epicId && !s.opTaskId) ? (s.source ?? 'General') : null
-    const epicKey  = sourceGroup ? `src:${sourceGroup}` : String(epicId ?? 0)
-    const epicName = sourceGroup ? sourceGroup : (epicId ? (epicMap.get(epicId) ?? `Epic #${epicId}`) : 'Uncategorized')
+    const epicKey  = epicId ? String(epicId) : 'no-op-task'
+    const epicName = epicId ? (epicMap.get(epicId) ?? `Epic #${epicId}`) : 'No OP Task'
     const storyKey = String(storyId ?? 0)
     const storyName = storyId ? (storyMap.get(storyId) ?? `User Story #${storyId}`) : 'No User Story'
 
@@ -652,9 +689,18 @@ export default function AutoLogView() {
     })),
   }))
 
-  // Stats
-  const totalMins = filtered.filter(s => pushStatus(s) === 'pushed').reduce((n, s) => n + (s.actualMins ?? s.estimatedMins ?? 0), 0)
-  const pendingVal = sessions.filter(s => s.needsValidation && !s.hasExplicitCmd && pushStatus(s) === 'pushed').length
+  // Stats — computed from filtered (respects sprint filter + tab filter)
+  const totalMins  = filtered.filter(s => pushStatus(s) === 'pushed').reduce((n, s) => n + (s.actualMins ?? s.estimatedMins ?? 0), 0)
+  const pendingVal = filtered.filter(s => s.needsValidation && !s.hasExplicitCmd && pushStatus(s) === 'pushed').length
+
+  // Tab counts — based on sessions excluding live/hub, but NOT sprint-filtered (shows global counts per tab)
+  const baseSessions = sessions.filter(s => { const ps = pushStatus(s); return ps !== 'live' && ps !== 'hub' })
+  const tabCounts = {
+    pushed:    baseSessions.filter(s => pushStatus(s) === 'pushed' && s.taskStatus !== 'abandoned').length,
+    all:       baseSessions.length,
+    discarded: baseSessions.filter(s => pushStatus(s) === 'discarded').length,
+    abandoned: baseSessions.filter(s => s.taskStatus === 'abandoned').length,
+  }
 
   // ── Actions ────────────────────────────────────────────────────────────────
   async function doStatusChange(id: string, taskStatus: string) {
@@ -730,16 +776,6 @@ export default function AutoLogView() {
     if (r.synced) load() // refresh to update opStatus
   }
 
-  async function doManualSubmit() {
-    if (!manualForm.title.trim()) return
-    const bullets = manualForm.bullets.split('\n').map(b => b.trim()).filter(Boolean)
-    const r = await fetch('/api/isl/sessions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: manualForm.title, bullets, estimatedMins: parseInt(manualForm.actualMins) || 30, actualMins: parseInt(manualForm.actualMins) || null, pushStatus: 'pushed', autoPushed: false, source: 'manual', needsValidation: true }),
-    }).then(r => r.json()).catch(() => ({ ok: false }))
-    if (r.ok) { showToast('✅ Manual log added'); setShowManualForm(false); setManualForm({ title: '', bullets: '', actualMins: '' }); load() }
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) return <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Loading sessions…</div>
 
@@ -775,9 +811,10 @@ export default function AutoLogView() {
           <p className="text-xs text-gray-400 mt-0.5">Sessions from Claude Code — synced to OpenProject</p>
         </div>
         {mainTab === 'sessions' && (
-          <button onClick={() => setShowManualForm(!showManualForm)}
-            className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex-shrink-0">
-            ✏️ Manual Input
+          <button onClick={() => setQuickLogOpen(true)}
+            className="px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition flex-shrink-0 hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}>
+            ✍️ Quick Log
           </button>
         )}
       </div>
@@ -799,31 +836,6 @@ export default function AutoLogView() {
           </button>
         ))}
       </div>
-
-      {/* Manual form */}
-      {showManualForm && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-indigo-200 dark:border-indigo-800 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-gray-700 dark:text-gray-300">✏️ Manual Log — for any AI (GPT, Gemini, Cursor, etc.)</p>
-            <button onClick={() => setShowManualForm(false)} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
-          </div>
-          <input value={manualForm.title} onChange={e => setManualForm(p => ({ ...p, title: e.target.value }))}
-            placeholder="[ISL] Fix Sprint Banner useEffect bug"
-            className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          <textarea value={manualForm.bullets} onChange={e => setManualForm(p => ({ ...p, bullets: e.target.value }))}
-            rows={3} placeholder={"Fixed useEffect dependency array\nMoved cleanup to end of effect\nVerified state updates correctly"}
-            className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" />
-          <div className="flex items-center gap-3">
-            <input type="number" value={manualForm.actualMins} onChange={e => setManualForm(p => ({ ...p, actualMins: e.target.value }))}
-              placeholder="45 min" min="1"
-              className="w-28 text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <button onClick={doManualSubmit} disabled={!manualForm.title.trim()}
-              className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-              Save to ISL →
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* My OP Tasks tab */}
       {mainTab === 'my-tasks' && (() => {
@@ -910,57 +922,8 @@ export default function AutoLogView() {
       {/* Sessions tab content */}
       {mainTab === 'sessions' && <>
 
-      {/* Sprint stats banner for sessions tab */}
-      {!sprintStats && !loading && (
-        <div className="flex items-center gap-2 px-4 py-2.5 border border-amber-100 dark:border-amber-900 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 text-[10px] text-amber-600 dark:text-amber-400">
-          <span>⚠️</span>
-          <span>Tidak ada sprint berjalan yang terdeteksi di OP — sprint stats tidak tersedia. Pastikan sprint sudah di-set sebagai <strong>Current</strong> di OpenProject.</span>
-        </div>
-      )}
-      {sprintStats && (() => {
-        const b = sprintStats.buckets
-        const pct = sprintStats.pct
-        return (
-          <div className="border border-gray-100 dark:border-gray-800 rounded-xl px-4 py-2.5 space-y-1.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400">🗓 {sprintStats.sprint.name}</span>
-                <span className="text-[10px] text-gray-400">ends {sprintStats.sprint.endDate}</span>
-              </div>
-              <div className="flex items-center gap-2 text-[10px]">
-                <span className="text-gray-400">{sprintStats.total} total</span>
-                <span className="text-gray-300 dark:text-gray-600">·</span>
-                <span className="text-gray-400">{sprintStats.remaining} remaining</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">{pct}% done</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {b.new         > 0 && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-gray-400 inline-block" />{b.new} New</span>}
-              {b.in_progress > 0 && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-blue-500 inline-block" />{b.in_progress} In Progress</span>}
-              {b.on_hold     > 0 && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-amber-400 inline-block" />{b.on_hold} On Hold</span>}
-              {b.done        > 0 && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-emerald-500 inline-block" />{b.done} Closed</span>}
-              <div className="flex-1 min-w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1 overflow-hidden ml-1">
-                <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* Stats bar */}
-      {filtered.length > 0 && (
-        <div className="flex items-center gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs text-gray-500 dark:text-gray-400">
-          <span><span className="font-bold text-gray-800 dark:text-gray-100">{filtered.length}</span> sessions</span>
-          <span><span className="font-bold text-gray-800 dark:text-gray-100">⏱ {formatDur(totalMins)}</span> total</span>
-          {pendingVal > 0 && (
-            <span className="text-amber-600 dark:text-amber-400 font-semibold">⚠️ {pendingVal} need validation</span>
-          )}
-          <button onClick={load} className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition" title="Refresh">↻ Refresh</button>
-        </div>
-      )}
-
-      {/* Sprint filter (sessions tab only) */}
-      {mainTab === 'sessions' && availableSprints.length > 0 && (
+      {/* Sprint filter — first so user knows context before seeing counts */}
+      {availableSprints.length > 0 && (
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-gray-400 flex-shrink-0">🗓 Sprint:</span>
           <div className="flex gap-1 flex-wrap">
@@ -991,6 +954,20 @@ export default function AutoLogView() {
         </div>
       )}
 
+      {/* Stats bar */}
+      <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs text-gray-500 dark:text-gray-400">
+        <span><span className="font-bold text-gray-800 dark:text-gray-100">{filtered.length}</span> sessions</span>
+        <span><span className="font-bold text-gray-800 dark:text-gray-100">⏱ {formatDur(totalMins)}</span> <span className="text-gray-400">actual to OP</span></span>
+        {pendingVal > 0 && (
+          <button
+            onClick={() => { setFilter('all'); showToast(`Showing ${pendingVal} sessions needing validation`) }}
+            className="text-amber-600 dark:text-amber-400 font-semibold hover:underline">
+            ⚠️ {pendingVal} need validation
+          </button>
+        )}
+        <button onClick={() => load()} className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition" title="Refresh">↻ Refresh</button>
+      </div>
+
       {/* Filter tabs */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
         {(['pushed', 'all', 'discarded', 'abandoned'] as const).map(f => (
@@ -998,10 +975,10 @@ export default function AutoLogView() {
             className={`px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
               filter === f ? 'border-violet-500 text-violet-600 dark:text-violet-400' : 'border-transparent text-gray-400 hover:text-gray-600'
             }`}>
-            {f === 'pushed'    ? `Pushed (${sessions.filter(s => pushStatus(s) === 'pushed' && s.taskStatus !== 'abandoned').length})`
-            : f === 'all'      ? `All (${sessions.length})`
-            : f === 'discarded'? `Backlogged (${sessions.filter(s => pushStatus(s) === 'discarded').length})`
-            :                    `Abandoned (${sessions.filter(s => s.taskStatus === 'abandoned').length})`}
+            {f === 'pushed'    ? `Pushed (${tabCounts.pushed})`
+            : f === 'all'      ? `All (${tabCounts.all})`
+            : f === 'discarded'? `Backlogged (${tabCounts.discarded})`
+            :                    `Abandoned (${tabCounts.abandoned})`}
           </button>
         ))}
       </div>
@@ -1032,6 +1009,9 @@ export default function AutoLogView() {
 
       </> /* end sessions tab */}
 
+      {quickLogOpen && (
+        <QuickLogModal onClose={() => setQuickLogOpen(false)} onSaved={load} />
+      )}
     </div>
   )
 }

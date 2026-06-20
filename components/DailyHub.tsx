@@ -194,12 +194,13 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
         <span className="text-3xl">✨</span>
         <p className="text-sm">No sessions need triage</p>
-        <p className="text-xs text-center max-w-xs">Research and discussion sessions without an OP task match will appear here</p>
+        <p className="text-xs text-center max-w-xs">Sessions appear here live while chats are active, then finalize when closed</p>
       </div>
     )
   }
 
   // Group by date, newest first
+  const liveCount = sessions.filter(s => s.pushStatus === 'live').length
   const grouped = sessions.reduce<Record<string, SessionLog[]>>((acc, s) => {
     const d = s.date ?? s.startedAt?.slice(0, 10) ?? 'unknown'
     if (!acc[d]) acc[d] = []
@@ -211,7 +212,10 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 dark:text-gray-400">{sessions.length} sessions pending triage · all saved until you decide</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        {liveCount > 0 && <span className="text-emerald-600 font-semibold">🔴 {liveCount} live · </span>}
+        {sessions.filter(s => s.pushStatus !== 'live').length} pending triage · saved until you decide
+      </p>
       {sortedDates.map(date => (
         <div key={date} className="space-y-2">
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
@@ -228,36 +232,72 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
 
 function SessionCard({ session: s, onTriage }: { session: SessionLog; onTriage: (id: string, action: string) => void }) {
   const [expanded, setExpanded] = useState(false)
+  const isLive = s.pushStatus === 'live'
+
   return (
-    <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+    <div className={`border rounded-xl overflow-hidden ${
+      isLive
+        ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20'
+        : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900'
+    }`}>
       <button
         onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"
+        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
       >
-        <span className="text-sm mt-0.5">📝</span>
+        <span className="text-sm mt-0.5">{isLive ? '🔴' : '📝'}</span>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug">{s.title}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug truncate">{s.title}</p>
+            {isLive && (
+              <span className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 animate-pulse">
+                LIVE
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-gray-400 mt-0.5">
-            {s.date} · {durationLabel(s.actualMins) ?? '?'} · {timeAgo(s.createdAt)}
+            {isLive ? `Started ${timeAgo(s.startedAt)} · still active` : `${s.date} · ${durationLabel(s.actualMins) ?? '?'} · ${timeAgo(s.createdAt)}`}
           </p>
         </div>
         <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0 mt-1">{expanded ? '▲' : '▼'}</span>
       </button>
 
       {expanded && (
-        <div className="px-4 pb-3 space-y-3 border-t border-gray-50 dark:border-gray-800">
-          {s.bullets.length > 0 && (
+        <div className="px-4 pb-3 space-y-3 border-t border-gray-100 dark:border-gray-800">
+          {isLive ? (
+            <div className="mt-2 space-y-1.5">
+              {s.bullets.length > 0 ? (
+                <>
+                  <p className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 dark:text-emerald-400">Topics discussed so far</p>
+                  <ul className="space-y-1">
+                    {s.bullets.map((b, i) => (
+                      <li key={i} className="text-[11px] text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-emerald-200 dark:border-emerald-800 flex items-start gap-1">
+                        <span className="text-emerald-400 flex-shrink-0">·</span>{b}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[9px] text-gray-300 dark:text-gray-600 italic">Auto-updating · full analysis when session closes</p>
+                </>
+              ) : (
+                <p className="text-[11px] text-gray-400 italic">Session in progress — topics will appear as you chat</p>
+              )}
+            </div>
+          ) : s.bullets.length > 0 && (
             <ul className="mt-2 space-y-1">
               {s.bullets.map((b, i) => (
                 <li key={i} className="text-[11px] text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-gray-200 dark:border-gray-700">{b}</li>
               ))}
             </ul>
           )}
-          <div className="flex gap-2 flex-wrap pt-1">
-            <ActionBtn onClick={() => onTriage(s.id, 'queue')} color="indigo" label="→ Push Queue" />
-            <ActionBtn onClick={() => onTriage(s.id, 'backlog')} color="gray" label="→ Backlog" />
-            <ActionBtn onClick={() => onTriage(s.id, 'discard')} color="red" label="Discard" />
-          </div>
+          {!isLive && (
+            <div className="flex gap-2 flex-wrap pt-1">
+              <ActionBtn onClick={() => onTriage(s.id, 'queue')} color="indigo" label="→ Push Queue" />
+              <ActionBtn onClick={() => onTriage(s.id, 'backlog')} color="gray" label="→ Backlog" />
+              <ActionBtn onClick={() => onTriage(s.id, 'discard')} color="red" label="Discard" />
+            </div>
+          )}
+          {isLive && (
+            <p className="text-[10px] text-gray-400 pt-1">Triage options available after session ends</p>
+          )}
         </div>
       )}
     </div>

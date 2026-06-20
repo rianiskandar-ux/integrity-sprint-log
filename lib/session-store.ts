@@ -31,7 +31,7 @@ export interface SessionLog {
 
   tokenUsage?: { inputTokens: number; outputTokens: number } | null
 
-  pushStatus: 'pending' | 'pushed' | 'discarded' | 'hub'
+  pushStatus: 'pending' | 'pushed' | 'discarded' | 'hub' | 'live'
   autoPushed?: boolean
   undoneAt?: string | null
   createdAt: string

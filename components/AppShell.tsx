@@ -185,6 +185,7 @@ export default function AppShell({
     }
   }, [])
 
+
   useEffect(() => {
     const appName = 'ISL Dashboard'
     document.title = tabBadgeTotal > 0 ? `(${tabBadgeTotal}) ${appName}` : appName
@@ -245,6 +246,15 @@ export default function AppShell({
     router.push(`/?${q}`)
     setMobileNav(false)
   }, [router])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const view = (e as CustomEvent).detail as string
+      navigate({ view })
+    }
+    window.addEventListener('isl:navigate', handler)
+    return () => window.removeEventListener('isl:navigate', handler)
+  }, [navigate])
 
   async function doPullOP() {
     setConfirmPull(false)

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 
-interface Section { worked: string[]; tasks: string[]; notes: string[] }
+interface DailyLogNote { text: string; sessionId: string | null }
+interface Section { worked: string[]; tasks: string[]; notes: DailyLogNote[] }
 interface Entry {
   date: string; label: string; generated: string
   sections: Section; raw: string
@@ -11,6 +12,10 @@ interface Entry {
 function isEmpty(s: Section) {
   return s.worked.length === 0 && s.tasks.length === 0 && s.notes.length === 0
 }
+
+// notes can come back as string[] (old files) or DailyLogNote[] (new files)
+function noteText(n: DailyLogNote | string): string { return typeof n === 'string' ? n : n.text }
+function noteSession(n: DailyLogNote | string): string | null { return typeof n === 'string' ? null : n.sessionId }
 
 // Render a markdown-ish bullet line with basic bold/italic/link
 function Line({ text }: { text: string }) {
@@ -32,22 +37,57 @@ function Line({ text }: { text: string }) {
   return <p className="text-[11px] text-gray-600 dark:text-gray-300 leading-relaxed">{text}</p>
 }
 
-function NoteBlock({ text }: { text: string }) {
+function NoteBlock({ text, sessionId }: { text: string; sessionId: string | null }) {
+  const [queuing, setQueuing] = useState(false)
+  const [queued, setQueued]   = useState(false)
+
   const lines = text.split('\n')
   const header = lines[0]
   const body = lines.slice(1)
   // header format: "### Task Title — HH.MM WIB"
   const match = header.match(/^###?\s*(.+?)\s*[—–-]\s*(.+)$/)
+
+  async function sendToQueue() {
+    if (!sessionId || queuing || queued) return
+    setQueuing(true)
+    try {
+      const r = await fetch(`/api/isl/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pushStatus: 'pending' }),
+      }).then(r => r.json())
+      if (r.ok) setQueued(true)
+    } catch { /* ignore */ }
+    setQueuing(false)
+  }
+
   return (
     <div className="border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2.5 space-y-1.5">
-      {match ? (
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-[11px] font-bold text-gray-700 dark:text-gray-200 leading-snug">{match[1]}</p>
-          <span className="text-[9px] text-gray-400 flex-shrink-0 mt-0.5">{match[2]}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          {match ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-[11px] font-bold text-gray-700 dark:text-gray-200 leading-snug">{match[1]}</p>
+              <span className="text-[9px] text-gray-400 flex-shrink-0">{match[2]}</span>
+            </div>
+          ) : (
+            <p className="text-[11px] font-bold text-gray-700 dark:text-gray-200">{header.replace(/^#+\s*/, '')}</p>
+          )}
         </div>
-      ) : (
-        <p className="text-[11px] font-bold text-gray-700 dark:text-gray-200">{header.replace(/^#+\s*/, '')}</p>
-      )}
+        {sessionId && (
+          <button
+            onClick={sendToQueue}
+            disabled={queuing || queued}
+            className={`flex-shrink-0 text-[9px] font-semibold px-2 py-1 rounded-md border transition ${
+              queued
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400'
+                : 'border-violet-200 dark:border-violet-800 text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950'
+            } disabled:opacity-50`}
+            title="Kirim ke Push Queue untuk di-push ke OP">
+            {queued ? '✅ In Queue' : queuing ? '⏳…' : '📤 → Queue'}
+          </button>
+        )}
+      </div>
       {body.length > 0 && (
         <ul className="space-y-0.5 list-none">
           {body.filter(l => l.trim()).map((l, i) => <Line key={i} text={l} />)}
@@ -131,7 +171,9 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
             <div>
               <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide mb-2">🛠 Technical Notes</p>
               <div className="space-y-2">
-                {sections.notes.map((note, i) => <NoteBlock key={i} text={note} />)}
+                {sections.notes.map((note, i) => (
+                  <NoteBlock key={i} text={noteText(note)} sessionId={noteSession(note)} />
+                ))}
               </div>
             </div>
           )}

@@ -82,6 +82,12 @@ export interface CachedEpic {
   description?: string
 }
 
+export interface CachedProject {
+  id: number
+  name: string
+  identifier: string
+}
+
 export interface OPCache {
   lastSync: string | null
   userId: number | null
@@ -92,6 +98,7 @@ export interface OPCache {
   myClosedTasks: CachedWorkPackage[]    // closed/done tasks (last sprint)
   incomingTasks: CachedWorkPackage[]    // open tasks from others (assigned TO me, created by others)
   sprints: CachedSprint[]
+  watchedProjects: CachedProject[]
 }
 
 const EMPTY: OPCache = {
@@ -104,6 +111,7 @@ const EMPTY: OPCache = {
   myClosedTasks: [],
   incomingTasks: [],
   sprints: [],
+  watchedProjects: [],
 }
 
 export function loadCache(): OPCache {
@@ -204,17 +212,19 @@ export async function rebuildCache(
   // Will be updated after sprints are fetched — used for closed tasks cutoff
   let sprintStartCutoff = thirtyDaysAgo
 
-  const userStories:   CachedUserStory[]   = []
-  const epics:         CachedEpic[]        = []
-  const openTasks:     Map<number, CachedWorkPackage> = new Map()
-  const closedTasks:   Map<number, CachedWorkPackage> = new Map()
-  const sprints:       CachedSprint[]      = []
+  const userStories:      CachedUserStory[]   = []
+  const epics:            CachedEpic[]        = []
+  const openTasks:        Map<number, CachedWorkPackage> = new Map()
+  const closedTasks:      Map<number, CachedWorkPackage> = new Map()
+  const sprints:          CachedSprint[]      = []
+  const watchedProjects:  CachedProject[]     = []
 
   for (const identifier of projectIdentifiers) {
     let projectId: number
     try {
       const proj = await opGet(base, token, `/projects/${identifier}`)
       projectId = proj.id
+      watchedProjects.push({ id: projectId, name: proj.name as string, identifier })
     } catch { continue }
 
     // ── Epics (all, not just open — for !ticket:ID lookup) ──────────────
@@ -346,15 +356,16 @@ export async function rebuildCache(
   )
 
   const cache: OPCache = {
-    lastSync:       new Date().toISOString(),
+    lastSync:        new Date().toISOString(),
     userId,
-    userName:       userName ?? null,
+    userName:        userName ?? null,
     userStories,
     epics,
-    myOpenTasks:    allOpen,
-    myClosedTasks:  allClosed,
+    myOpenTasks:     allOpen,
+    myClosedTasks:   allClosed,
     incomingTasks,
     sprints,
+    watchedProjects,
   }
   saveCache(cache)
   return cache

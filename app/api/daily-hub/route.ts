@@ -9,7 +9,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
 
-    const hubSessions = (await getAllSessions()).filter(s => s.pushStatus === 'hub')
+    const hubSessions = (await getAllSessions()).filter(s => s.pushStatus === 'hub' || s.pushStatus === 'live')
     const kbEntries = (await getAllKBEntries()).filter(e => e.triageStatus === 'hub')
 
     // Load sprint context for AI suggest

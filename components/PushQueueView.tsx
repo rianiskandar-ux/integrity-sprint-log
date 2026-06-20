@@ -22,7 +22,7 @@ interface PendingSession {
 interface OPTask  { id: number; subject: string; project?: string; sprintId?: number | null }
 interface OPStory { id: number; subject: string; epicId?: number | null }
 interface OPEpic  { id: number; subject: string }
-interface OPSprint { id: number; name: string; isCurrent: boolean; startDate: string }
+interface OPSprint { id: number; name: string; isCurrent: boolean; startDate: string; endDate: string }
 
 interface OPCache {
   myOpenTasks?: OPTask[]
@@ -211,13 +211,14 @@ Rules:
 }
 
 function SessionCard({
-  session, cache, opUrl, onPushed, onDiscard, userId, onOpenChat,
+  session, cache, opUrl, onPushed, onDiscard, onClearOpMatch, userId, onOpenChat,
 }: {
   session: PendingSession
   cache: OPCache
   opUrl: string
   onPushed: (id: string, taskId: number) => void
   onDiscard: (id: string) => void
+  onClearOpMatch: (id: string) => void
   userId: number
   onOpenChat: (ctx: TaskChatContext) => void
 }) {
@@ -229,10 +230,17 @@ function SessionCard({
   const [error, setError]         = useState<string | null>(null)
   const [segments, setSegments] = useState<ActivitySegment[]>(() => bulletsToSegments(session.bullets, session.actualMins ?? session.estimatedMins ?? 60))
 
-  const sprints = (cache.sprints ?? []).sort((a, b) => b.startDate.localeCompare(a.startDate))
-  const currentSprint = sprints.find(s => s.isCurrent) ?? null
-  const projects = cache.watchedProjects ?? []
-  const defaultProject = projects[0] ?? { id: 12, name: "Integrity's Websites", identifier: 'integritys-websites' }
+  const allSprints = (cache.sprints ?? []).sort((a, b) => b.startDate.localeCompare(a.startDate))
+  const currentSprint = allSprints.find(s => s.isCurrent) ?? null
+  // Find NEAREST next sprint (ascending by startDate, first one after current ends)
+  const sprintsAsc = [...allSprints].sort((a, b) => a.startDate.localeCompare(b.startDate))
+  const nextSprint = sprintsAsc.find(s => !s.isCurrent && s.startDate > (currentSprint?.endDate ?? '')) ?? null
+  // Only show current + next sprint in the selector
+  const sprints = [currentSprint, nextSprint].filter(Boolean) as typeof allSprints
+  const rawProjects = cache.watchedProjects ?? []
+  const fallbackProject = { id: 12, name: "Integrity's Websites", identifier: 'integritys-websites' }
+  const projects = rawProjects.length > 0 ? rawProjects : [fallbackProject]
+  const defaultProject = projects[0]
 
   const suggested = findSuggestedTask(session.title, session.bullets, cache.myOpenTasks ?? [])
 
@@ -298,8 +306,14 @@ function SessionCard({
               'bg-gray-100 dark:bg-gray-800 text-gray-500'
             }`}>{session.taskStatus}</span>
             {session.opTaskId && (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-600 dark:text-teal-400">
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-600 dark:text-teal-400">
                 → OP #{session.opTaskId}
+                <button
+                  onClick={e => { e.stopPropagation(); onClearOpMatch(session.id) }}
+                  className="text-teal-300 hover:text-red-400 leading-none"
+                  title="Clear OP match — remove this link so you can re-assign">
+                  ✕
+                </button>
               </span>
             )}
           </div>
@@ -454,7 +468,7 @@ function SessionCard({
                 <select value={form.sprintId ?? ''} onChange={e => setForm(f => ({ ...f, sprintId: e.target.value ? Number(e.target.value) : null }))}
                   className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none">
                   <option value="">No sprint</option>
-                  {sprints.slice(0, 5).map(s => <option key={s.id} value={s.id}>{s.name}{s.isCurrent ? ' ●' : ''}</option>)}
+                  {sprints.map(s => <option key={s.id} value={s.id}>{s.name}{s.isCurrent ? ' (current)' : ' (next)'}</option>)}
                 </select>
               </div>
 
@@ -477,54 +491,92 @@ function SessionCard({
             </div>
           </div>
 
-          {/* OP Preview */}
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Preview — struktur di OP</p>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Type</span>
-                <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-200">{previewType}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Subject</span>
-                <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-200 truncate">{form.subject}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Project</span>
-                <span className="text-[11px] text-gray-600 dark:text-gray-300">{previewProject.name}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Sprint</span>
-                <span className="text-[11px] text-gray-600 dark:text-gray-300">{previewSprint ? previewSprint.name : '—'}</span>
-              </div>
-              {previewParent && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Parent</span>
-                  <span className="text-[11px] text-gray-600 dark:text-gray-300">#{previewParent.id} {previewParent.subject.slice(0, 50)}</span>
+          {/* OP Structure Preview */}
+          {(() => {
+            const allBullets = segmentsToBullets(segments)
+            // Estimate task groups client-side (simplified — mirrors server logic)
+            const estimatedGroups = (() => {
+              if (allBullets.length <= 2) return [{ label: form.subject, count: allBullets.length }]
+              const THEME_KEYS: Array<{ label: string; keys: string[] }> = [
+                { label: 'Setup & Configuration', keys: ['setup', 'install', 'config', 'init', 'docker', 'env'] },
+                { label: 'Investigation & Debug',  keys: ['debug', 'diagnos', 'analyz', 'identif', 'found'] },
+                { label: 'Fix & Repair',           keys: ['fix', 'repair', 'bug', 'error', 'broken'] },
+                { label: 'Implementation',         keys: ['implement', 'create', 'build', 'buat', 'tambah'] },
+                { label: 'Update & Refactor',      keys: ['update', 'upgrade', 'refactor', 'improve'] },
+                { label: 'Deploy & Release',       keys: ['deploy', 'release', 'publish', 'staging'] },
+                { label: 'Test & Verification',    keys: ['test', 'verify', 'validate', 'cek'] },
+              ]
+              const hits: Record<string, number> = {}
+              let unmatched = 0
+              for (const b of allBullets) {
+                const lower = b.toLowerCase()
+                let hit = false
+                for (const t of THEME_KEYS) {
+                  if (t.keys.some(k => lower.includes(k))) { hits[t.label] = (hits[t.label] ?? 0) + 1; hit = true; break }
+                }
+                if (!hit) unmatched++
+              }
+              const groups = Object.entries(hits).map(([label, count]) => ({ label, count }))
+              if (unmatched > 0) groups.push({ label: 'General Work', count: unmatched })
+              return groups.length ? groups : [{ label: form.subject, count: allBullets.length }]
+            })()
+            return (
+              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
+                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Preview — struktur di OP</p>
+
+                {/* Meta */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-gray-400 w-14 flex-shrink-0">Project</span>
+                    <span className="text-[10px] text-gray-600 dark:text-gray-300 truncate">{previewProject.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-gray-400 w-14 flex-shrink-0">Sprint</span>
+                    <span className="text-[10px] text-gray-600 dark:text-gray-300">{previewSprint ? previewSprint.name : '—'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-gray-400 w-14 flex-shrink-0">Total time</span>
+                    <span className="text-[10px] text-indigo-600 font-semibold">{Math.round(form.estimatedMins / 60 * 10) / 10}h</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-gray-400 w-14 flex-shrink-0">Task type</span>
+                    <span className="text-[10px] text-gray-600 dark:text-gray-300">{previewType}</span>
+                  </div>
                 </div>
-              )}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Estimated</span>
-                <span className="text-[11px] text-gray-600 dark:text-gray-300">{Math.round(form.estimatedMins / 60 * 10) / 10}h</span>
+
+                {/* Hierarchy tree */}
+                <div className="mt-1 pt-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+                  {/* User Story */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded flex-shrink-0">US</span>
+                    <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-200 truncate">{form.subject}</span>
+                  </div>
+                  {/* Tasks */}
+                  {estimatedGroups.map((g, i) => (
+                    <div key={i} className="flex items-center gap-1.5 ml-4">
+                      <span className="text-[9px] font-semibold bg-blue-50 dark:bg-blue-950 text-blue-500 dark:text-blue-400 px-1.5 py-0.5 rounded flex-shrink-0">T{i + 1}</span>
+                      <span className="text-[10px] text-gray-600 dark:text-gray-300 truncate">
+                        {estimatedGroups.length === 1 ? form.subject : `${form.subject} — ${g.label}`}
+                      </span>
+                      <span className="text-[9px] text-gray-400 flex-shrink-0 ml-auto">{g.count} item{g.count !== 1 ? 's' : ''}</span>
+                    </div>
+                  ))}
+                  <p className="text-[9px] text-gray-400 mt-1 italic ml-4">
+                    {estimatedGroups.length > 1
+                      ? `${estimatedGroups.length} tasks auto-grouped by theme · time split proportionally`
+                      : 'Single task — all activities logged as 1 task'}
+                  </p>
+                </div>
+
+                {previewParent && (
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 dark:border-gray-800">
+                    <span className="text-[9px] text-gray-400">Parent US:</span>
+                    <span className="text-[10px] text-gray-600 dark:text-gray-300">#{previewParent.id} {previewParent.subject.slice(0, 50)}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Status</span>
-                <span className="text-[11px] text-blue-600">In Progress</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-20 flex-shrink-0">Assignee</span>
-                <span className="text-[11px] text-gray-600 dark:text-gray-300">Rian Iskandar</span>
-              </div>
-              <div className="mt-1 pt-1 border-t border-gray-100 dark:border-gray-800">
-                <p className="text-[9px] text-gray-400 font-semibold mb-0.5">Description preview:</p>
-                <p className="text-[10px] text-gray-500 font-mono">{`**${form.subject}**`}</p>
-                {segmentsToBullets(segments).slice(0, 3).map((b, i) => (
-                  <p key={i} className="text-[10px] text-gray-500 font-mono">{`- ${b}`}</p>
-                ))}
-                {segmentsToBullets(segments).length > 3 && <p className="text-[9px] text-gray-400">+{segmentsToBullets(segments).length - 3} more</p>}
-              </div>
-            </div>
-          </div>
+            )
+          })()}
 
           {error && <p className="text-[10px] text-red-500">{error}</p>}
 
@@ -579,6 +631,19 @@ export default function PushQueueView() {
     setPushed(prev => new Set([...prev, id]))
     setSessions(prev => prev.filter(s => s.id !== id))
     showToast(`✅ Pushed ke OP — task #${taskId}`)
+  }
+
+  async function onClearOpMatch(id: string) {
+    const r = await fetch(`/api/isl/sessions/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ opTaskId: null }),
+    }).then(r => r.json()).catch(() => ({ error: 'Network error' }))
+    if (r.ok) {
+      setSessions(prev => prev.map(s => s.id === id ? { ...s, opTaskId: null } : s))
+      showToast('🔗 OP match cleared — re-assign from queue')
+    } else {
+      showToast(`❌ Clear gagal: ${r.error ?? 'Server error'}`)
+    }
   }
 
   async function onDiscard(id: string) {
@@ -641,6 +706,7 @@ export default function PushQueueView() {
               opUrl={opUrl}
               onPushed={onPushed}
               onDiscard={onDiscard}
+              onClearOpMatch={onClearOpMatch}
               userId={userId}
               onOpenChat={setChatTask}
             />

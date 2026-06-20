@@ -5,6 +5,7 @@ export interface Session {
   title: string
   time: string
   bullets: string[]
+  islSessionId: string | null  // from <!-- isl:ID --> comment in markdown
 }
 
 export interface SprintDay {
@@ -39,9 +40,9 @@ export function parseSprintFile(date: string): SprintDay | null {
       if (currentSession) day.sessions.push(currentSession)
       const match = line.match(/^### (.+?) [-—] (.+)$/)
       if (match) {
-        currentSession = { title: match[1].trim(), time: match[2].trim(), bullets: [] }
+        currentSession = { title: match[1].trim(), time: match[2].trim(), bullets: [], islSessionId: null }
       } else {
-        currentSession = { title: line.replace(/^### /, '').trim(), time: '', bullets: [] }
+        currentSession = { title: line.replace(/^### /, '').trim(), time: '', bullets: [], islSessionId: null }
       }
       continue
     }
@@ -49,6 +50,12 @@ export function parseSprintFile(date: string): SprintDay | null {
     if (section === 'notes' && currentSession && line.startsWith('- ')) {
       currentSession.bullets.push(line.slice(2).trim())
       continue
+    }
+
+    // Extract ISL session ID from hidden comment
+    if (section === 'notes' && currentSession) {
+      const islMatch = line.match(/<!--\s*isl:([\w-]+)\s*-->/)
+      if (islMatch) { currentSession.islSessionId = islMatch[1]; continue }
     }
 
     if (section === 'done' && line.startsWith('- ')) {

@@ -7,6 +7,81 @@ import { tagSessionToProject, getProjectById } from '@/lib/projects'
 import SessionDetailModal from './SessionDetailModal'
 import { useI18n } from '@/lib/i18n'
 
+function SessionCard({ session: s, proj, date, onDetail }: {
+  session: Session
+  proj: Project
+  date: string
+  onDetail: () => void
+}) {
+  const { t } = useI18n()
+  const [queuing, setQueuing] = useState(false)
+  const [queued, setQueued]   = useState(false)
+
+  async function sendToQueue(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!s.islSessionId || queuing || queued) return
+    setQueuing(true)
+    try {
+      const r = await fetch(`/api/isl/sessions/${s.islSessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pushStatus: 'pending' }),
+      }).then(r => r.json())
+      if (r.ok) setQueued(true)
+    } catch { /* ignore */ }
+    setQueuing(false)
+  }
+
+  return (
+    <div
+      className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 bg-white dark:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-sm transition cursor-pointer"
+      onClick={onDetail}
+    >
+      <div className="flex items-start gap-2 mb-1">
+        <span className="text-sm">{proj.icon}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug"
+            dangerouslySetInnerHTML={{ __html: inlineMarkdown(s.title) }} />
+          {s.time && <p className="text-[10px] text-gray-400 mt-0.5">{s.time}</p>}
+        </div>
+        <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0">›</span>
+      </div>
+      {s.bullets.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {s.bullets.slice(0, 3).map((b, j) => (
+            <li
+              key={j}
+              className="text-[11px] text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-gray-200 dark:border-gray-600 leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: inlineMarkdown(b) }}
+            />
+          ))}
+          {s.bullets.length > 3 && (
+            <li className="text-[10px] text-indigo-400 pl-3">+{s.bullets.length - 3} {t('daily.more')}</li>
+          )}
+        </ul>
+      )}
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: proj.color }}>
+          {proj.name}
+        </span>
+        {s.islSessionId && (
+          <button
+            onClick={sendToQueue}
+            disabled={queuing || queued}
+            className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border transition ${
+              queued
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400'
+                : 'border-violet-300 dark:border-violet-700 text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950'
+            } disabled:opacity-50`}
+            title="Kirim ke Push Queue">
+            {queued ? '✅ In Queue' : queuing ? '⏳' : '📤 → Queue'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function inlineMarkdown(text: string) {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -78,40 +153,13 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
           {sessions.map((s, i) => {
             const proj = getProjectById(tagSessionToProject(s.title, s.bullets.join(' ')))
             return (
-              <button
+              <SessionCard
                 key={i}
-                onClick={() => setDetailSession({ ...s, date: dayData.date })}
-                className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 p-3 bg-white dark:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-sm transition"
-              >
-                <div className="flex items-start gap-2 mb-1">
-                  <span className="text-sm">{proj.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug"
-                      dangerouslySetInnerHTML={{ __html: inlineMarkdown(s.title) }} />
-                    {s.time && <p className="text-[10px] text-gray-400 mt-0.5">{s.time}</p>}
-                  </div>
-                  <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0">›</span>
-                </div>
-                {s.bullets.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {s.bullets.slice(0, 3).map((b, j) => (
-                      <li
-                        key={j}
-                        className="text-[11px] text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-gray-200 dark:border-gray-600 leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: inlineMarkdown(b) }}
-                      />
-                    ))}
-                    {s.bullets.length > 3 && (
-                      <li className="text-[10px] text-indigo-400 pl-3">+{s.bullets.length - 3} {t('daily.more')}</li>
-                    )}
-                  </ul>
-                )}
-                <div className="mt-2">
-                  <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: proj.color }}>
-                    {proj.name}
-                  </span>
-                </div>
-              </button>
+                session={s}
+                proj={proj}
+                date={dayData.date}
+                onDetail={() => setDetailSession({ ...s, date: dayData.date })}
+              />
             )
           })}
         </Column>

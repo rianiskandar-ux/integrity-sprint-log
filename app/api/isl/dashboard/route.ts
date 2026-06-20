@@ -47,6 +47,35 @@ export async function GET() {
     const todaySessions = sessions.filter(s => s.date === today && s.pushStatus === 'pushed')
     const todayMins     = todaySessions.reduce((a, s) => a + (s.actualMins ?? s.estimatedMins ?? 0), 0)
 
+    // Sprint capacity — two sources of truth:
+    // 1. ISL logged: sessions pushed to OP in this sprint (actual work tracked via ISL)
+    // 2. OP scheduled: estimatedTime on tasks assigned to this sprint (planned work from OP side)
+    function parseIsoDur(dur: unknown): number {
+      if (!dur || typeof dur !== 'string') return 0
+      const m = dur.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/)
+      if (!m) return 0
+      return ((Number(m[1] ?? 0) * 24) + Number(m[2] ?? 0) + (Number(m[3] ?? 0) / 60)) * 60
+    }
+
+    const sprintStart = currentSprint?.startDate ?? ''
+    const sprintEnd   = currentSprint?.endDate ?? ''
+
+    // ISL logged: pushed sessions whose date falls in sprint range
+    const islLoggedMins = currentSprint
+      ? sessions
+          .filter(s => s.pushStatus === 'pushed' && s.date >= sprintStart && s.date <= sprintEnd)
+          .reduce((a, s) => a + (s.actualMins ?? s.estimatedMins ?? 0), 0)
+      : 0
+
+    // ISL pending: not yet pushed but in sprint range
+    const islPendingMins = currentSprint
+      ? sessions
+          .filter(s => s.pushStatus === 'pending' && s.date >= sprintStart && s.date <= sprintEnd)
+          .reduce((a, s) => a + (s.actualMins ?? s.estimatedMins ?? 0), 0)
+      : 0
+
+    // Note: OP direct time entries not cached — capacity shows ISL actual only
+
     return NextResponse.json({
       queue: {
         count:    queueSessions.length,
@@ -68,6 +97,12 @@ export async function GET() {
       sprint: {
         current:    currentSprint,
         stats:      sprintStats,
+      },
+      capacity: {
+        islLoggedMins:  Math.round(islLoggedMins),
+        islPendingMins: Math.round(islPendingMins),
+        targetMinMins:  2400,  // 40h
+        targetMaxMins:  3600,  // 60h
       },
       backlog: {
         count:   staleTasks.length,

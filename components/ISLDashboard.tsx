@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import QuickLogModal from './QuickLogModal'
 
 const BRAND = '#1d3a5c'
 const RED   = '#cc1a2e'
@@ -11,6 +12,61 @@ interface DashData {
   incoming: { total: number; newCount: number; preview: { id: number; subject: string; status: string }[] }
   sprint: { current: { id: number; name: string; startDate: string; endDate: string } | null; stats: { total: number; done: number; pct: number } | null }
   backlog: { count: number; preview: { id: number; subject: string }[] }
+  capacity?: { islLoggedMins: number; islPendingMins: number; targetMinMins: number; targetMaxMins: number }
+}
+
+function CapacityBar({ islLoggedMins, islPendingMins, targetMinMins, targetMaxMins, onClick }: {
+  islLoggedMins: number; islPendingMins: number; targetMinMins: number; targetMaxMins: number; onClick?: () => void
+}) {
+  const minPct        = Math.round(targetMinMins / targetMaxMins * 100)
+  const loggedPct     = Math.min(100, Math.round(islLoggedMins / targetMaxMins * 100))
+  const pendingPct    = Math.min(100 - loggedPct, Math.round(islPendingMins / targetMaxMins * 100))
+  const isUnder       = islLoggedMins < targetMinMins
+  const isOver        = islLoggedMins >= targetMaxMins
+  const loggedH       = (islLoggedMins / 60).toFixed(1)
+  const color         = isOver ? '#059669' : isUnder ? '#cc1a2e' : '#7c3aed'
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Sprint Capacity</p>
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+          isOver  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30' :
+          isUnder ? 'bg-red-50 text-red-500 dark:bg-red-900/30' :
+                    'bg-violet-50 text-violet-600 dark:bg-violet-900/30'
+        }`}>
+          {loggedH}h / 60h
+        </span>
+      </div>
+      {/* Clickable bar */}
+      <button onClick={onClick} className="relative w-full h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden block hover:opacity-80 transition cursor-pointer" title="View contributing sessions">
+        <div className="absolute top-0 left-0 h-full transition-all" style={{ width: `${loggedPct}%`, background: color }} />
+        {pendingPct > 0 && (
+          <div className="absolute top-0 h-full opacity-40" style={{
+            left: `${loggedPct}%`, width: `${pendingPct}%`, background: color,
+            backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.6) 2px, rgba(255,255,255,0.6) 4px)'
+          }} />
+        )}
+        <div className="absolute top-0 h-full w-0.5 bg-white/80 dark:bg-gray-900/70 z-10" style={{ left: `${minPct}%` }} />
+      </button>
+      <div className="relative flex justify-between text-[9px] text-gray-400 mt-0.5">
+        <span>0h</span>
+        <span className="absolute" style={{ left: `${minPct}%`, transform: 'translateX(-50%)' }}>40h</span>
+        <span>60h</span>
+      </div>
+      <div className="flex items-center justify-between mt-1.5">
+        <p className="text-[10px] font-medium" style={{ color }}>
+          {isOver  ? `✅ On target — ${loggedH}h logged`
+          : isUnder ? `⚠️ ${((targetMinMins - islLoggedMins) / 60).toFixed(1)}h more to hit 40h min`
+          :           `✅ In range — ${loggedH}h logged`}
+        </p>
+        {islPendingMins > 0 && (
+          <span className="text-[9px] text-gray-400">+{(islPendingMins / 60).toFixed(1)}h pending</span>
+        )}
+      </div>
+      {onClick && <p className="text-[9px] text-gray-300 dark:text-gray-600 mt-0.5 cursor-pointer hover:text-violet-400 transition" onClick={onClick}>Click to view sessions →</p>}
+    </div>
+  )
 }
 
 function fmtMins(m: number) {
@@ -54,8 +110,9 @@ function StatStrip({ icon, label, count, sub, gradient, badge, onClick }: {
 }
 
 export default function ISLDashboard({ onNavigate, onReport }: Props) {
-  const [data, setData]       = useState<DashData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData]         = useState<DashData | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [quickLogOpen, setQL]   = useState(false)
 
   useEffect(() => {
     load()
@@ -82,12 +139,13 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
 
   if (!data) return null
 
-  const { queue, autoLog, incoming, sprint, backlog } = data
+  const { queue, autoLog, incoming, sprint, backlog, capacity } = data
   const days  = sprint.current ? daysLeft(sprint.current.endDate) : null
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     // Two-panel layout: main content + right summary panel
+    <>
     <div className="flex gap-6 h-full min-h-0">
 
       {/* ── LEFT / MAIN CONTENT ──────────────────────────────── */}
@@ -109,6 +167,11 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setQL(true)}
+              className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}>
+              ✍️ Quick Log
+            </button>
             {onReport && (
               <button onClick={onReport}
                 className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition hover:opacity-90"
@@ -305,6 +368,19 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
               </div>
             </>
           )}
+
+          {capacity && sprint.current && (
+            <>
+              <div className="h-px bg-gray-50 dark:bg-gray-700 my-4" />
+              <CapacityBar
+                islLoggedMins={capacity.islLoggedMins ?? 0}
+                islPendingMins={capacity.islPendingMins ?? 0}
+                targetMinMins={capacity.targetMinMins}
+                targetMaxMins={capacity.targetMaxMins}
+                onClick={() => onNavigate('autolog')}
+              />
+            </>
+          )}
         </div>
 
         {/* Activity feed */}
@@ -387,5 +463,10 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
 
       </div>
     </div>
+
+    {quickLogOpen && (
+      <QuickLogModal onClose={() => setQL(false)} onSaved={load} />
+    )}
+    </>
   )
 }

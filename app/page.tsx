@@ -22,7 +22,7 @@ export default async function Home({
   const currentSprintNo = getSprintNumber(Date.now())
   const viewSprintNo = selectedSprint ?? currentSprintNo
 
-  type SprintSession = { title: string; time: string; bullets: string[]; date: string }
+  type SprintSession = { title: string; time: string; bullets: string[]; date: string; islSessionId: string | null }
   type SprintMeta = { start: number; end: number; dates: string[]; sessions: number }
   const projectSprints: Record<string, Record<number, SprintSession[]>> = {}
   const sprintMeta: Record<number, SprintMeta> = {}
