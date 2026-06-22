@@ -35,6 +35,16 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue }: P
   const bottomRef = useRef<HTMLDivElement>(null)
   const streamingIdRef = useRef<string | null>(null)
   const messagesRef = useRef<Message[]>([])
+  const [opContext, setOpContext] = useState<string>('')
+
+  // Fetch konteks LIVE dari ticket OP (desc, hierarki, komentar, lampiran) saat buka
+  useEffect(() => {
+    if (!task.opTaskId) return
+    fetch(`/api/op/wp-context?wpId=${task.opTaskId}`)
+      .then(r => r.json())
+      .then(d => { if (d.text) setOpContext(d.text) })
+      .catch(() => {})
+  }, [task.opTaskId])
 
   // Load existing chat history
   useEffect(() => {
@@ -110,6 +120,7 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue }: P
             sprintName:task.sprintName,
             status:    task.status,
             bullets:   task.bullets,
+            opContext, // konteks live dari ticket OP
           },
         }),
         signal: abortRef.current.signal,

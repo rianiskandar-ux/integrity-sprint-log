@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     taskContext?: {
       id?: string; title?: string; opTaskId?: number | null
       opStoryId?: number | null; sprintName?: string | null
-      status?: string; bullets?: string[]
+      status?: string; bullets?: string[]; opContext?: string
     }
   }
   const { messages, taskContext } = body
@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
     taskContext.sprintName ? `Sprint: ${taskContext.sprintName}` : '',
     taskContext.status ? `Status: ${taskContext.status}` : '',
     taskContext.bullets?.length ? `Progress notes:\n${taskContext.bullets.map(b => `• ${b}`).join('\n')}` : '',
+    taskContext.opContext ? `\n${taskContext.opContext}` : '',
     `Focus your responses on this task unless the user asks about something else.`,
     `--- END TASK CONTEXT ---`,
   ].filter(Boolean).join('\n') : ''
