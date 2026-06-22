@@ -229,12 +229,26 @@ function SessionCard({
   const [linkId, setLinkId]       = useState(session.opTaskId ? String(session.opTaskId) : '')
   const [error, setError]         = useState<string | null>(null)
   const [segments, setSegments] = useState<ActivitySegment[]>(() => bulletsToSegments(session.bullets, session.actualMins ?? session.estimatedMins ?? 60))
+  const [sprintMoving, setSprintMoving] = useState(false)
+  const [sprintMoved, setSprintMoved]   = useState(false)
 
   const allSprints = (cache.sprints ?? []).sort((a, b) => b.startDate.localeCompare(a.startDate))
   const currentSprint = allSprints.find(s => s.isCurrent) ?? null
   // Find NEAREST next sprint (ascending by startDate, first one after current ends)
   const sprintsAsc = [...allSprints].sort((a, b) => a.startDate.localeCompare(b.startDate))
   const nextSprint = sprintsAsc.find(s => !s.isCurrent && s.startDate > (currentSprint?.endDate ?? '')) ?? null
+
+  async function moveToNextSprint(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!nextSprint || !session.opTaskId || sprintMoving) return
+    setSprintMoving(true)
+    const r = await fetch('/api/op/sprint-move', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskIds: [session.opTaskId], targetSprintId: nextSprint.id }),
+    }).then(r => r.json()).catch(() => ({ results: [{ ok: false }] }))
+    if (r.results?.[0]?.ok) { setSprintMoved(true); window.dispatchEvent(new Event('isl:cache-refreshed')) }
+    setSprintMoving(false)
+  }
   // Only show current + next sprint in the selector
   const sprints = [currentSprint, nextSprint].filter(Boolean) as typeof allSprints
   const rawProjects = cache.watchedProjects ?? []
@@ -315,6 +329,19 @@ function SessionCard({
                   ✕
                 </button>
               </span>
+            )}
+            {session.opTaskId && nextSprint && (
+              sprintMoved ? (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400">✓ {nextSprint.name}</span>
+              ) : (
+                <button
+                  onClick={moveToNextSprint}
+                  disabled={sprintMoving}
+                  title={`Pindah version OP ke ${nextSprint.name}`}
+                  className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 disabled:opacity-50">
+                  {sprintMoving ? '…' : `→ ${nextSprint.name}`}
+                </button>
+              )
             )}
           </div>
         </div>

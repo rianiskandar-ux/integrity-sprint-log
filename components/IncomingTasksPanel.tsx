@@ -28,6 +28,7 @@ export default function IncomingTasksPanel() {
   const [filter, setFilter]     = useState<'open' | 'all'>('open')
   const [chatTask, setChatTask] = useState<TaskChatContext | null>(null)
   const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set())
+  const [nextSprint, setNextSprint] = useState<{ id: number; name: string } | null>(null)
 
   useEffect(() => {
     fetch('/api/op/cache')
@@ -35,10 +36,38 @@ export default function IncomingTasksPanel() {
       .then(d => {
         setTasks(d.incomingTasks ?? [])
         if (d._opUrl) setOpUrl(d._opUrl)
+        // Tentukan next sprint: sprint pertama yang mulai setelah current berakhir
+        const sprints = (d.sprints ?? []) as { id: number; name: string; startDate: string; endDate: string; isCurrent: boolean }[]
+        const cur = sprints.find(s => s.isCurrent)
+        if (cur) {
+          const future = sprints
+            .filter(s => (s.startDate ?? '') > (cur.endDate ?? ''))
+            .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))
+          if (future[0]) setNextSprint({ id: future[0].id, name: future[0].name })
+        }
         setLoading(false)
       })
       .catch(() => setLoading(false))
   }, [])
+
+  async function moveToNextSprint(task: CachedWorkPackage) {
+    if (!nextSprint) return showToast('Next sprint tidak ketemu')
+    setUpdatingId(task.id)
+    const r = await fetch('/api/op/sprint-move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskIds: [task.id], targetSprintId: nextSprint.id }),
+    }).then(r => r.json()).catch(() => ({ results: [{ ok: false }] }))
+    const ok = r.results?.[0]?.ok
+    if (ok) {
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, sprintId: nextSprint.id, sprintName: nextSprint.name } : t))
+      showToast(`✅ #${task.id} dipindah ke ${nextSprint.name} (OP)`)
+      window.dispatchEvent(new Event('isl:cache-refreshed'))
+    } else {
+      showToast(`❌ Gagal pindah: ${r.results?.[0]?.error ?? 'unknown'}`)
+    }
+    setUpdatingId(null)
+  }
 
   // Tasks yang sudah punya session pending (sudah dipush ke Push Queue) → tandai di Incoming
   useEffect(() => {
@@ -251,6 +280,21 @@ export default function IncomingTasksPanel() {
                       className="px-2 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
                       ▶ Mulai Kerja
                     </button>
+                    {nextSprint && (
+                      task.sprintId === nextSprint.id ? (
+                        <span className="px-2 py-1 text-[10px] font-semibold text-purple-600 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg text-center">
+                          ✓ {nextSprint.name}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => moveToNextSprint(task)}
+                          disabled={updatingId === task.id}
+                          title={`Pindah version OP ke ${nextSprint.name}`}
+                          className="px-2 py-1 text-[10px] font-semibold text-purple-600 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950 disabled:opacity-50 transition">
+                          → {nextSprint.name}
+                        </button>
+                      )
+                    )}
                     {(task.islStatus === 'new' || !task.islStatus) && (
                       <button
                         onClick={() => updateStatus(task, 'in_progress')}

@@ -48,8 +48,34 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   const [pushing,    setPushing]    = useState(false)
   const [toast,      setToast]      = useState<string | null>(null)
   const [selected,   setSelected]   = useState<Set<string>>(new Set())
+  const [inNext,     setInNext]     = useState<{ id: number; subject: string; status: string; type: string }[]>([])
+  const [nextName,   setNextName]   = useState<string>('')
 
   const storageKey = `next-sprint-staged-${currentSprintNo}`
+
+  // Task yang SUDAH di next sprint (version OP) — dari cache, real
+  useEffect(() => {
+    function load() {
+      fetch('/api/op/cache').then(r => r.json()).then(d => {
+        const sprints = (d.sprints ?? []) as { id: number; name: string; startDate: string; endDate: string; isCurrent: boolean }[]
+        const cur = sprints.find(s => s.isCurrent)
+        if (!cur) return
+        const next = sprints
+          .filter(s => (s.startDate ?? '') > (cur.endDate ?? ''))
+          .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))[0]
+        if (!next) return
+        setNextName(next.name)
+        const all = [...(d.myOpenTasks ?? []), ...(d.incomingTasks ?? [])] as { id: number; subject: string; status: string; type: string; sprintId: number | null }[]
+        const seen = new Set<number>()
+        const items = all.filter(t => t.sprintId === next.id && !seen.has(t.id) && seen.add(t.id))
+          .map(t => ({ id: t.id, subject: t.subject, status: t.status, type: t.type }))
+        setInNext(items)
+      }).catch(() => {})
+    }
+    load()
+    window.addEventListener('isl:cache-refreshed', load)
+    return () => window.removeEventListener('isl:cache-refreshed', load)
+  }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey)
@@ -187,6 +213,28 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
           className="text-[10px] font-semibold px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition disabled:opacity-50">
           {generating ? '⏳ Generating…' : '✨ Load AI Suggestions'}
         </button>
+      </div>
+
+      {/* Sudah di Next Sprint (version OP, real) */}
+      <div className="rounded-xl border border-purple-200 dark:border-purple-800/50 bg-purple-50/40 dark:bg-purple-950/20 p-4">
+        <p className="text-[11px] font-bold text-purple-700 dark:text-purple-300 mb-2">
+          📌 Sudah di {nextName || 'Next Sprint'} (version OP) — {inNext.length}
+        </p>
+        {inNext.length === 0 ? (
+          <p className="text-[10px] text-purple-400/70 dark:text-purple-500/60">
+            Belum ada task yang dipindah. Oper dari Incoming/Push Queue pakai tombol “→ {nextName || 'Next Sprint'}”.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {inNext.map(t => (
+              <div key={t.id} className="flex items-center gap-2 text-[11px] bg-white dark:bg-gray-800 rounded-lg px-2.5 py-1.5 border border-purple-100 dark:border-purple-900/40">
+                <span className="font-mono font-bold text-purple-500">#{t.id}</span>
+                <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{t.subject}</span>
+                <span className="text-[9px] text-gray-400">{t.type} · {t.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
