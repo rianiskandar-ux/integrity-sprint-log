@@ -22,7 +22,7 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd 
   -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 5)
 # -WakeToRun  : bangunkan laptop dari sleep untuk backup (lalu balik sleep sesuai power plan)
 # -StartWhenAvailable : kalau laptop mati/terlewat, jalan otomatis pas nyala lagi
-$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
   -Settings $settings -Principal $principal -Force | Out-Null
