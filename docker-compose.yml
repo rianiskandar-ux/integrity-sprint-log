@@ -32,6 +32,11 @@ services:
       - isl-auth:/app/auth-data
       # user-config.json + op-cache.json (persisted across restarts)
       - isl-data:/app/data
+      # Kredensial Claude Code (login akun kamu) → biar claude-cli jalan di container.
+      # AI dipakai = akun pemilik kredensial ini. Untuk tim, tiap orang mount kredensialnya sendiri.
+      - C:/Users/user199/.claude:/home/nextjs/.claude
+      # Config utama claude (.claude.json) read-only: container baca, host aman dari corrupt.
+      - C:/Users/user199/.claude.json:/home/nextjs/.claude.json:ro
     environment:
       - DATABASE_URL=postgresql://isl:${POSTGRES_PASSWORD:-isl-local-2026}@postgres:5432/isl
       - OP_BASE_URL=${OP_BASE_URL:-https://tokek.integrity-asia.com}

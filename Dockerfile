@@ -26,6 +26,15 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Claude Code CLI (untuk LLM provider 'claude-cli').
+# Alpine/musl: butuh libc6-compat + ripgrep sistem (jangan pakai ripgrep bawaan glibc).
+RUN apk add --no-cache libc6-compat ripgrep git \
+    && npm install -g @anthropic-ai/claude-code \
+    && mkdir -p /home/nextjs/.claude \
+    && chown -R nextjs:nodejs /home/nextjs
+ENV HOME=/home/nextjs
+ENV USE_BUILTIN_RIPGREP=0
+
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
