@@ -18,7 +18,10 @@ $action  = New-ScheduledTaskAction -Execute 'powershell.exe' `
   -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
 $trigger = New-ScheduledTaskTrigger -Daily -At $RunTime
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
+  -WakeToRun `
   -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 5)
+# -WakeToRun  : bangunkan laptop dari sleep untuk backup (lalu balik sleep sesuai power plan)
+# -StartWhenAvailable : kalau laptop mati/terlewat, jalan otomatis pas nyala lagi
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
