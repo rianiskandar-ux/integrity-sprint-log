@@ -61,6 +61,9 @@ export default function IncomingTasksPanel() {
     const ok = r.results?.[0]?.ok
     if (ok) {
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, sprintId: nextSprint.id, sprintName: nextSprint.name } : t))
+      showToast(`✅ #${task.id} → ${nextSprint.name}, sync OP…`)
+      // Rebuild cache dari OP biar Next Sprint page lihat perubahan version
+      await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
       showToast(`✅ #${task.id} dipindah ke ${nextSprint.name} (OP)`)
       window.dispatchEvent(new Event('isl:cache-refreshed'))
     } else {

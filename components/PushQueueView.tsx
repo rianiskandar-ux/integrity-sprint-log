@@ -246,7 +246,11 @@ function SessionCard({
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ taskIds: [session.opTaskId], targetSprintId: nextSprint.id }),
     }).then(r => r.json()).catch(() => ({ results: [{ ok: false }] }))
-    if (r.results?.[0]?.ok) { setSprintMoved(true); window.dispatchEvent(new Event('isl:cache-refreshed')) }
+    if (r.results?.[0]?.ok) {
+      setSprintMoved(true)
+      await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
+      window.dispatchEvent(new Event('isl:cache-refreshed'))
+    }
     setSprintMoving(false)
   }
   // Only show current + next sprint in the selector
