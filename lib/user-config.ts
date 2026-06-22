@@ -1,8 +1,12 @@
 import fs from 'fs'
 import path from 'path'
+import { encrypt, decrypt } from './crypto'
 
 const CONFIG_DIR  = process.env.CACHE_DATA_DIR || process.cwd()
 const CONFIG_FILE = path.join(CONFIG_DIR, 'user-config.json')
+
+// Fields encrypted at rest. Transparent: stored ciphertext, returned plaintext.
+const SECRET_FIELDS = ['opToken', 'anthropicKey', 'llmApiKey', 'telegramBotToken'] as const
 
 export interface UserConfig {
   displayName:      string
@@ -39,7 +43,12 @@ const EMPTY: UserConfig = {
 export function loadUserConfig(): UserConfig {
   try {
     if (!fs.existsSync(CONFIG_FILE)) return EMPTY
-    return { ...EMPTY, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) }
+    const cfg = { ...EMPTY, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) } as UserConfig
+    // Decrypt secret fields (plaintext passes through for backward compat)
+    for (const f of SECRET_FIELDS) {
+      if (cfg[f]) (cfg[f] as string) = decrypt(cfg[f] as string)
+    }
+    return cfg
   } catch {
     return EMPTY
   }
@@ -48,8 +57,13 @@ export function loadUserConfig(): UserConfig {
 export function saveUserConfig(partial: Partial<UserConfig>): UserConfig {
   const existing = loadUserConfig()
   const updated: UserConfig = { ...existing, ...partial, updatedAt: new Date().toISOString() }
+  // Encrypt secret fields before writing to disk
+  const onDisk: UserConfig = { ...updated }
+  for (const f of SECRET_FIELDS) {
+    if (onDisk[f]) (onDisk[f] as string) = encrypt(onDisk[f] as string)
+  }
   fs.mkdirSync(CONFIG_DIR, { recursive: true })
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2))
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(onDisk, null, 2))
   return updated
 }
 

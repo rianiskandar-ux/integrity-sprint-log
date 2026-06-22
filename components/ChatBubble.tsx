@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -30,6 +31,8 @@ function esc(s: string) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
+const CHAT_ID = 'general-chat'
+
 export default function ChatBubble() {
   const [open, setOpen]         = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -37,6 +40,8 @@ export default function ChatBubble() {
   const [streaming, setStreaming] = useState(false)
   const [aiReady, setAiReady]       = useState<boolean | null>(null)
   const [taskShortcuts, setShortcuts] = useState<TaskShortcut[]>([])
+  const [showWorkspace, setShowWorkspace] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
   const abortRef  = useRef<AbortController | null>(null)
@@ -45,6 +50,23 @@ export default function ChatBubble() {
     fetch('/api/user-config').then(r => r.json()).then(d => {
       setAiReady(d.llmApiKeySet || ['ollama', '9router', 'claude-cli'].includes(d.llmProvider))
     }).catch(() => setAiReady(false))
+  }, [])
+
+  // Load chat history from server on mount
+  useEffect(() => {
+    fetch(`/api/chat/history/${CHAT_ID}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.chat?.messages?.length > 0) {
+          setMessages(d.chat.messages.map((m: { role: string; content: string }, i: number) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            id: String(i),
+          })))
+        }
+        setHistoryLoaded(true)
+      })
+      .catch(() => setHistoryLoaded(true))
   }, [])
 
   // Load task shortcuts when panel opens
@@ -120,6 +142,16 @@ export default function ChatBubble() {
     } finally {
       setStreaming(false)
       abortRef.current = null
+      // Save full conversation to server after each exchange
+      setMessages(prev => {
+        const toSave = prev.map(m => ({ role: m.role, content: m.content }))
+        fetch(`/api/chat/history/${CHAT_ID}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: 'ISL General Chat', taskType: 'general', messages: toSave }),
+        }).catch(() => {})
+        return prev
+      })
     }
   }, [messages, streaming])
 
@@ -127,21 +159,33 @@ export default function ChatBubble() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) }
   }
 
-  return (
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
+
+  return createPortal(
     <>
-      {/* Floating bubble button */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="fixed bottom-5 right-5 z-50 w-12 h-12 rounded-full shadow-xl flex items-center justify-center text-white text-xl transition hover:scale-110 active:scale-95"
-        style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}
-        title="ISL Assistant">
-        {open ? '✕' : '✦'}
-      </button>
+      {/* Floating bubble — wrapper is fixed, button is relative inside */}
+      <div className="fixed bottom-5 right-5 z-[9999]" style={{ position: 'fixed', bottom: '20px', right: '20px' }}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="relative w-12 h-12 rounded-full shadow-xl flex items-center justify-center text-white text-xl transition hover:scale-110 active:scale-95"
+          style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}
+          title={`ISL Assistant — AI ${aiReady === null ? 'checking…' : aiReady ? 'Ready ✅' : 'Not configured ❌ (open Settings)'}`}>
+          {open ? '✕' : '✦'}
+          {/* AI status dot */}
+          <span className={`absolute top-0.5 right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+            aiReady === null  ? 'bg-yellow-400 animate-pulse' :
+            aiReady           ? 'bg-emerald-400' :
+                                'bg-red-500 animate-pulse'
+          }`} />
+        </button>
+      </div>
 
       {/* Slide-in panel */}
-      <div className={`fixed bottom-20 right-5 z-50 w-80 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col overflow-hidden transition-all duration-200
-        ${open ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
-        style={{ height: '460px' }}>
+      <div
+        style={{ position: 'fixed', bottom: '84px', right: '20px', zIndex: 9998, width: '320px', height: '460px', opacity: open ? 1 : 0, transform: open ? 'translateY(0)' : 'translateY(16px)', pointerEvents: open ? 'auto' : 'none', transition: 'opacity 0.2s, transform 0.2s' }}
+        className="rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col overflow-hidden">
 
         {/* Panel header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0"
@@ -171,9 +215,12 @@ export default function ChatBubble() {
                 <p className="text-[10px] text-gray-400 mt-0.5">Ask about tasks, sprint, or anything</p>
               </div>
               {aiReady === false && (
-                <div className="w-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2 text-[10px] text-amber-700 dark:text-amber-300 text-center">
-                  No AI configured.{' '}
-                  <a href="/settings" className="underline font-semibold">Open Settings</a>
+                <div className="w-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2 space-y-1.5">
+                  <p className="text-[10px] font-bold text-red-700 dark:text-red-300">❌ AI not configured</p>
+                  <p className="text-[9px] text-red-600 dark:text-red-400">Set <strong>LLM Provider</strong> ke <code className="bg-red-100 dark:bg-red-900 px-1 rounded">claude-cli</code> di Settings — tidak perlu API key.</p>
+                  <a href="/settings" className="block w-full text-center text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg py-1.5 transition">
+                    Open Settings →
+                  </a>
                 </div>
               )}
               {aiReady && (
@@ -186,8 +233,13 @@ export default function ChatBubble() {
                   ))}
                   {taskShortcuts.length > 0 && (
                     <div className="pt-1">
-                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-1 pb-1">Task Workspace</p>
-                      {taskShortcuts.map(s => (
+                      <button
+                        onClick={() => setShowWorkspace(v => !v)}
+                        className="w-full flex items-center justify-between px-1 pb-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300 transition">
+                        <span>📋 Task Workspace ({taskShortcuts.length})</span>
+                        <span className={`transition-transform ${showWorkspace ? 'rotate-90' : ''}`}>▶</span>
+                      </button>
+                      {showWorkspace && taskShortcuts.map(s => (
                         <div key={s.id} className="mt-1 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2">
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <span className="text-[9px]">{s.type === 'queue' ? '📤' : '📥'}</span>
@@ -287,6 +339,7 @@ export default function ChatBubble() {
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import MyOPTasksTab from './MyOPTasksTab'
 import QuickLogModal from './QuickLogModal'
+import ActivityTimeline, { ActivitySegment, bulletsToSegments, segmentsToBullets } from './ActivityTimeline'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Session {
@@ -90,9 +91,164 @@ const STATUS_COLOR: Record<string, string> = {
   backlog:     'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 }
 
+// ── Edit Session Modal ─────────────────────────────────────────────────────────
+function EditSessionModal({
+  session, onClose, onSaved,
+}: {
+  session: Session
+  onClose: () => void
+  onSaved: (updated: Partial<Session>) => void
+}) {
+  const totalMins = session.actualMins ?? session.estimatedMins ?? 30
+  const [title, setTitle]         = useState(session.title)
+  const [segments, setSegments]   = useState<ActivitySegment[]>(() =>
+    bulletsToSegments(session.bullets ?? [], totalMins)
+  )
+  const [estimatedMins, setEstimatedMins] = useState(session.estimatedMins ?? 30)
+  const [actualMins, setActualMins]       = useState<number | ''>(session.actualMins ?? '')
+  const [taskStatus, setTaskStatus]       = useState(session.taskStatus ?? 'in_progress')
+  const [saving, setSaving]               = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    const bullets = segmentsToBullets(segments)
+    const body: Record<string, unknown> = {
+      title,
+      bullets,
+      estimatedMins: Number(estimatedMins),
+      actualMins: actualMins === '' ? null : Number(actualMins),
+      taskStatus,
+    }
+    const r = await fetch(`/api/isl/sessions/${session.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(r => r.json()).catch(() => ({ error: 'Network error' }))
+    setSaving(false)
+    if (r.ok) { onSaved(body as Partial<Session>); onClose() }
+    else alert(r.error ?? 'Save failed')
+  }
+
+  const previewMins = Number(estimatedMins) || totalMins
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">✏️ Edit Session</h3>
+            {session.opTaskId && (
+              <p className="text-[10px] text-indigo-400 mt-0.5">OP Task #{session.opTaskId}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">×</button>
+        </div>
+
+        {/* Form */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto max-h-[72vh]">
+
+          {/* Subject */}
+          <div>
+            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Subject</label>
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="mt-1 w-full text-[12px] border border-violet-200 dark:border-violet-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              placeholder="Session title…"
+            />
+          </div>
+
+          {/* Activity Timeline */}
+          <ActivityTimeline
+            segments={segments}
+            onChange={setSegments}
+            totalMins={previewMins}
+            taskTitle={title}
+          />
+
+          {/* Duration + Status */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Estimated (mins)</label>
+              <input
+                type="number" min={1} value={estimatedMins}
+                onChange={e => setEstimatedMins(Number(e.target.value))}
+                className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Actual (mins)</label>
+              <input
+                type="number" min={1}
+                value={actualMins}
+                onChange={e => setActualMins(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="—"
+                className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Status</label>
+              <select
+                value={taskStatus}
+                onChange={e => setTaskStatus(e.target.value)}
+                className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              >
+                <option value="in_progress">🔵 In Progress</option>
+                <option value="done">✅ Done</option>
+                <option value="on_hold">⏸ On Hold</option>
+                <option value="abandoned">🚫 Abandoned</option>
+                <option value="backlog">📋 Backlog</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Preview — Session Log</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] text-gray-400 w-16 flex-shrink-0">Total time</span>
+                <span className="text-[10px] text-indigo-600 font-semibold">{Math.round(previewMins / 60 * 10) / 10}h</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] text-gray-400 w-16 flex-shrink-0">Segments</span>
+                <span className="text-[10px] text-gray-600 dark:text-gray-300">{segments.filter(s => s.note.trim()).length} items</span>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+              {segments.filter(s => s.note.trim()).map((seg, i) => (
+                <div key={i} className="flex items-start gap-1.5">
+                  <span className="text-[9px] font-bold text-violet-400 flex-shrink-0 mt-0.5 w-8 text-right">{seg.duration}m</span>
+                  <span className="text-[10px] text-gray-600 dark:text-gray-300">{seg.note}</span>
+                </div>
+              ))}
+              {segments.filter(s => s.note.trim()).length === 0 && (
+                <p className="text-[9px] text-gray-400 italic">No activity notes yet</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-2">
+          <button onClick={onClose}
+            className="px-3 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-4 py-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg transition">
+            {saving ? 'Saving…' : '💾 Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Session Detail Popup ──────────────────────────────────────────────────────
 function SessionDetailPopup({
-  session, opUrl, opStatus, onClose, onStatusChange, onUndo, onImprove, onSyncStatus, onConfirm,
+  session, opUrl, opStatus, onClose, onStatusChange, onUndo, onImprove, onSyncStatus, onConfirm, onEdit,
 }: {
   session: Session
   opUrl: string
@@ -103,6 +259,7 @@ function SessionDetailPopup({
   onImprove: (session: Session) => void
   onSyncStatus: (taskId: number, islStatus: string) => void
   onConfirm?: (id: string) => void
+  onEdit?: (session: Session) => void
 }) {
   const ps       = pushStatus(session)
   const isUndone = ps === 'discarded'
@@ -221,6 +378,12 @@ function SessionDetailPopup({
               <button onClick={() => { onConfirm(session.id); onClose() }}
                 className="px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition">
                 ✓ Confirm
+              </button>
+            )}
+            {onEdit && (
+              <button onClick={() => { onEdit(session); onClose() }}
+                className="px-3 py-1.5 text-xs font-semibold text-violet-600 border border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950 transition">
+                ✏️ Edit
               </button>
             )}
             {session.opTaskId && (status === 'in_progress' || status === 'on_hold') && (
@@ -537,6 +700,7 @@ export default function AutoLogView() {
   const [toast, setToast]           = useState<string | null>(null)
   const [improvingId, setImprovingId] = useState<string | null>(null)
   const [quickLogOpen, setQuickLogOpen] = useState(false)
+  const [editSession, setEditSession] = useState<Session | null>(null)
 
   const opUrl = (cache as { _opUrl?: string })._opUrl ?? 'https://tokek.integrity-asia.com'
 
@@ -611,13 +775,18 @@ export default function AutoLogView() {
     const ps = pushStatus(s)
     // Exclude live/hub sessions from Auto Log — they belong in Daily Hub
     if (ps === 'live' || ps === 'hub') return false
-    if (filter === 'pushed')         { if (!(ps === 'pushed' && s.taskStatus !== 'abandoned')) return false }
+    if (filter === 'pushed') {
+      // Only sessions truly pushed to OP (must have opTaskId)
+      if (!(ps === 'pushed' && s.taskStatus !== 'abandoned')) return false
+      if (!s.opTaskId) return false
+    }
     else if (filter === 'discarded') { if (ps !== 'discarded') return false }
     else if (filter === 'abandoned') { if (s.taskStatus !== 'abandoned') return false }
     if (sprintFilter !== null) {
       if (s.opTaskId) {
-        // Task-linked: filter by sprint assignment
-        if (taskSprintMap.get(s.opTaskId) !== sprintFilter) return false
+        const taskSprint = taskSprintMap.get(s.opTaskId)
+        // undefined = task not in cache → don't filter out (show it)
+        if (taskSprint !== undefined && taskSprint !== sprintFilter) return false
       } else {
         // No OP task: filter by date range of selected sprint
         const sp = allSprints.find(sp => sp.id === sprintFilter)
@@ -650,8 +819,8 @@ export default function AutoLogView() {
       ? ((cache.userStories ?? []).find(st => st.id === storyId) as any)?.epicId ?? null
       : null
     const epicId  = s.opEpicId ?? (s.opTaskId ? taskEpicMap.get(s.opTaskId) ?? null : null) ?? storyEpicId
-    const epicKey  = epicId ? String(epicId) : 'no-op-task'
-    const epicName = epicId ? (epicMap.get(epicId) ?? `Epic #${epicId}`) : 'No OP Task'
+    const epicKey  = epicId ? String(epicId) : 'no-epic'
+    const epicName = epicId ? (epicMap.get(epicId) ?? `Epic #${epicId}`) : 'No Epic'
     const storyKey = String(storyId ?? 0)
     const storyName = storyId ? (storyMap.get(storyId) ?? `User Story #${storyId}`) : 'No User Story'
 
@@ -773,7 +942,12 @@ export default function AutoLogView() {
       body: JSON.stringify({ wpId: taskId, islStatus }),
     }).then(r => r.json()).catch(() => ({ ok: false }))
     showToast(r.synced ? `✅ OP #${taskId} synced → ${islStatus}` : `❌ Sync failed for #${taskId}`)
-    if (r.synced) load() // refresh to update opStatus
+    if (r.synced) load()
+  }
+
+  function doEditSaved(id: string, updated: Partial<Session>) {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s))
+    showToast('✅ Session updated')
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -801,6 +975,16 @@ export default function AutoLogView() {
           onImprove={doImprove}
           onSyncStatus={doSyncStatus}
           onConfirm={doConfirm}
+          onEdit={s => { setDetail(null); setEditSession(s) }}
+        />
+      )}
+
+      {/* Edit modal */}
+      {editSession && (
+        <EditSessionModal
+          session={editSession}
+          onClose={() => setEditSession(null)}
+          onSaved={updated => doEditSaved(editSession.id, updated)}
         />
       )}
 

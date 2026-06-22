@@ -105,6 +105,25 @@ export const userSettings = pgTable('user_settings', {
   updatedAt:                timestamp('updated_at').defaultNow().notNull(),
 })
 
+// ── task_chats ───────────────────────────────────────────────────────────────
+// Per-conversation chat history (Create new + bubble general-chat).
+// Replaces file-based task-chats/*.json. Multi-user ready via userId.
+export const taskChats = pgTable('task_chats', {
+  id:         text('id').primaryKey(),
+  userId:     integer('user_id').references(() => users.id),
+  title:      text('title').notNull().default('Untitled'),
+  taskType:   text('task_type').default('general'), // session | incoming | new | general | idea | plan
+  opTaskId:   integer('op_task_id'),
+  opStoryId:  integer('op_story_id'),
+  sprintName: text('sprint_name'),
+  date:       text('date'),
+  messages:   jsonb('messages').$type<{ role: string; content: string; ts: string }[]>().notNull().default([]),
+  createdAt:  timestamp('created_at').defaultNow().notNull(),
+  updatedAt:  timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [
+  index('task_chats_user_updated_idx').on(t.userId, t.updatedAt),
+])
+
 // ── processed_sessions ─────────────────────────────────────────────────────────
 // Tracks which hook sessions have been processed (replaces processed-sessions.json)
 export const processedSessions = pgTable('processed_sessions', {

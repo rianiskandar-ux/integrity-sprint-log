@@ -1,8 +1,5 @@
-import fs from 'fs'
-import path from 'path'
-
-const DATA_DIR   = process.env.CACHE_DATA_DIR ?? process.cwd()
-const CHATS_DIR  = path.join(DATA_DIR, 'task-chats')
+import { db, taskChats } from './db'
+import { eq, desc } from 'drizzle-orm'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -13,7 +10,7 @@ export interface ChatMessage {
 export interface TaskChat {
   id: string           // session/task ID
   title: string
-  taskType: 'session' | 'incoming' | 'new'
+  taskType: 'session' | 'incoming' | 'new' | 'general' | 'idea' | 'plan'
   opTaskId?: number | null
   opStoryId?: number | null
   sprintName?: string | null
@@ -23,55 +20,83 @@ export interface TaskChat {
   updatedAt: string
 }
 
-function ensureDir() {
-  if (!fs.existsSync(CHATS_DIR)) fs.mkdirSync(CHATS_DIR, { recursive: true })
+// userId stays null until real users exist (Phase 1a auth). Column is FK to users(id);
+// users table is empty now, so forcing an id would violate the constraint.
+const DEFAULT_USER_ID = null as number | null
+
+function rowToChat(r: typeof taskChats.$inferSelect): TaskChat {
+  return {
+    id:         r.id,
+    title:      r.title,
+    taskType:   (r.taskType ?? 'general') as TaskChat['taskType'],
+    opTaskId:   r.opTaskId,
+    opStoryId:  r.opStoryId,
+    sprintName: r.sprintName,
+    date:       r.date ?? undefined,
+    messages:   (r.messages ?? []) as ChatMessage[],
+    createdAt:  r.createdAt.toISOString(),
+    updatedAt:  r.updatedAt.toISOString(),
+  }
 }
 
-function filePath(id: string) {
-  return path.join(CHATS_DIR, `${id.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`)
+export async function getTaskChat(id: string): Promise<TaskChat | null> {
+  const rows = await db.select().from(taskChats).where(eq(taskChats.id, id)).limit(1)
+  return rows[0] ? rowToChat(rows[0]) : null
 }
 
-export function getTaskChat(id: string): TaskChat | null {
-  ensureDir()
-  const fp = filePath(id)
-  try {
-    if (!fs.existsSync(fp)) return null
-    return JSON.parse(fs.readFileSync(fp, 'utf-8'))
-  } catch { return null }
+export async function saveTaskChat(chat: TaskChat): Promise<TaskChat> {
+  const now = new Date()
+  const values = {
+    id:         chat.id,
+    userId:     DEFAULT_USER_ID,
+    title:      chat.title,
+    taskType:   chat.taskType,
+    opTaskId:   chat.opTaskId ?? null,
+    opStoryId:  chat.opStoryId ?? null,
+    sprintName: chat.sprintName ?? null,
+    date:       chat.date ?? null,
+    messages:   chat.messages,
+    updatedAt:  now,
+  }
+  await db.insert(taskChats).values(values).onConflictDoUpdate({
+    target: taskChats.id,
+    set: {
+      title:      values.title,
+      taskType:   values.taskType,
+      opTaskId:   values.opTaskId,
+      opStoryId:  values.opStoryId,
+      sprintName: values.sprintName,
+      date:       values.date,
+      messages:   values.messages,
+      updatedAt:  now,
+    },
+  })
+  const saved = await getTaskChat(chat.id)
+  return saved ?? { ...chat, updatedAt: now.toISOString() }
 }
 
-export function saveTaskChat(chat: TaskChat): TaskChat {
-  ensureDir()
-  const updated = { ...chat, updatedAt: new Date().toISOString() }
-  fs.writeFileSync(filePath(chat.id), JSON.stringify(updated, null, 2))
-  return updated
-}
-
-export function appendMessage(id: string, meta: Omit<TaskChat, 'messages' | 'createdAt' | 'updatedAt'>, msg: ChatMessage): TaskChat {
-  ensureDir()
-  const existing = getTaskChat(id)
-  const now = new Date().toISOString()
+export async function appendMessage(
+  id: string,
+  meta: Omit<TaskChat, 'messages' | 'createdAt' | 'updatedAt'>,
+  msg: ChatMessage,
+): Promise<TaskChat> {
+  const existing = await getTaskChat(id)
+  const nowIso = new Date().toISOString()
   const chat: TaskChat = existing ?? {
     ...meta,
     messages: [],
-    createdAt: now,
-    updatedAt: now,
+    createdAt: nowIso,
+    updatedAt: nowIso,
   }
   chat.messages.push(msg)
   return saveTaskChat(chat)
 }
 
-export function getAllTaskChats(): TaskChat[] {
-  ensureDir()
-  const files = fs.readdirSync(CHATS_DIR).filter(f => f.endsWith('.json'))
-  const chats: TaskChat[] = []
-  for (const f of files) {
-    try { chats.push(JSON.parse(fs.readFileSync(path.join(CHATS_DIR, f), 'utf-8'))) } catch {}
-  }
-  return chats.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+export async function getAllTaskChats(): Promise<TaskChat[]> {
+  const rows = await db.select().from(taskChats).orderBy(desc(taskChats.updatedAt))
+  return rows.map(rowToChat)
 }
 
-export function deleteTaskChat(id: string) {
-  const fp = filePath(id)
-  if (fs.existsSync(fp)) fs.unlinkSync(fp)
+export async function deleteTaskChat(id: string): Promise<void> {
+  await db.delete(taskChats).where(eq(taskChats.id, id))
 }

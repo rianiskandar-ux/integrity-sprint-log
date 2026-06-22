@@ -1,23 +1,28 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { verifyToken, AUTH_COOKIE } from '@/lib/session-token'
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Don't redirect API routes, static assets, or the setup page itself
+  // Always allow API, static assets, the login page, and favicon
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
-    pathname.startsWith('/setup') ||
+    pathname.startsWith('/login') ||
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next()
   }
 
-  // Check setup via cookie (set by setup page after successful save)
-  const setupDone = request.cookies.get('isl-setup-done')?.value
-  if (!setupDone) {
-    return NextResponse.redirect(new URL('/setup', request.url))
+  // PIN gate is OPT-IN: only active when ISL_ACCESS_PIN is set (lockout-safe)
+  const pin = process.env.ISL_ACCESS_PIN
+  if (!pin) return NextResponse.next()
+
+  const token = request.cookies.get(AUTH_COOKIE)?.value
+  const valid = await verifyToken(token)
+  if (!valid) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   return NextResponse.next()

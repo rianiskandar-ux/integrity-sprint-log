@@ -19,6 +19,7 @@ import ConfirmModal from './ConfirmModal'
 import SetupWizard from './SetupWizard'
 import SprintBanner from './SprintBanner'
 import AutoLogView from './AutoLogView'
+import ChatsView from './ChatsView'
 import DailyLogView from './DailyLogView'
 import AutoLogIndicator from './AutoLogIndicator'
 import EnvModeBadge from './EnvModeBadge'
@@ -152,10 +153,8 @@ export default function AppShell({
 
   // Dynamic page title
   useEffect(() => {
-    const viewLabel = { daily: '📅', sprint: '🏃', month: '📆', skills: '🎯' }[view] ?? ''
-    const dateLabel = view === 'daily'
-      ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })
-      : view.charAt(0).toUpperCase() + view.slice(1)
+    const viewLabel = { sprint: '🏃', month: '📆', skills: '🎯' }[view] ?? ''
+    const dateLabel = view.charAt(0).toUpperCase() + view.slice(1)
     const name = loadAppConfig ? loadAppConfig().appName : 'Integrity Sprint Log'
     document.title = `${viewLabel} ${dateLabel} · ${name}`
   }, [view, selectedDate])
@@ -224,15 +223,6 @@ export default function AppShell({
 
   // Auto-generate today on load
   useEffect(() => {
-    if (view === 'daily' && selectedDate === today) {
-      fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: today, force: false }),
-      }).then((r) => r.json()).then((d) => {
-        if (d.ok && (d.workPackages > 0 || d.openTasks > 0)) router.refresh()
-      }).catch(() => {})
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today])
 
@@ -319,14 +309,13 @@ export default function AppShell({
       if (e.key === '?') { setHelpOpen(true); return }
       if (searchOpen || addOpen) return
 
-      if (e.key === 'j' || e.key === 'ArrowRight') { if (nextDate) navigate({ view: 'daily', date: nextDate }) }
-      else if (e.key === 'k' || e.key === 'ArrowLeft') { if (prevDate) navigate({ view: 'daily', date: prevDate }) }
-      else if (e.key === 'd') navigate({ view: 'daily', date: selectedDate })
+      if (e.key === 'j' || e.key === 'ArrowRight') { if (nextDate) navigate({ view: 'dailyhub', date: nextDate }) }
+      else if (e.key === 'k' || e.key === 'ArrowLeft') { if (prevDate) navigate({ view: 'dailyhub', date: prevDate }) }
       else if (e.key === 's') navigate({ view: 'sprint' })
       else if (e.key === 'm') navigate({ view: 'month' })
       else if (e.key === 'l') navigate({ view: 'skills' })
       else if (e.key === 'g') navigate({ view: 'dailylog' })
-      else if (e.key === 't') navigate({ view: 'daily', date: today })
+      else if (e.key === 'c') navigate({ view: 'chats' })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -379,62 +368,16 @@ export default function AppShell({
           {/* Mobile hamburger */}
           <button className="lg:hidden p-1.5 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 mr-1" onClick={() => setMobileNav(true)}>☰</button>
 
-          {/* Date nav (daily view) */}
-          {view === 'daily' && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => prevDate && navigate({ view: 'daily', date: prevDate })}
-                disabled={!prevDate}
-                className="p-1.5 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 transition"
-                title="Previous day (k)"
-              >
-                ‹
-              </button>
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 mx-1">
-                {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
-              </span>
-              <button
-                onClick={() => nextDate && navigate({ view: 'daily', date: nextDate })}
-                disabled={!nextDate}
-                className="p-1.5 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 transition"
-                title="Next day (j)"
-              >
-                ›
-              </button>
-            </div>
-          )}
 
-          {view !== 'daily' && (() => {
+          {(() => {
             const VIEW_LABELS: Record<string, string> = {
               sprint: 'Sprint', month: 'Month', skills: 'Skills',
               isldash: 'ISL Dashboard', incoming: 'Incoming', pushqueue: 'Push Queue',
-              autolog: 'Auto Log', dailylog: 'Daily Log', sprintplan: 'Sprint Plan', backlog: 'Backlog', oldtasks: 'Backlog',
+              autolog: 'Auto Log', dailylog: 'Daily Log', dailyhub: 'Daily Hub', sprintplan: 'Sprint Plan', backlog: 'Backlog', oldtasks: 'Backlog', chats: 'Create new',
             }
             return <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{VIEW_LABELS[view] ?? view}</span>
           })()}
 
-          {/* Daily actions */}
-          {view === 'daily' && (
-            <>
-              <button
-                onClick={() => opStatus === 'ok' ? setConfirmPull(true) : setSettingsOpen(true)}
-                disabled={isPulling}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition disabled:opacity-50 ${opStatus === 'ok' ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 hover:bg-gray-200'}`}
-                title={opStatus === 'ok' ? t('header.op_connected') : t('header.op_disconnected')}
-              >
-                {isPulling ? t('common.loading') : `↻ ${t('header.pull_op')}`}
-              </button>
-              <button onClick={doWrapup} disabled={wrapupLoading} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition" title={t('nav.wrapup')}>
-                {wrapupLoading ? t('wrapup.generating') : `✓ Summary`}
-              </button>
-              <button onClick={() => setAddOpen(true)} className="px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition" title={t('session.add_title')}>
-                {t('header.add_session')}
-              </button>
-              {selectedDate !== today && (
-                <a href={`/?view=daily&date=${today}`} className="px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">Today</a>
-              )}
-            </>
-          )}
 
           {/* Right side — clean SaaS */}
           <div className="ml-auto flex items-center gap-1.5">
@@ -539,14 +482,14 @@ export default function AppShell({
           <div className="px-4 lg:px-6 pt-4">
             <ActivityHeatmap
               allDays={allDays}
-              onDateClick={(date) => navigate({ view: 'daily', date })}
+              onDateClick={(date) => navigate({ view: 'dailyhub', date })}
             />
           </div>
         )}
 
         {/* View content */}
-        <main className={`flex-1 p-4 lg:p-6 ${view === 'isldash' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
-          {view === 'daily' && <DailyView dayData={dayData} projects={projects} isToday={selectedDate === today} onAddSession={() => setAddOpen(true)} />}
+        <main className={`flex-1 p-4 lg:p-6 ${view === 'isldash' || view === 'chats' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+          {view === 'chats' && <div className="flex-1 min-h-0"><ChatsView /></div>}
           {view === 'dailyhub' && <DailyHub />}
           {view === 'sprint' && (
             <SprintView

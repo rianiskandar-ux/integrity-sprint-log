@@ -5,23 +5,8 @@ import { format, startOfWeek, parseISO } from 'date-fns'
 import { loadAppConfig } from '@/lib/op-config'
 import { useI18n } from '@/lib/i18n'
 
-const VIEW_ITEMS = [
-  { id: 'daily',  key: 'nav.daily'  as const, icon: '📅', shortcut: 'D' },
-  { id: 'sprint', key: 'nav.sprint' as const, icon: '🏃', shortcut: 'S' },
-  { id: 'month',  key: 'nav.month'  as const, icon: '📆', shortcut: 'M' },
-  { id: 'skills', key: 'nav.skills' as const, icon: '🎯', shortcut: 'L' },
-]
-
-const ISL_ITEMS = [
-  { id: 'dailyhub',  key: 'nav.dailyhub'  as const, icon: '🧠', shortcut: 'H', color: 'text-indigo-500'  },
-  { id: 'incoming',  key: 'nav.incoming'  as const, icon: '📥', shortcut: 'I', color: 'text-blue-500'   },
-  { id: 'pushqueue', key: 'nav.pushqueue' as const, icon: '📤', shortcut: 'Q', color: 'text-amber-500'  },
-  { id: 'autolog',   key: 'nav.autolog'   as const, icon: '🤖', shortcut: 'A', color: 'text-emerald-500' },
-  { id: 'dailylog',  key: 'nav.dailylog'  as const, icon: '📓', shortcut: 'G', color: 'text-violet-500'  },
-  { id: 'backlog',   key: 'nav.backlog'   as const, icon: '🗃', shortcut: 'B', color: 'text-orange-500'  },
-]
-
-const ISL_VIEWS = new Set(['isldash', 'dailyhub', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
+const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
+const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
 
 interface Props {
   open: boolean
@@ -41,12 +26,17 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
   const [appLogo, setAppLogo] = useState('🚀')
   const [incomingCount, setIncomingCount] = useState(0)
   const [queueCount, setQueueCount]       = useState(0)
+  const [logExpanded, setLogExpanded]     = useState(() => LOG_VIEWS.has(view))
 
   useEffect(() => {
     const c = loadAppConfig()
     setAppName(c.appName)
     setAppLogo(c.appLogo)
   }, [])
+
+  useEffect(() => {
+    if (LOG_VIEWS.has(view)) setLogExpanded(true)
+  }, [view])
 
   useEffect(() => {
     function fetchCounts() {
@@ -77,8 +67,63 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
   const [openWeeks, setOpenWeeks] = useState<Record<string, boolean>>({ [todayWeek]: true })
 
   const isISLActive = ISL_VIEWS.has(view)
+  const isLogActive = LOG_VIEWS.has(view)
 
-  const badge: Record<string, number> = { incoming: incomingCount, pushqueue: queueCount }
+  function NavItem({
+    id, icon, label, shortcut, color, badge, indent = 0,
+  }: {
+    id: string; icon: string; label: string; shortcut: string
+    color?: string; badge?: number; indent?: number
+  }) {
+    const active = view === id
+    const indentCls = indent === 1 ? (open ? 'pl-6 pr-3' : 'px-3') : indent === 2 ? (open ? 'pl-9 pr-3' : 'px-3') : (open ? 'px-3' : 'px-3')
+    return (
+      <button
+        onClick={() => onNavigate({ view: id })}
+        title={open ? undefined : `${label} (${shortcut})`}
+        className={`w-full flex items-center gap-2 py-1.5 transition border-l-2
+          ${indentCls}
+          ${active
+            ? `${color ?? 'text-white'} border-current bg-white/15`
+            : 'text-blue-100/70 border-transparent hover:bg-white/10 hover:text-white'
+          }`}>
+        <span className={`text-sm leading-none flex-shrink-0 relative ${active && color ? color : ''}`}>
+          {icon}
+          {!open && badge && badge > 0 ? (
+            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-400 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
+              {badge > 9 ? '9+' : badge}
+            </span>
+          ) : null}
+        </span>
+        {open && (
+          <>
+            <span className={`flex-1 text-left text-[11px] font-semibold uppercase tracking-wide ${active && color ? color : ''}`}>
+              {label}
+            </span>
+            {badge && badge > 0 ? (
+              <span className="flex-shrink-0 text-[9px] font-bold bg-amber-400 text-white px-1.5 py-0.5 rounded-full leading-none">
+                {badge}
+              </span>
+            ) : null}
+            <kbd className={`text-[9px] px-1 rounded border flex-shrink-0 ${
+              active ? 'border-current opacity-50' : 'border-white/10 text-white/20'
+            }`}>{shortcut}</kbd>
+          </>
+        )}
+      </button>
+    )
+  }
+
+  function GroupHeader({ label, active }: { label: string; active?: boolean }) {
+    if (!open) return null
+    return (
+      <div className={`px-3 pt-3 pb-0.5 text-[9px] font-bold uppercase tracking-widest ${
+        active ? 'text-blue-200/70' : 'text-blue-200/30'
+      }`}>
+        {label}
+      </div>
+    )
+  }
 
   return (
     <aside
@@ -99,61 +144,37 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
         </button>
       </div>
 
-      <nav style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <nav className="overflow-y-auto flex-1" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
 
-        {/* VIEW section */}
-        {open && (
-          <div className="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-blue-200/40">
-            View
-          </div>
-        )}
-        {VIEW_ITEMS.map(tab => {
-          const active = view === tab.id
-          const label  = t(tab.key)
-          return (
-            <button key={tab.id}
-              onClick={() => onNavigate({ view: tab.id, ...(tab.id === 'daily' ? { date: selectedDate } : {}) })}
-              title={open ? undefined : `${label} (${tab.shortcut})`}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold uppercase tracking-wide transition border-l-2
-                ${active
-                  ? 'text-white border-white bg-white/15'
-                  : 'text-blue-100/70 border-transparent hover:bg-white/10 hover:text-white'
-                }`}>
-              <span className="text-base leading-none flex-shrink-0">{tab.icon}</span>
-              {open && <span className="flex-1 text-left">{label}</span>}
-              {open && (
-                <kbd className={`text-[9px] px-1 rounded border ${active ? 'border-white/30 text-white/60' : 'border-white/10 text-white/20'}`}>
-                  {tab.shortcut}
-                </kbd>
-              )}
-            </button>
-          )
-        })}
+        {/* ── SPRINT group ── */}
+        <GroupHeader label="Sprint" active={['sprint', 'month', 'skills'].includes(view)} />
+        <NavItem id="sprint" icon="🏃" label={t('nav.sprint')}  shortcut="S" />
+        <NavItem id="month"  icon="📆" label={t('nav.month')}   shortcut="M" indent={1} />
+        <NavItem id="skills" icon="🎯" label={t('nav.skills')}  shortcut="L" indent={1} />
 
-        {/* ISL section — label is the dashboard entry */}
-        <div className="mt-1">
+        {/* ── DASHBOARD group ── */}
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} className="mt-1">
+          <GroupHeader label="Dashboard" active={isISLActive} />
+
+          {/* Dashboard header button */}
           <button
             onClick={() => onNavigate({ view: 'isldash' })}
-            title={open ? undefined : 'ISL Dashboard (H)'}
+            title={open ? undefined : 'Dashboard (H)'}
             className={`w-full flex items-center gap-2.5 px-3 py-2 transition border-l-2
               ${view === 'isldash'
-                ? 'border-violet-400 bg-white/15'
+                ? 'border-violet-400 bg-white/15 text-white'
                 : isISLActive
-                  ? 'border-violet-400/40 hover:bg-white/10'
-                  : 'border-transparent hover:bg-white/10'
+                  ? 'border-violet-400/30 text-blue-100/70 hover:bg-white/10 hover:text-white'
+                  : 'border-transparent text-blue-100/70 hover:bg-white/10 hover:text-white'
               }`}>
             {open ? (
               <>
                 <span className="text-base leading-none flex-shrink-0">🏠</span>
                 <span className={`text-xs font-semibold uppercase tracking-wide flex-1 text-left ${
-                  view === 'isldash' ? 'text-white' : isISLActive ? 'text-violet-300' : 'text-blue-100/70'
-                }`}>
-                  Dashboard
-                </span>
+                  view === 'isldash' ? 'text-white' : isISLActive ? 'text-violet-300' : ''
+                }`}>Dashboard</span>
                 <kbd className={`text-[9px] px-1 rounded border ${
-                  view === 'isldash'
-                    ? 'border-violet-400/40 text-violet-300'
-                    : 'border-white/10 text-white/20'
+                  view === 'isldash' ? 'border-violet-400/40 text-violet-300' : 'border-white/10 text-white/20'
                 }`}>H</kbd>
               </>
             ) : (
@@ -161,89 +182,94 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
             )}
           </button>
 
-          {/* ISL sub-items */}
-          {ISL_ITEMS.map(tab => {
-            const active = view === tab.id
-            const label  = t(tab.key)
-            const count  = badge[tab.id] ?? 0
-            return (
-              <button key={tab.id}
-                onClick={() => onNavigate({ view: tab.id })}
-                title={open ? undefined : `${label} (${tab.shortcut})`}
-                className={`w-full flex items-center gap-2 transition border-l-2
-                  ${open ? 'pl-6 pr-3 py-1.5' : 'px-3 py-2'}
-                  ${active
-                    ? `${tab.color} border-current bg-white/15`
-                    : 'text-blue-100/70 border-transparent hover:bg-white/10 hover:text-white'
-                  }`}>
-                <span className={`text-sm leading-none flex-shrink-0 relative ${active ? tab.color : ''}`}>
-                  {tab.icon}
-                  {!open && count > 0 && (
-                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-400 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
-                      {count > 9 ? '9+' : count}
-                    </span>
-                  )}
-                </span>
-                {open && (
-                  <>
-                    <span className={`flex-1 text-left text-[11px] font-semibold uppercase tracking-wide ${active ? tab.color : ''}`}>
-                      {label}
-                    </span>
-                    {count > 0 && (
-                      <span className="flex-shrink-0 text-[9px] font-bold bg-amber-400 text-white px-1.5 py-0.5 rounded-full leading-none">
-                        {count}
-                      </span>
-                    )}
-                    <kbd className={`text-[9px] px-1 rounded border flex-shrink-0 ${
-                      active ? 'border-current opacity-50' : 'border-white/10 text-white/20'
-                    }`}>
-                      {tab.shortcut}
-                    </kbd>
-                  </>
-                )}
-              </button>
-            )
-          })}
+          {/* Sub-items */}
+          <NavItem id="chats"     icon="💬" label="Create new"         shortcut="C" color="text-sky-400"      indent={1} />
+          <NavItem id="dailyhub"  icon="🧠" label={t('nav.dailyhub')}  shortcut="H" color="text-indigo-400"  indent={1} />
+          <NavItem id="incoming"  icon="📥" label={t('nav.incoming')}  shortcut="I" color="text-blue-400"    indent={1} badge={incomingCount} />
+          <NavItem id="pushqueue" icon="📤" label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"   indent={1} badge={queueCount} />
+
+          {/* Log expandable group */}
+          <div>
+            <button
+              onClick={() => {
+                if (!isLogActive) {
+                  setLogExpanded(v => !v)
+                  if (!logExpanded) onNavigate({ view: 'autolog' })
+                } else {
+                  setLogExpanded(v => !v)
+                }
+              }}
+              title={open ? undefined : 'Log (A)'}
+              className={`w-full flex items-center gap-2 py-1.5 transition border-l-2
+                ${open ? 'pl-6 pr-3' : 'px-3'}
+                ${isLogActive
+                  ? 'text-emerald-400 border-emerald-400 bg-white/15'
+                  : 'text-blue-100/70 border-transparent hover:bg-white/10 hover:text-white'
+                }`}>
+              <span className={`text-sm leading-none flex-shrink-0 ${isLogActive ? 'text-emerald-400' : ''}`}>📋</span>
+              {open && (
+                <>
+                  <span className={`flex-1 text-left text-[11px] font-semibold uppercase tracking-wide ${isLogActive ? 'text-emerald-400' : ''}`}>
+                    Log
+                  </span>
+                  <span className={`text-[9px] transition-transform ${logExpanded ? 'rotate-90' : ''} ${isLogActive ? 'text-emerald-400/60' : 'text-white/20'}`}>▶</span>
+                  <kbd className={`text-[9px] px-1 rounded border ml-1 ${
+                    isLogActive ? 'border-emerald-400/40 text-emerald-400/60' : 'border-white/10 text-white/20'
+                  }`}>A</kbd>
+                </>
+              )}
+            </button>
+
+            {/* Log sub-items */}
+            {(logExpanded || !open) && (
+              <>
+                <NavItem id="autolog"  icon="🤖" label="Auto Log"  shortcut="A" color="text-emerald-400" indent={2} />
+                <NavItem id="dailylog" icon="📓" label={t('nav.dailylog')} shortcut="G" color="text-violet-400" indent={2} />
+                <NavItem id="backlog"  icon="🗃" label={t('nav.backlog')}  shortcut="B" color="text-orange-400" indent={2} />
+              </>
+            )}
+          </div>
         </div>
+
+        {/* Date history */}
+        {open && (
+          <div className="text-xs mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            {weekKeys.map((wk) => {
+              const label  = wk === todayWeek ? 'This week' : `Week of ${format(parseISO(wk), 'd MMM')}`
+              const isOpen = openWeeks[wk] ?? false
+              return (
+                <div key={wk}>
+                  <button
+                    onClick={() => setOpenWeeks(p => ({ ...p, [wk]: !p[wk] }))}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-blue-200/40 hover:bg-white/10 hover:text-blue-200/70 transition">
+                    <span>{label}</span>
+                    <span className={`transition-transform duration-150 ${isOpen ? '' : '-rotate-90'}`}>▾</span>
+                  </button>
+                  {isOpen && weeks[wk].map(d => {
+                    const isToday    = d === today
+                    const isSelected = d === selectedDate
+                    return (
+                      <button key={d}
+                        onClick={() => onNavigate({ view: 'dailyhub', date: d })}
+                        className={`w-full flex items-center gap-2 px-4 py-1.5 text-left transition
+                          ${isSelected ? 'bg-white/15 text-white font-semibold' : 'text-blue-100/60 hover:bg-white/10 hover:text-white'}
+                          ${isToday ? 'font-bold' : ''}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${hasSession(d) ? 'bg-emerald-400' : 'bg-white/20'}`} />
+                        <span>{format(parseISO(d), 'EEE d MMM')}</span>
+                        {isToday && (
+                          <span className="ml-auto text-[9px] bg-white/20 text-white px-1 rounded font-bold">TODAY</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </nav>
 
-      {/* Date history */}
-      {open && (
-        <div className="flex-1 overflow-y-auto text-xs">
-          {weekKeys.map((wk) => {
-            const label  = wk === todayWeek ? 'This week' : `Week of ${format(parseISO(wk), 'd MMM')}`
-            const isOpen = openWeeks[wk] ?? false
-            return (
-              <div key={wk}>
-                <button
-                  onClick={() => setOpenWeeks(p => ({ ...p, [wk]: !p[wk] }))}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-blue-200/40 hover:bg-white/10 hover:text-blue-200/70 transition">
-                  <span>{label}</span>
-                  <span className={`transition-transform duration-150 ${isOpen ? '' : '-rotate-90'}`}>▾</span>
-                </button>
-                {isOpen && weeks[wk].map(d => {
-                  const isToday    = d === today
-                  const isSelected = d === selectedDate
-                  return (
-                    <button key={d}
-                      onClick={() => onNavigate({ view: 'daily', date: d })}
-                      className={`w-full flex items-center gap-2 px-4 py-1.5 text-left transition
-                        ${isSelected ? 'bg-white/15 text-white font-semibold' : 'text-blue-100/60 hover:bg-white/10 hover:text-white'}
-                        ${isToday ? 'font-bold' : ''}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${hasSession(d) ? 'bg-emerald-400' : 'bg-white/20'}`} />
-                      <span>{format(parseISO(d), 'EEE d MMM')}</span>
-                      {isToday && (
-                        <span className="ml-auto text-[9px] bg-white/20 text-white px-1 rounded font-bold">TODAY</span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
+      {/* Bottom — Settings / Terminal / Feedback */}
       <div className={`${open ? 'px-3 py-2' : 'px-2 py-2'} space-y-0.5`} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         <a
           href="/settings"

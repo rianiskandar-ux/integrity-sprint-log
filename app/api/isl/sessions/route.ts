@@ -64,7 +64,7 @@ export async function POST(req: Request) {
     const session: SessionLog = {
       id:               createSessionId(),
       sessionId:        body.sessionId,
-      userId:           body.userId ?? cache.userId ?? null,
+      userId:           'userId' in body ? (body.userId ?? null) : null,
       date,
       title:            body.title ?? 'Work Session',
       bullets:          body.bullets ?? [],

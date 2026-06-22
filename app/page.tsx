@@ -1,6 +1,7 @@
 import { getSprintDates, parseSprintFile, getAllSprintDays, getSprintNumber, getSprintWindow } from '@/lib/parser'
 import { PROJECTS, tagSessionToProject } from '@/lib/projects'
 import AppShell from '@/components/AppShell'
+import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +11,10 @@ export default async function Home({
   searchParams: Promise<{ view?: string; date?: string; sprint?: string }>
 }) {
   const sp = await searchParams
+  if (sp.view === 'daily') {
+    const date = sp.date ? `&date=${sp.date}` : ''
+    redirect(`/?view=dailyhub${date}`)
+  }
   const view = sp.view ?? 'isldash'
   const today = new Date().toISOString().slice(0, 10)
   const selectedDate = sp.date ?? today
