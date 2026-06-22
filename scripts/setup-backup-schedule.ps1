@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $TaskName   = 'ISL Nightly Backup'
 $ScriptPath = Join-Path $PSScriptRoot 'backup-isl.ps1'
-$RunTime    = '23:00'
+$RunTime    = '17:30'   # 17:30 WIB
 
 if (-not (Test-Path $ScriptPath)) { throw "backup-isl.ps1 tidak ditemukan di $ScriptPath" }
 
