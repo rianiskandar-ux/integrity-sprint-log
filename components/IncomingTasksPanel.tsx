@@ -27,6 +27,7 @@ export default function IncomingTasksPanel() {
   const [toast, setToast]       = useState<string | null>(null)
   const [filter, setFilter]     = useState<'open' | 'all'>('open')
   const [chatTask, setChatTask] = useState<TaskChatContext | null>(null)
+  const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     fetch('/api/op/cache')
@@ -37,6 +38,28 @@ export default function IncomingTasksPanel() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
+  }, [])
+
+  // Tasks yang sudah punya session pending (sudah dipush ke Push Queue) → tandai di Incoming
+  useEffect(() => {
+    function loadQueued() {
+      fetch('/api/isl/sessions?status=pending')
+        .then(r => r.json())
+        .then(d => {
+          const ids = ((d.sessions ?? []) as { opTaskId?: number | null }[])
+            .map(s => s.opTaskId)
+            .filter((x): x is number => typeof x === 'number')
+          setQueuedIds(new Set(ids))
+        })
+        .catch(() => {})
+    }
+    loadQueued()
+    window.addEventListener('isl:session-updated', loadQueued)
+    window.addEventListener('isl:cache-refreshed', loadQueued)
+    return () => {
+      window.removeEventListener('isl:session-updated', loadQueued)
+      window.removeEventListener('isl:cache-refreshed', loadQueued)
+    }
   }, [])
 
   async function updateStatus(task: CachedWorkPackage, islStatus: string) {
@@ -151,8 +174,13 @@ export default function IncomingTasksPanel() {
         <div className="space-y-3">
           {shown.map(task => {
             const statusCfg = ISL_STATUS_CONFIG[task.islStatus] ?? ISL_STATUS_CONFIG.new
+            const isQueued = queuedIds.has(task.id)
             return (
-              <div key={task.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 hover:border-gray-300 dark:hover:border-gray-600 transition">
+              <div key={task.id} className={`rounded-xl border p-4 transition ${
+                isQueued
+                  ? 'bg-gray-100 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 opacity-70'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+              }`}>
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
 
@@ -169,6 +197,11 @@ export default function IncomingTasksPanel() {
                       {task.sprintName && (
                         <span className="text-[10px] text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded">
                           🏃 {task.sprintName}
+                        </span>
+                      )}
+                      {isQueued && (
+                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full">
+                          📤 Di Push Queue
                         </span>
                       )}
                     </div>
@@ -194,6 +227,13 @@ export default function IncomingTasksPanel() {
 
                   {/* Status quick-set */}
                   <div className="flex-shrink-0 flex flex-col gap-1.5 min-w-[88px]">
+                    {isQueued ? (
+                      <div className="flex flex-col gap-1 items-center text-center px-2 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300">📤 Sudah di Queue</span>
+                        <span className="text-[9px] text-amber-600/70 dark:text-amber-400/60 leading-tight">Selesaikan di Push Queue</span>
+                      </div>
+                    ) : (
+                    <>
                     <button
                       onClick={() => setChatTask({
                         id: `incoming-${task.id}`,
@@ -234,6 +274,8 @@ export default function IncomingTasksPanel() {
                         className="px-2 py-1 text-[10px] font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 disabled:opacity-50 transition">
                         ▶ Lanjut
                       </button>
+                    )}
+                    </>
                     )}
                   </div>
                 </div>
