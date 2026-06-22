@@ -48,7 +48,32 @@ try {
   Log "Config dump OK"
 } catch { Log "WARN: gagal copy config: $_" }
 
-# 3) Retensi 7 hari: hapus file apapun yang lebih tua dari KeepDays.
+# 3) Data sprint markdown (tidak ada di Git) — zip overwrite latest
+$SprintDir = if ($env:ISL_SPRINT_DIR) { $env:ISL_SPRINT_DIR } else { 'C:\Users\user199\ai-apps\daily-sprints' }
+if (Test-Path $SprintDir) {
+  Add-Type -AssemblyName System.IO.Compression
+  $SprintZip = Join-Path $BackupRoot 'daily-sprints-latest.zip'
+  if (Test-Path $SprintZip) { Remove-Item $SprintZip -Force }
+  $n = 0
+  $fs = [System.IO.File]::Create($SprintZip)
+  $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+  try {
+    Get-ChildItem $SprintDir -File | ForEach-Object {
+      try {
+        # buka shared-read (file di-lock bind-mount/Drive), stream langsung ke entry zip
+        $src = [System.IO.File]::Open($_.FullName, 'Open', 'Read', 'ReadWrite')
+        $entry = $zip.CreateEntry($_.Name)
+        $es = $entry.Open()
+        $src.CopyTo($es)
+        $es.Dispose(); $src.Dispose()
+        $n++
+      } catch { Log "  skip (locked): $($_.Name)" }
+    }
+  } finally { $zip.Dispose(); $fs.Dispose() }
+  Log "Sprint markdown OK ($n file -> daily-sprints-latest.zip)"
+} else { Log "WARN: folder sprint tidak ada: $SprintDir" }
+
+# 5) Retensi 7 hari: hapus file apapun yang lebih tua dari KeepDays.
 #    File 'latest' selalu baru (ditimpa tiap run) jadi selalu lolos → tersisa 2 file.
 #    File timestamped lama (versi sebelumnya) kebersihan otomatis setelah 7 hari.
 $cutoff = (Get-Date).AddDays(-$KeepDays)
