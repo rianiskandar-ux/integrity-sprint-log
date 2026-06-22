@@ -5,16 +5,20 @@
   Jalankan manual:   powershell -ExecutionPolicy Bypass -File scripts\backup-isl.ps1
   Dijadwalkan:       lihat scripts\setup-backup-schedule.ps1
 
+  Cloud: folder backup ada di dalam ai-apps yang sudah di-sync Google Drive for Desktop,
+  jadi backup otomatis ke-upload ke Drive TANPA rclone. ISL_RCLONE_REMOTE default kosong.
+  (Set ISL_RCLONE_REMOTE kalau mau pakai rclone alih-alih Drive Desktop.)
+
   Env opsional:
     ISL_BACKUP_DIR     folder backup lokal (default: C:\Users\user199\ai-apps\backups)
-    ISL_RCLONE_REMOTE  remote rclone (default: gdrive:ISL-Backups). Kosongkan utk skip cloud.
+    ISL_RCLONE_REMOTE  remote rclone (default: KOSONG = pakai Drive Desktop sync)
     ISL_BACKUP_KEEP     hari retensi (default: 30)
 #>
 
 $ErrorActionPreference = 'Stop'
 
 $BackupRoot   = if ($env:ISL_BACKUP_DIR)    { $env:ISL_BACKUP_DIR }    else { 'C:\Users\user199\ai-apps\backups' }
-$RcloneRemote = if ($null -ne $env:ISL_RCLONE_REMOTE) { $env:ISL_RCLONE_REMOTE } else { 'gdrive:ISL-Backups' }
+$RcloneRemote = if ($null -ne $env:ISL_RCLONE_REMOTE) { $env:ISL_RCLONE_REMOTE } else { '' }  # '' = pakai Drive Desktop
 $KeepDays     = if ($env:ISL_BACKUP_KEEP)   { [int]$env:ISL_BACKUP_KEEP } else { 30 }
 
 $PgContainer  = 'isl-postgres'
