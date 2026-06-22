@@ -20,7 +20,9 @@
 
 $ErrorActionPreference = 'Stop'
 
-$BackupRoot   = if ($env:ISL_BACKUP_DIR)    { $env:ISL_BACKUP_DIR }    else { 'C:\Users\user199\ai-apps\backups' }
+# Default backup dir = di DALAM daily-sprints (satu-satunya folder yang di-sync Drive Desktop),
+# subfolder _isl-backup. Jadi dump DB + config ikut naik ke Drive bareng markdown sprint.
+$BackupRoot   = if ($env:ISL_BACKUP_DIR)    { $env:ISL_BACKUP_DIR }    else { 'C:\Users\user199\ai-apps\daily-sprints\_isl-backup' }
 $RcloneRemote = if ($null -ne $env:ISL_RCLONE_REMOTE) { $env:ISL_RCLONE_REMOTE } else { '' }  # '' = pakai Drive Desktop
 $KeepDays     = if ($env:ISL_BACKUP_KEEP)   { [int]$env:ISL_BACKUP_KEEP } else { 7 }
 
@@ -48,9 +50,13 @@ try {
   Log "Config dump OK"
 } catch { Log "WARN: gagal copy config: $_" }
 
-# 3) Data sprint markdown (tidak ada di Git) — zip overwrite latest
+# 3) Data sprint markdown (tidak ada di Git) — zip overwrite latest.
+#    DILEWATI bila backup dir ada di dalam folder sprint (markdown sudah ke-sync raw → zip redundan).
 $SprintDir = if ($env:ISL_SPRINT_DIR) { $env:ISL_SPRINT_DIR } else { 'C:\Users\user199\ai-apps\daily-sprints' }
-if (Test-Path $SprintDir) {
+$backupInsideSprint = (Resolve-Path $BackupRoot -ErrorAction SilentlyContinue).Path -like (Join-Path (Resolve-Path $SprintDir -ErrorAction SilentlyContinue).Path '*')
+if ($backupInsideSprint) {
+  Log "Sprint markdown sudah ke-sync raw (backup di dalam daily-sprints) -> zip dilewati"
+} elseif (Test-Path $SprintDir) {
   Add-Type -AssemblyName System.IO.Compression
   $SprintZip = Join-Path $BackupRoot 'daily-sprints-latest.zip'
   if (Test-Path $SprintZip) { Remove-Item $SprintZip -Force }
