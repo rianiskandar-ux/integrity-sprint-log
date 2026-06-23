@@ -27,7 +27,7 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { opToken: token, opBaseUrl: base, uid } = ctx
 
-  const sessions = await getAllSessions()
+  const sessions = await getAllSessions(uid)
   const candidates = sessions.filter(
     s => s.opTaskId && s.pushStatus === 'pushed' && s.taskStatus !== 'done' && s.taskStatus !== 'abandoned'
       && (process.env.ISL_MULTIUSER !== '1' || s.userId === uid || s.userId == null)

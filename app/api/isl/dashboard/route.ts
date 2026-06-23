@@ -6,7 +6,7 @@ import { getRequestContext } from '@/lib/request-auth'
 export async function GET() {
   try {
     const ctx      = await getRequestContext()
-    const sessions = await getAllSessions()
+    const sessions = await getAllSessions(ctx?.uid)
     const cache    = loadCache(ctx?.uid)
 
     // Push Queue — pending sessions awaiting approval

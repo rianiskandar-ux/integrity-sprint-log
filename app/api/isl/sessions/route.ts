@@ -14,12 +14,7 @@ export async function GET(req: Request) {
     const validate = searchParams.get('needsValidation')
 
     const ctx = await getRequestContext()
-    let sessions = await getAllSessions()
-
-    // Isolate by userId when multi-user is active and user is known
-    if (ctx?.uid && process.env.ISL_MULTIUSER === '1') {
-      sessions = sessions.filter(s => s.userId === ctx.uid || s.userId == null)
-    }
+    let sessions = await getAllSessions(ctx?.uid)
 
     if (taskId)   sessions = sessions.filter(s => s.opTaskId === Number(taskId))
     if (status)   sessions = sessions.filter(s => s.pushStatus === status)

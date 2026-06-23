@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
   const ctx = await getRequestContext()
 
-  const islSessions = (await getAllSessions())
+  const islSessions = (await getAllSessions(ctx?.uid))
     .filter(s => s.opTaskId === taskId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(s => ({

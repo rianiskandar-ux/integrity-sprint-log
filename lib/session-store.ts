@@ -1,5 +1,5 @@
 import { db, sessions } from './db'
-import { eq, desc } from 'drizzle-orm'
+import { eq, desc, isNull, or, sql } from 'drizzle-orm'
 
 export interface SessionLog {
   id: string
@@ -77,9 +77,21 @@ function rowToLog(r: typeof sessions.$inferSelect): SessionLog {
   }
 }
 
-export async function getAllSessions(): Promise<SessionLog[]> {
+export async function getAllSessions(uid?: number | null): Promise<SessionLog[]> {
+  if (uid != null) {
+    const rows = await db.select().from(sessions)
+      .where(eq(sessions.userId, uid))
+      .orderBy(desc(sessions.startedAt))
+    return rows.map(rowToLog)
+  }
   const rows = await db.select().from(sessions).orderBy(desc(sessions.startedAt))
   return rows.map(rowToLog)
+}
+
+/** One-time migration: assign legacy null-userId sessions to the owner (uid=1). */
+export async function migrateNullSessionsToOwner(): Promise<number> {
+  const result = await db.execute(sql`UPDATE sessions SET user_id = 1 WHERE user_id IS NULL`)
+  return (result as unknown as { rowCount?: number }).rowCount ?? 0
 }
 
 export async function getSession(id: string): Promise<SessionLog | null> {

@@ -1,20 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getAllSessions, saveSession } from '@/lib/session-store'
 import { sendTelegram, getTelegramConfig, notifPushed } from '@/lib/telegram'
-
-const OP_BASE  = process.env.OP_BASE_URL ?? ''
-const OP_TOKEN = process.env.OP_API_TOKEN ?? ''
+import { getRequestContext } from '@/lib/request-auth'
 
 function toISODuration(minutes: number): string {
   const h = Math.floor(minutes / 60), m = minutes % 60
   return h > 0 ? `PT${h}H${m > 0 ? m + 'M' : ''}` : `PT${m}M`
-}
-
-function opHeaders() {
-  return {
-    Authorization: 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64'),
-    'Content-Type': 'application/json',
-  }
 }
 
 function durLabel(mins: number): string {
@@ -120,6 +111,9 @@ function clusterIntoTasks(sessionTitle: string, bullets: string[], totalMins: nu
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
+  const ctx = await getRequestContext()
+  const OP_TOKEN = ctx?.opToken || process.env.OP_API_TOKEN || ''
+  const OP_BASE  = ctx?.opBaseUrl || process.env.OP_BASE_URL || ''
   if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
   const body = await req.json() as {
@@ -139,10 +133,13 @@ export async function POST(req: Request) {
     }
   }
 
-  const session = (await getAllSessions()).find(s => s.id === body.sessionId)
+  const session = (await getAllSessions(ctx?.uid)).find(s => s.id === body.sessionId)
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
-  const headers = opHeaders()
+  const headers = {
+    Authorization: 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64'),
+    'Content-Type': 'application/json',
+  }
   const date    = (session.startedAt ?? new Date().toISOString()).slice(0, 10)
   const mins    = session.actualMins ?? session.estimatedMins ?? 30
 

@@ -56,12 +56,10 @@ export async function POST(req: Request) {
 
   const workPackages = Array.from(wpMap.values())
 
-  const allSessions = await getAllSessions()
-  const daySessions = allSessions.filter(s => {
-    if (s.date !== today || s.pushStatus === 'discarded') return false
-    if (ctx && process.env.ISL_MULTIUSER === '1') return s.userId === ctx.uid || s.userId == null
-    return true
-  })
+  const allSessions = await getAllSessions(ctx?.uid)
+  const daySessions = allSessions.filter(s =>
+    s.date === today && s.pushStatus !== 'discarded'
+  )
 
   const sessionLines: string[] = []
   for (const s of daySessions) {

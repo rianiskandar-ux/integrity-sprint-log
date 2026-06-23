@@ -9,14 +9,14 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
+    const ctx  = await getRequestContext()
 
-    const hubSessions = (await getAllSessions()).filter(s => s.pushStatus === 'hub' || s.pushStatus === 'live')
+    const hubSessions = (await getAllSessions(ctx?.uid)).filter(s => s.pushStatus === 'hub' || s.pushStatus === 'live')
     const kbEntries = (await getAllKBEntries()).filter(e => e.triageStatus === 'hub')
 
     // Load sprint context for AI suggest
     let sprintContext = null
     try {
-      const ctx   = await getRequestContext()
       const cache = loadCache(ctx?.uid)
       const today = new Date().toISOString().slice(0, 10)
       const currentSprint = (cache.sprints ?? []).find((s: { isCurrent?: boolean; startDate?: string; endDate?: string }) =>
@@ -68,7 +68,8 @@ export async function PATCH(req: Request) {
     // action: 'queue' | 'backlog' | 'discard'
 
     if (sessionId) {
-      const allSessions = await getAllSessions()
+      const patchCtx    = await getRequestContext()
+      const allSessions = await getAllSessions(patchCtx?.uid)
       const session = allSessions.find(s => s.id === sessionId || s.sessionId === sessionId)
       if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 

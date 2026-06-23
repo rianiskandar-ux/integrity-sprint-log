@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   // Pending push queue
   const { getAllSessions } = await import('@/lib/session-store')
-  const pendingSessions = (await getAllSessions())
+  const pendingSessions = (await getAllSessions(ctx?.uid))
     .filter(s => s.pushStatus === 'pending')
     .slice(0, 10)
     .map(s => `- ${s.title} (${s.date})`)

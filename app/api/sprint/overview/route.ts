@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     const endDateParam   = searchParams.get('endDate') ?? ''
 
     const ctx      = await getRequestContext()
-    const sessions = await getAllSessions()
+    const sessions = await getAllSessions(ctx?.uid)
     const cache    = loadCache(ctx?.uid)
 
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null
