@@ -7,15 +7,10 @@ import { getRequestContext } from '@/lib/request-auth'
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
-  const cfg = getLLMConfig()
-  if (!cfg) {
-    return new Response(JSON.stringify({ error: 'AI not configured. Go to Settings and add an API key.' }), {
-      status: 400, headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
   const body = await req.json() as {
     messages: { role: string; content: string }[]
+    provider?: string   // optional per-chat override (claude-cli | tokenrouter | openmodel | …)
+    model?: string      // optional per-chat model override
     taskContext?: {
       id?: string; title?: string; opTaskId?: number | null
       opStoryId?: number | null; sprintName?: string | null
@@ -25,6 +20,28 @@ export async function POST(req: NextRequest) {
   const { messages, taskContext } = body
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response(JSON.stringify({ error: 'No messages provided' }), { status: 400 })
+  }
+
+  // Resolve the effective provider/key/model. A per-chat override (body.provider)
+  // wins over the global Settings config so the model picker inside each chat works.
+  let provider: string, apiKey: string, model: string
+  if (body.provider) {
+    provider = body.provider
+    if      (provider === 'claude-cli')  apiKey = ''
+    else if (provider === 'tokenrouter') apiKey = process.env.AI_CHAT_TR_KEY || ''
+    else if (provider === 'openmodel')   apiKey = process.env.AI_CHAT_OM_KEY || ''
+    else                                 apiKey = getLLMConfig()?.apiKey || ''
+    model = body.model || getDefaultModel(provider)
+  } else {
+    const cfg = getLLMConfig()
+    if (!cfg) {
+      return new Response(JSON.stringify({ error: 'AI not configured. Go to Settings and add an API key.' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    provider = cfg.provider
+    apiKey   = cfg.apiKey
+    model    = cfg.model || getDefaultModel(cfg.provider)
   }
 
   // Build ISL context for system prompt
@@ -81,10 +98,8 @@ export async function POST(req: NextRequest) {
     `Be concise and practical. Use markdown for lists. Respond in the same language the user writes in.`,
   ].filter(Boolean).join('\n')
 
-  const model = cfg.model || getDefaultModel(cfg.provider)
-
   try {
-    const stream = await callStream(cfg.provider, cfg.apiKey, model, systemPrompt, messages)
+    const stream = await callStream(provider, apiKey, model, systemPrompt, messages)
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
@@ -107,6 +122,7 @@ export async function POST(req: NextRequest) {
 
 function getDefaultModel(provider: string): string {
   const map: Record<string, string> = {
+    'claude-cli': 'claude',
     anthropic:  'claude-haiku-4-5-20251001',
     openai:     'gpt-4o-mini',
     google:     'gemini-2.0-flash-exp',
@@ -116,6 +132,8 @@ function getDefaultModel(provider: string): string {
     together:   'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
     ollama:     'llama3.2',
     '9router':  'claude-sonnet-4-6',
+    tokenrouter:'MiniMax-M3',
+    openmodel:  'deepseek-v4-flash',
   }
   return map[provider] ?? 'gpt-4o-mini'
 }
@@ -129,6 +147,8 @@ function resolveBase(provider: string): string {
     together:   'https://api.together.xyz/v1',
     ollama:     'http://localhost:11434/v1',
     '9router':  'http://localhost:20128/v1',
+    tokenrouter:process.env.AI_CHAT_TR_BASE || 'https://api.tokenrouter.com/v1',
+    openmodel:  process.env.AI_CHAT_OM_BASE || 'https://api.openmodel.ai/v1',
   }
   return map[provider] ?? 'https://api.openai.com/v1'
 }

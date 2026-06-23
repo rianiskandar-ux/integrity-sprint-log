@@ -24,11 +24,10 @@ interface Props {
   onClose: () => void
   onPush?: (id: string) => void
   onAddToQueue?: (bullets: string[]) => void
-  docked?: boolean        // floating window (no backdrop) so multiple can stay open in parallel
-  offsetIndex?: number     // horizontal slot when docked — shifts each window left
+  embedded?: boolean      // render just the panel (no fixed overlay) to host inside a ChatDock tab
 }
 
-export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, docked, offsetIndex = 0 }: Props) {
+export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, embedded }: Props) {
   const [messages,  setMessages]  = useState<Message[]>([])
   const [input,     setInput]     = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -38,6 +37,18 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, doc
   const streamingIdRef = useRef<string | null>(null)
   const messagesRef = useRef<Message[]>([])
   const [opContext, setOpContext] = useState<string>('')
+
+  // Per-chat model picker — default Claude CLI (local subscription, free)
+  const [aiProvider, setAiProvider] = useState('claude-cli')
+  const [aiModel,    setAiModel]    = useState('claude')
+  const [aiModels,   setAiModels]   = useState<Record<string, string[]>>({ 'claude-cli': ['claude'] })
+
+  useEffect(() => {
+    fetch('/api/ai-chat')
+      .then(r => r.json())
+      .then(d => { if (d.models) setAiModels(d.models) })
+      .catch(() => {})
+  }, [])
 
   // Fetch konteks LIVE dari ticket OP (desc, hierarki, komentar, lampiran) saat buka
   useEffect(() => {
@@ -114,6 +125,8 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, doc
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: history,
+          provider: aiProvider,
+          model:    aiModel,
           taskContext: {
             id:        task.id,
             title:     task.title,
@@ -174,24 +187,21 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, doc
       streamingIdRef.current = null
       abortRef.current = null
     }
-  }, [messages, input, streaming, task])
+  }, [messages, input, streaming, task, opContext, aiProvider, aiModel])
 
   const typeLabel = task.taskType === 'incoming' ? '📥 Incoming' : task.taskType === 'session' ? '📤 Push Queue' : '✨ New'
 
   return (
     <div
-      className={docked
-        ? 'fixed z-40 flex flex-col'
+      className={embedded
+        ? 'w-full h-full flex flex-col'
         : 'fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4'}
-      style={docked
-        ? { bottom: 12, right: 12 + offsetIndex * 364, width: 352, height: 520, maxHeight: '78vh' }
-        : undefined}
-      onClick={docked ? undefined : (e => { if (e.target === e.currentTarget) onClose() })}>
+      onClick={embedded ? undefined : (e => { if (e.target === e.currentTarget) onClose() })}>
       <div
-        className={docked
-          ? 'bg-white dark:bg-gray-900 w-full h-full rounded-2xl shadow-2xl flex flex-col border border-gray-200 dark:border-gray-700 overflow-hidden'
+        className={embedded
+          ? 'bg-white dark:bg-gray-900 w-full h-full flex flex-col overflow-hidden'
           : 'bg-white dark:bg-gray-900 w-full sm:max-w-xl sm:rounded-2xl shadow-2xl flex flex-col'}
-        style={docked ? undefined : { height: '90vh', maxHeight: '720px' }}>
+        style={embedded ? undefined : { height: '90vh', maxHeight: '720px' }}>
 
         {/* Header */}
         <div className="flex items-start gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800"
@@ -238,6 +248,21 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, doc
               ✕
             </button>
           </div>
+        </div>
+
+        {/* Model picker */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Model</span>
+          <select
+            value={`${aiProvider}::${aiModel}`}
+            onChange={e => { const [p, m] = e.target.value.split('::'); setAiProvider(p); setAiModel(m) }}
+            className="flex-1 text-[11px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-300">
+            {Object.entries(aiModels).map(([prov, list]) => (
+              <optgroup key={prov} label={prov === 'claude-cli' ? 'Claude CLI (gratis)' : prov}>
+                {list.map(m => <option key={`${prov}::${m}`} value={`${prov}::${m}`}>{m}</option>)}
+              </optgroup>
+            ))}
+          </select>
         </div>
 
         {/* Messages */}

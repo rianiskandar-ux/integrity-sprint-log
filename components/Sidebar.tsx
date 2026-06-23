@@ -5,7 +5,7 @@ import { format, startOfWeek, parseISO } from 'date-fns'
 import { loadAppConfig } from '@/lib/op-config'
 import { useI18n } from '@/lib/i18n'
 
-const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog', 'aichat'])
+const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
 const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
 
 interface Props {
@@ -187,7 +187,6 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <NavItem id="dailyhub"  icon="🧠" label={t('nav.dailyhub')}  shortcut="H" color="text-indigo-400"  indent={1} />
           <NavItem id="incoming"  icon="📥" label={t('nav.incoming')}  shortcut="I" color="text-blue-400"    indent={1} badge={incomingCount} />
           <NavItem id="pushqueue" icon="📤" label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"   indent={1} badge={queueCount} />
-          <NavItem id="aichat"    icon="🤖" label="AI Chat"            shortcut="K" color="text-fuchsia-400" indent={1} />
 
           {/* Log expandable group */}
           <div>

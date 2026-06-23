@@ -39,6 +39,9 @@ export default function ChatBubble() {
   const [input, setInput]       = useState('')
   const [streaming, setStreaming] = useState(false)
   const [aiReady, setAiReady]       = useState<boolean | null>(null)
+  const [aiProvider, setAiProvider] = useState('claude-cli')
+  const [aiModel,    setAiModel]    = useState('claude')
+  const [aiModels,   setAiModels]   = useState<Record<string, string[]>>({ 'claude-cli': ['claude'] })
   const [taskShortcuts, setShortcuts] = useState<TaskShortcut[]>([])
   const [showWorkspace, setShowWorkspace] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
@@ -50,7 +53,11 @@ export default function ChatBubble() {
     fetch('/api/user-config').then(r => r.json()).then(d => {
       setAiReady(d.llmApiKeySet || ['ollama', '9router', 'claude-cli'].includes(d.llmProvider))
     }).catch(() => setAiReady(false))
+    fetch('/api/ai-chat').then(r => r.json()).then(d => { if (d.models) setAiModels(d.models) }).catch(() => {})
   }, [])
+
+  // Claude CLI is local and always usable, regardless of the saved Settings provider
+  const ready = aiProvider === 'claude-cli' ? true : aiReady
 
   // Load chat history from server on mount
   useEffect(() => {
@@ -111,7 +118,7 @@ export default function ChatBubble() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, provider: aiProvider, model: aiModel }),
         signal: abortRef.current.signal,
       })
       if (!res.ok) {
@@ -153,7 +160,7 @@ export default function ChatBubble() {
         return prev
       })
     }
-  }, [messages, streaming])
+  }, [messages, streaming, aiProvider, aiModel])
 
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) }
@@ -171,13 +178,13 @@ export default function ChatBubble() {
           onClick={() => setOpen(o => !o)}
           className="relative w-12 h-12 rounded-full shadow-xl flex items-center justify-center text-white text-xl transition hover:scale-110 active:scale-95"
           style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}
-          title={`ISL Assistant — AI ${aiReady === null ? 'checking…' : aiReady ? 'Ready ✅' : 'Not configured ❌ (open Settings)'}`}>
+          title={`ISL Assistant — AI ${ready === null ? 'checking…' : ready ? 'Ready ✅' : 'Pilih Claude CLI'}`}>
           {open ? '✕' : '✦'}
           {/* AI status dot */}
           <span className={`absolute top-0.5 right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-            aiReady === null  ? 'bg-yellow-400 animate-pulse' :
-            aiReady           ? 'bg-emerald-400' :
-                                'bg-red-500 animate-pulse'
+            ready === null  ? 'bg-yellow-400 animate-pulse' :
+            ready           ? 'bg-emerald-400' :
+                              'bg-red-500 animate-pulse'
           }`} />
         </button>
       </div>
@@ -194,7 +201,7 @@ export default function ChatBubble() {
           <div className="flex-1">
             <p className="text-xs font-bold text-white leading-none">ISL Assistant</p>
             <p className="text-[9px] text-blue-200/70">
-              {aiReady === null ? 'Checking…' : aiReady ? 'Ready' : 'Not configured'}
+              {ready === null ? 'Checking…' : ready ? 'Ready' : 'Pilih Claude CLI'}
             </p>
           </div>
           {messages.length > 0 && (
@@ -203,6 +210,21 @@ export default function ChatBubble() {
               Clear
             </button>
           )}
+        </div>
+
+        {/* Model picker */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 flex-shrink-0">
+          <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">Model</span>
+          <select
+            value={`${aiProvider}::${aiModel}`}
+            onChange={e => { const [p, m] = e.target.value.split('::'); setAiProvider(p); setAiModel(m) }}
+            className="flex-1 text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-300">
+            {Object.entries(aiModels).map(([prov, list]) => (
+              <optgroup key={prov} label={prov === 'claude-cli' ? 'Claude CLI (gratis)' : prov}>
+                {list.map(m => <option key={`${prov}::${m}`} value={`${prov}::${m}`}>{m}</option>)}
+              </optgroup>
+            ))}
+          </select>
         </div>
 
         {/* Messages */}
@@ -214,16 +236,13 @@ export default function ChatBubble() {
                 <p className="text-xs font-bold text-gray-700 dark:text-gray-200">ISL Assistant</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">Ask about tasks, sprint, or anything</p>
               </div>
-              {aiReady === false && (
+              {ready === false && (
                 <div className="w-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2 space-y-1.5">
-                  <p className="text-[10px] font-bold text-red-700 dark:text-red-300">❌ AI not configured</p>
-                  <p className="text-[9px] text-red-600 dark:text-red-400">Set <strong>LLM Provider</strong> ke <code className="bg-red-100 dark:bg-red-900 px-1 rounded">claude-cli</code> di Settings — tidak perlu API key.</p>
-                  <a href="/settings" className="block w-full text-center text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg py-1.5 transition">
-                    Open Settings →
-                  </a>
+                  <p className="text-[10px] font-bold text-red-700 dark:text-red-300">❌ Provider ini butuh API key</p>
+                  <p className="text-[9px] text-red-600 dark:text-red-400">Pilih <strong>Claude CLI (gratis)</strong> di dropdown Model di atas — tidak perlu API key.</p>
                 </div>
               )}
-              {aiReady && (
+              {ready && (
                 <div className="w-full space-y-1.5">
                   {['What are my open tasks?', 'Summarize today', 'Sprint status?'].map(p => (
                     <button key={p} onClick={() => send(p)}
@@ -313,8 +332,8 @@ export default function ChatBubble() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
-              placeholder={aiReady === false ? 'Configure AI first…' : 'Ask anything… (Enter)'}
-              disabled={!aiReady || aiReady === null}
+              placeholder={ready === false ? 'Pilih Claude CLI di Model…' : 'Ask anything… (Enter)'}
+              disabled={!ready || ready === null}
               rows={1}
               className="flex-1 resize-none rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition disabled:opacity-40 max-h-20 overflow-y-auto"
               style={{ minHeight: '34px' }}
@@ -330,7 +349,7 @@ export default function ChatBubble() {
                 ■
               </button>
             ) : (
-              <button onClick={() => send(input)} disabled={!input.trim() || !aiReady}
+              <button onClick={() => send(input)} disabled={!input.trim() || !ready}
                 className="flex-shrink-0 w-8 h-8 rounded-xl text-white flex items-center justify-center text-sm disabled:opacity-30 transition"
                 style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}>
                 ↑

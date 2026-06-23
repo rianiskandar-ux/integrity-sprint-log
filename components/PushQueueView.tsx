@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useI18n } from '@/lib/i18n'
-import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
+import { type TaskChatContext } from './TaskChatModal'
+import ChatDock from './ChatDock'
 
 interface PendingSession {
   id: string
@@ -754,16 +755,7 @@ export default function PushQueueView() {
         </div>
       )}
 
-      {chatTasks.map((ct, i) => (
-        <TaskChatModal
-          key={ct.id}
-          task={ct}
-          docked
-          offsetIndex={i}
-          onClose={() => closeChat(ct.id)}
-          onPush={() => closeChat(ct.id)}
-        />
-      ))}
+      <ChatDock chats={chatTasks} onClose={closeChat} onPush={closeChat} />
     </div>
   )
 }

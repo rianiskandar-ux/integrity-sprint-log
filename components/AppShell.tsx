@@ -28,7 +28,6 @@ import StaleBacklogView from './StaleBacklogView'
 import SprintPlanView from './SprintPlanView'
 import PushQueueView from './PushQueueView'
 import ISLDashboard from './ISLDashboard'
-import AIChatView from './AIChatView'
 import FlowModal from './FlowModal'
 import ChatBubble from './ChatBubble'
 import SprintReportModal from './SprintReportModal'
@@ -336,7 +335,6 @@ export default function AppShell({
       else if (e.key === 'l') navigate({ view: 'skills' })
       else if (e.key === 'g') navigate({ view: 'dailylog' })
       else if (e.key === 'c') navigate({ view: 'chats' })
-      else if (e.key === 'k') navigate({ view: 'aichat' })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -526,7 +524,7 @@ export default function AppShell({
         )}
 
         {/* View content */}
-        <main className={`flex-1 p-4 lg:p-6 ${view === 'isldash' || view === 'chats' || view === 'aichat' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 p-4 lg:p-6 ${view === 'isldash' || view === 'chats' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           {view === 'chats' && <div className="flex-1 min-h-0"><ChatsView /></div>}
           {view === 'dailyhub' && <DailyHub />}
           {view === 'sprint' && (
@@ -549,7 +547,6 @@ export default function AppShell({
           {view === 'backlog'   && <StaleBacklogView onToast={msg => { setToast(msg); setTimeout(() => setToast(null), 3000) }} />}
           {view === 'sprintplan' && <SprintPlanView />}
           {view === 'pushqueue'  && <PushQueueView />}
-          {view === 'aichat'     && <div className="flex-1 min-h-0 overflow-hidden flex flex-col"><AIChatView /></div>}
         </main>
       </div>
 
