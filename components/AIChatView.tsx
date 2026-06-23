@@ -3,20 +3,22 @@ import { useEffect, useRef, useState } from 'react'
 
 type Message = { role: 'user' | 'assistant'; content: string }
 
-type ProviderKey = 'tokenrouter' | 'openmodel'
+type ProviderKey = 'claude-cli' | 'tokenrouter' | 'openmodel'
 
 const PROVIDER_LABELS: Record<ProviderKey, string> = {
-  tokenrouter: 'TokenRouter',
-  openmodel:   'OpenModel',
+  'claude-cli': 'Claude CLI (gratis)',
+  tokenrouter:  'TokenRouter',
+  openmodel:    'OpenModel',
 }
 
 export default function AIChatView() {
-  const [provider, setProvider]   = useState<ProviderKey>('tokenrouter')
+  const [provider, setProvider]   = useState<ProviderKey>('claude-cli')
   const [models, setModels]       = useState<Record<ProviderKey, string[]>>({
-    tokenrouter: ['gpt-4o-mini'],
-    openmodel:   ['deepseek-v4-flash'],
+    'claude-cli': ['claude'],
+    tokenrouter:  [],
+    openmodel:    ['deepseek-v4-flash'],
   })
-  const [model, setModel]         = useState('gpt-4o-mini')
+  const [model, setModel]         = useState('claude')
   const [messages, setMessages]   = useState<Message[]>([])
   const [input, setInput]         = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -29,7 +31,7 @@ export default function AIChatView() {
       .then(r => r.json())
       .then((d: { models: Record<ProviderKey, string[]> }) => {
         setModels(d.models)
-        setModel(d.models.tokenrouter?.[0] ?? 'gpt-4o-mini')
+        setModel(d.models['claude-cli']?.[0] ?? 'claude')
       })
       .catch(() => {})
   }, [])

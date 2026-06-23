@@ -88,8 +88,13 @@ export async function getAllSessions(uid?: number | null): Promise<SessionLog[]>
   return rows.map(rowToLog)
 }
 
-/** One-time migration: assign legacy null-userId sessions to the owner (uid=1). */
+/**
+ * Legacy one-shot: assign null-userId sessions to the owner (uid=1).
+ * UNSAFE in multi-user mode — null rows may belong to ANY member, so vacuuming
+ * them into the owner would mis-attribute team data. No-op when multi-user is on.
+ */
 export async function migrateNullSessionsToOwner(): Promise<number> {
+  if (process.env.ISL_MULTIUSER === '1') return 0
   const result = await db.execute(sql`UPDATE sessions SET user_id = 1 WHERE user_id IS NULL`)
   return (result as unknown as { rowCount?: number }).rowCount ?? 0
 }

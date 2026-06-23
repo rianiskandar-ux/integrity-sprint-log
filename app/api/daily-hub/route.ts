@@ -37,10 +37,15 @@ export async function GET(req: Request) {
 // POST /api/daily-hub — save KB entry dari session
 export async function POST(req: Request) {
   try {
+    const ctx = await getRequestContext()
+    if (process.env.ISL_MULTIUSER === '1' && !ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const body = await req.json()
     const now = new Date().toISOString()
     const entry = {
       id: createKBId(),
+      userId: ctx?.uid ?? null,
       sessionId: body.sessionId,
       date: body.date ?? now.slice(0, 10),
       title: body.title ?? 'Untitled',

@@ -33,6 +33,11 @@ export async function POST(req: Request) {
     if (body.bullets && !Array.isArray(body.bullets)) body.bullets = [String(body.bullets)]
 
     const ctx = await getRequestContext()
+    // Multi-user: every write must belong to an authenticated user. Without this,
+    // a null ctx would write userId=null (orphan) or trust a client-supplied userId.
+    if (process.env.ISL_MULTIUSER === '1' && !ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const now  = new Date().toISOString()
     const date = (body.startedAt ?? now).slice(0, 10)
 
@@ -68,8 +73,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, session: updated })
     }
 
-    // Tag session with the logged-in user's uid (falls back to null)
-    const uid = ctx?.uid ?? ('userId' in body ? (body.userId ?? null) : null)
+    // Tag session with the authenticated user's uid. Never trust client body.userId.
+    const uid = ctx?.uid ?? null
 
     const cache = loadCache(ctx?.uid)
     const session: SessionLog = {
