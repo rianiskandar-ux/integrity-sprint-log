@@ -129,14 +129,19 @@ export default function AppShell({
   useEffect(() => {
     const s = loadSettings()
     setUserName(s.userName.split(' ')[0])
-    // Migration: skip wizard if user has already configured a non-default identity
-    if (!s.setupDone && s.userId === 8 && !s.opApiToken && s.userName === 'Rian Iskandar') {
-      // Only show wizard for fresh/default config
-      setShowSetup(true)
-    } else if (!s.setupDone) {
-      // Existing user — silently mark done
-      saveSettings({ ...s, setupDone: true })
-    }
+    // Multi-user mode: auth + identity already handled by Login page — never show wizard
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.multiUser) return  // skip wizard in multi-user mode
+      if (!s.setupDone && s.userId === 8 && !s.opApiToken && s.userName === 'Rian Iskandar') {
+        setShowSetup(true)
+      } else if (!s.setupDone) {
+        saveSettings({ ...s, setupDone: true })
+      }
+    }).catch(() => {
+      if (!s.setupDone && s.userId === 8 && !s.opApiToken && s.userName === 'Rian Iskandar') {
+        setShowSetup(true)
+      }
+    })
   }, [])
 
   // Multi-user: fetch session info for logout capability

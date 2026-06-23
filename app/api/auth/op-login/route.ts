@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { encrypt } from '@/lib/crypto'
 import { makeUserToken, USER_COOKIE, USER_TTL_MS } from '@/lib/auth'
 import { getOpBaseUrl } from '@/lib/user-config'
+import { loadCache, rebuildCache } from '@/lib/op-cache'
 
 export const runtime = 'nodejs'
 
@@ -56,5 +57,15 @@ export async function POST(req: Request) {
     httpOnly: true, sameSite: 'lax', secure: false, path: '/',
     maxAge: Math.floor(USER_TTL_MS / 1000),
   })
+
+  // 5) Auto-rebuild cache in background on first login (non-blocking)
+  const existingCache = loadCache(userRow.id)
+  if (!existingCache.lastSync) {
+    const defaultProjects = ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
+    setImmediate(() => {
+      rebuildCache(opToken, base, defaultProjects, opUserId, name).catch(() => {/* silent */})
+    })
+  }
+
   return res
 }
