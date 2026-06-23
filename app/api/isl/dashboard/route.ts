@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getAllSessions } from '@/lib/session-store'
 import { loadCache } from '@/lib/op-cache'
+import { getRequestContext } from '@/lib/request-auth'
 
 export async function GET() {
   try {
+    const ctx      = await getRequestContext()
     const sessions = await getAllSessions()
-    const cache    = loadCache()
+    const cache    = loadCache(ctx?.uid)
 
     // Push Queue — pending sessions awaiting approval
     const queueSessions = sessions.filter(s => s.pushStatus === 'pending')

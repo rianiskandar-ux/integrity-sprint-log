@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
 import { callLLM, getLLMConfig } from '@/lib/llm'
+import { getRequestContext } from '@/lib/request-auth'
 
 export async function POST(req: Request) {
   const { taskId } = await req.json()
   if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
 
-  const cache = loadCache()
+  const ctx   = await getRequestContext()
+  const cache = loadCache(ctx?.uid)
   const all   = [...cache.myOpenTasks, ...cache.myClosedTasks]
   const task  = all.find(t => t.id === taskId)
   if (!task) return NextResponse.json({ error: 'Task not found in cache' }, { status: 404 })

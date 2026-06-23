@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { getLLMConfig } from '@/lib/llm'
 import { loadCache, type CachedWorkPackage, type CachedSprint } from '@/lib/op-cache'
 import { loadUserConfig } from '@/lib/user-config'
+import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
 
@@ -27,8 +28,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Build ISL context for system prompt
+  const ctx     = await getRequestContext()
   const userCfg = loadUserConfig()
-  const cache   = loadCache()
+  const cache   = loadCache(ctx?.uid)
   const sprint  = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent)
   const today   = new Date().toISOString().split('T')[0]
   const userId  = userCfg.displayName

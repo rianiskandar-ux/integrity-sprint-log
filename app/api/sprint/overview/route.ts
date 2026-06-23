@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAllSessions } from '@/lib/session-store'
 import { loadCache } from '@/lib/op-cache'
+import { getRequestContext } from '@/lib/request-auth'
 
 export async function GET(req: Request) {
   try {
@@ -9,8 +10,9 @@ export async function GET(req: Request) {
     const startDateParam = searchParams.get('startDate') ?? ''
     const endDateParam   = searchParams.get('endDate') ?? ''
 
+    const ctx      = await getRequestContext()
     const sessions = await getAllSessions()
-    const cache    = loadCache()
+    const cache    = loadCache(ctx?.uid)
 
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null
     const allSprints    = (cache.sprints ?? []) as { id: number; name: string; startDate: string; endDate: string; status: string; projectIdentifier: string; isCurrent: boolean }[]

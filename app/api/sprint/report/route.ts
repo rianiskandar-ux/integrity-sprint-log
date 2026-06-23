@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAllSessions } from '@/lib/session-store'
 import { loadCache } from '@/lib/op-cache'
+import { getRequestContext } from '@/lib/request-auth'
 import { loadUserConfig } from '@/lib/user-config'
 import { getLLMConfig } from '@/lib/llm'
 
@@ -15,8 +16,9 @@ function fmtMins(m: number) {
 // GET /api/sprint/report — returns structured report data
 export async function GET() {
   try {
+    const ctx      = await getRequestContext()
     const sessions = await getAllSessions()
-    const cache    = loadCache()
+    const cache    = loadCache(ctx?.uid)
     const userCfg  = loadUserConfig()
 
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null

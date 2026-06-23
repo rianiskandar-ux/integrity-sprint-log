@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAllSessions, updateSession } from '@/lib/session-store'
 import { getAllKBEntries, saveKBEntry, createKBId } from '@/lib/kb-store'
 import { loadCache } from '@/lib/op-cache'
+import { getRequestContext } from '@/lib/request-auth'
 
 // GET /api/daily-hub — hub sessions + KB entries + AI suggest context
 export async function GET(req: Request) {
@@ -15,7 +16,8 @@ export async function GET(req: Request) {
     // Load sprint context for AI suggest
     let sprintContext = null
     try {
-      const cache = loadCache()
+      const ctx   = await getRequestContext()
+      const cache = loadCache(ctx?.uid)
       const today = new Date().toISOString().slice(0, 10)
       const currentSprint = (cache.sprints ?? []).find((s: { isCurrent?: boolean; startDate?: string; endDate?: string }) =>
         s.isCurrent === true || ((s.startDate ?? '') <= today && (s.endDate ?? '') >= today)
