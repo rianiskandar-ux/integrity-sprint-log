@@ -56,6 +56,8 @@ services:
       - ISL_ENCRYPTION_KEY=${ISL_ENCRYPTION_KEY:-isl-local-aes-key-change-me-2026}
       # Lightweight PIN gate. EMPTY = gate disabled (lockout-safe). Set to enable login.
       - ISL_ACCESS_PIN=${ISL_ACCESS_PIN:-}
+      # Multi-user mode: tiap orang login pakai OP API token sendiri. 1 = aktif.
+      - ISL_MULTIUSER=${ISL_MULTIUSER:-1}
     restart: unless-stopped
 
 volumes:

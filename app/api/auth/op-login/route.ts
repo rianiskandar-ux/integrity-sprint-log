@@ -1,0 +1,60 @@
+import { NextResponse } from 'next/server'
+import { db, users, userSettings } from '@/lib/db'
+import { eq } from 'drizzle-orm'
+import { encrypt } from '@/lib/crypto'
+import { makeUserToken, USER_COOKIE, USER_TTL_MS } from '@/lib/auth'
+import { getOpBaseUrl } from '@/lib/user-config'
+
+export const runtime = 'nodejs'
+
+// POST { opToken } — login multi-user pakai OP API token sendiri.
+// Verify ke OP /users/me → upsert users + userSettings (token terenkripsi) → set session cookie.
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({})) as { opToken?: string }
+  const opToken = (body.opToken ?? '').trim()
+  if (!opToken) return NextResponse.json({ ok: false, error: 'OP token wajib' }, { status: 400 })
+
+  const base = (getOpBaseUrl() || '').replace(/\/$/, '')
+  if (!base) return NextResponse.json({ ok: false, error: 'OP base URL belum dikonfigurasi' }, { status: 400 })
+
+  // 1) Verify token ke OP
+  const auth = 'Basic ' + Buffer.from(`apikey:${opToken}`).toString('base64')
+  const meRes = await fetch(`${base}/api/v3/users/me`, { headers: { Authorization: auth } }).catch(() => null)
+  if (!meRes || !meRes.ok) {
+    return NextResponse.json({ ok: false, error: 'OP token tidak valid' }, { status: 401 })
+  }
+  const me = await meRes.json() as { id: number; name?: string; email?: string; login?: string }
+  const opUserId = me.id
+  const name = me.name ?? me.login ?? `User ${opUserId}`
+  const email = me.email ?? `op-${opUserId}@local`
+
+  // 2) Upsert users (by opUserId)
+  let userRow = (await db.select().from(users).where(eq(users.opUserId, opUserId)).limit(1))[0]
+  if (!userRow) {
+    // email unik — pakai email OP, fallback ke op-<id>@local
+    const existingByEmail = (await db.select().from(users).where(eq(users.email, email)).limit(1))[0]
+    if (existingByEmail) {
+      userRow = (await db.update(users).set({ opUserId, name }).where(eq(users.id, existingByEmail.id)).returning())[0]
+    } else {
+      userRow = (await db.insert(users).values({ email, name, opUserId, role: 'member' }).returning())[0]
+    }
+  }
+
+  // 3) Upsert userSettings (simpan token terenkripsi)
+  const encToken = encrypt(opToken)
+  const existingSettings = (await db.select().from(userSettings).where(eq(userSettings.userId, userRow.id)).limit(1))[0]
+  if (existingSettings) {
+    await db.update(userSettings).set({ opApiToken: encToken, opUserId, opUserName: name, setupDone: true, updatedAt: new Date() }).where(eq(userSettings.userId, userRow.id))
+  } else {
+    await db.insert(userSettings).values({ userId: userRow.id, opApiToken: encToken, opUserId, opUserName: name, setupDone: true })
+  }
+
+  // 4) Set session cookie
+  const token = await makeUserToken({ uid: userRow.id, name, opUserId })
+  const res = NextResponse.json({ ok: true, user: { id: userRow.id, name, opUserId } })
+  res.cookies.set(USER_COOKIE, token, {
+    httpOnly: true, sameSite: 'lax', secure: false, path: '/',
+    maxAge: Math.floor(USER_TTL_MS / 1000),
+  })
+  return res
+}

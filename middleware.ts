@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { verifyToken, AUTH_COOKIE } from '@/lib/session-token'
+import { USER_COOKIE } from '@/lib/auth'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -12,6 +13,13 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/login') ||
     pathname === '/favicon.ico'
   ) {
+    return NextResponse.next()
+  }
+
+  // Multi-user mode: wajib login OP-token (cookie isl-user). Aktif kalau ISL_MULTIUSER=1.
+  if (process.env.ISL_MULTIUSER === '1') {
+    const u = await verifyToken(request.cookies.get(USER_COOKIE)?.value)
+    if (!u) return NextResponse.redirect(new URL('/login', request.url))
     return NextResponse.next()
   }
 
