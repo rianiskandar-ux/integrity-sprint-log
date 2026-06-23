@@ -2,10 +2,45 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { getSprintDir } from '@/lib/parser'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
+import { getAllSessions, saveSession, updateSession, createSessionId, type SessionLog } from '@/lib/session-store'
+
+// Build an ISO startedAt from a date + a "HH:MM" (or "HH.MM WIB") time label.
+function startedAtFrom(date: string, time?: string): string {
+  const m = (time ?? '').match(/(\d{1,2})[:.](\d{2})/)
+  if (m) return `${date}T${m[1].padStart(2, '0')}:${m[2]}:00.000Z`
+  return new Date().toISOString()
+}
+
+// ── Owner writes the shared markdown; team members are DB-backed (no pollution) ──
 
 export async function POST(req: Request) {
   const { date, title, time, bullets } = await req.json()
   if (!date || !title) return NextResponse.json({ error: 'date and title required' }, { status: 400 })
+
+  const ctx = await getRequestContext()
+  if (!isOwnerUid(ctx?.uid)) {
+    // Team member → persist to the per-user DB instead of the owner's markdown
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const dup = (await getAllSessions(ctx.uid)).find(s => s.date === date && s.title === title && s.pushStatus !== 'discarded')
+    if (dup) return NextResponse.json({ error: 'Session with this title already exists' }, { status: 409 })
+    const now = new Date().toISOString()
+    await saveSession({
+      id:            createSessionId(),
+      userId:        ctx.uid,
+      date,
+      title,
+      bullets:       (bullets as string[] ?? []).filter(Boolean),
+      source:        'manual',
+      startedAt:     startedAtFrom(date, time),
+      estimatedMins: 30,
+      pushStatus:    'hub',
+      createdAt:     now,
+      updatedAt:     now,
+    } as SessionLog)
+    return NextResponse.json({ ok: true })
+  }
 
   const dir = getSprintDir()
   const filePath = path.join(dir, `${date}.md`)
@@ -47,6 +82,15 @@ export async function DELETE(req: Request) {
   const { date, title } = await req.json()
   if (!date || !title) return NextResponse.json({ error: 'date and title required' }, { status: 400 })
 
+  const ctx = await getRequestContext()
+  if (!isOwnerUid(ctx?.uid)) {
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const target = (await getAllSessions(ctx.uid)).find(s => s.date === date && s.title === title && s.pushStatus !== 'discarded')
+    if (!target) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    await updateSession(target.id, { pushStatus: 'discarded', undoneAt: new Date().toISOString() })
+    return NextResponse.json({ ok: true })
+  }
+
   const filePath = path.join(getSprintDir(), `${date}.md`)
   if (!fs.existsSync(filePath)) return NextResponse.json({ error: 'File not found' }, { status: 404 })
 
@@ -64,6 +108,20 @@ export async function DELETE(req: Request) {
 export async function PATCH(req: Request) {
   const { date, oldTitle, newTitle, time, bullets } = await req.json()
   if (!date || !oldTitle) return NextResponse.json({ error: 'date and oldTitle required' }, { status: 400 })
+
+  const ctx = await getRequestContext()
+  if (!isOwnerUid(ctx?.uid)) {
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const target = (await getAllSessions(ctx.uid)).find(s => s.date === date && s.title === oldTitle && s.pushStatus !== 'discarded')
+    if (!target) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    await updateSession(target.id, {
+      title:     newTitle ?? oldTitle,
+      bullets:   (bullets as string[] ?? []).filter(Boolean),
+      startedAt: startedAtFrom(date, time),
+      updatedAt: new Date().toISOString(),
+    })
+    return NextResponse.json({ ok: true })
+  }
 
   const filePath = path.join(getSprintDir(), `${date}.md`)
   if (!fs.existsSync(filePath)) return NextResponse.json({ error: 'File not found' }, { status: 404 })

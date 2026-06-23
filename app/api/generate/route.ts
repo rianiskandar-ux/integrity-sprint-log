@@ -4,6 +4,7 @@ import path from 'path'
 import { getSprintDir } from '@/lib/parser'
 import { getAllSessions } from '@/lib/session-store'
 import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 
@@ -115,17 +116,21 @@ export async function POST(req: Request) {
       ? openTasks.map((t) => `- ${t}`).join('\n') + '\n\n'
       : '_Tidak ada open tasks._\n\n')
 
-  if (fs.existsSync(filePath) && !force) {
-    let existing = fs.readFileSync(filePath, 'utf-8')
-    existing = existing.replace(/^> Generated: .+$/m, `> Generated: ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB (refreshed)`)
-    existing = existing.replace(/## Dikerjakan Hari Ini\n\n[\s\S]*?(?=\n## )/m, doneSection)
-    existing = existing.replace(/## Open Tasks \(Next 3 Days\)\n\n[\s\S]*?(?=\n## |\n---)/m, openSection)
-    fs.writeFileSync(filePath, existing, 'utf-8')
-  } else {
-    const dayName = new Date(today + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-    const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    const md = `# Daily Sprint - ${dayName}\n\n> Generated: ${time} WIB\n\n${doneSection}${openSection}## Technical Notes\n\n_Tambahkan catatan teknis di sini._\n\n---\n_Auto-generated oleh Daily Sprint App_\n`
-    fs.writeFileSync(filePath, md, 'utf-8')
+  // Only the owner writes the shared markdown. Non-owners' data lives in the DB
+  // and they read from it — writing here would pollute the owner's files.
+  if (isOwnerUid(ctx?.uid)) {
+    if (fs.existsSync(filePath) && !force) {
+      let existing = fs.readFileSync(filePath, 'utf-8')
+      existing = existing.replace(/^> Generated: .+$/m, `> Generated: ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB (refreshed)`)
+      existing = existing.replace(/## Dikerjakan Hari Ini\n\n[\s\S]*?(?=\n## )/m, doneSection)
+      existing = existing.replace(/## Open Tasks \(Next 3 Days\)\n\n[\s\S]*?(?=\n## |\n---)/m, openSection)
+      fs.writeFileSync(filePath, existing, 'utf-8')
+    } else {
+      const dayName = new Date(today + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+      const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      const md = `# Daily Sprint - ${dayName}\n\n> Generated: ${time} WIB\n\n${doneSection}${openSection}## Technical Notes\n\n_Tambahkan catatan teknis di sini._\n\n---\n_Auto-generated oleh Daily Sprint App_\n`
+      fs.writeFileSync(filePath, md, 'utf-8')
+    }
   }
 
   return NextResponse.json({

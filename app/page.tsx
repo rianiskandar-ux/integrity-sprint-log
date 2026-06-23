@@ -1,4 +1,7 @@
 import { getSprintDates, parseSprintFile, getAllSprintDays, getSprintNumber, getSprintWindow } from '@/lib/parser'
+import { getSprintDaysFromDB, getSprintDatesFromDB, getSprintDayFromDB } from '@/lib/sprint-from-db'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 import { PROJECTS, tagSessionToProject } from '@/lib/projects'
 import AppShell from '@/components/AppShell'
 import { redirect } from 'next/navigation'
@@ -20,9 +23,16 @@ export default async function Home({
   const selectedDate = sp.date ?? today
   const selectedSprint = sp.sprint ? parseInt(sp.sprint) : undefined
 
-  const dates = getSprintDates()
-  const dayData = parseSprintFile(selectedDate)
-  const allDays = getAllSprintDays()
+  // Owner reads the legacy shared markdown (full history); every other user reads
+  // their own per-user DB sessions so they never see the owner's data. uid 0 (no
+  // session) falls through to the DB path and yields empty — never the markdown.
+  const ctx = await getRequestContext()
+  const uid = ctx?.uid ?? 0
+  const useMarkdown = isOwnerUid(uid)
+
+  const dates   = useMarkdown ? getSprintDates()              : await getSprintDatesFromDB(uid)
+  const dayData = useMarkdown ? parseSprintFile(selectedDate) : await getSprintDayFromDB(uid, selectedDate)
+  const allDays = useMarkdown ? getAllSprintDays()            : await getSprintDaysFromDB(uid)
 
   const currentSprintNo = getSprintNumber(Date.now())
   const viewSprintNo = selectedSprint ?? currentSprintNo

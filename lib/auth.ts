@@ -31,3 +31,15 @@ export async function getSessionUser(token: string | undefined): Promise<Session
 export function multiUserEnabled(): boolean {
   return process.env.ISL_MULTIUSER === '1'
 }
+
+/**
+ * The user whose data lives in the legacy shared markdown dir (daily-sprints/).
+ * Historically all .md files are the server owner's. Only this user reads/writes
+ * those files; every other user reads/writes the per-user PostgreSQL sessions table.
+ * Default uid 1 (first registered user), overridable via ISL_OWNER_UID.
+ */
+export const OWNER_UID = Number(process.env.ISL_OWNER_UID ?? 1)
+
+export function isOwnerUid(uid: number | null | undefined): boolean {
+  return uid != null && uid === OWNER_UID
+}

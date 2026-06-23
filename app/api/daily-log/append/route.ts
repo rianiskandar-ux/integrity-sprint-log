@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 
 const SPRINT_DIR = process.env.SPRINT_OUTPUT_DIR
   ?? path.join(process.env.CACHE_DATA_DIR ?? process.cwd(), 'daily-sprints')
@@ -57,6 +59,13 @@ export async function POST(req: Request) {
 
     const { title, bullets = [], date, time } = body
     if (!title?.trim()) return NextResponse.json({ error: 'title required' }, { status: 400 })
+
+    // Only the owner writes the shared markdown. Team members are DB-backed; skip
+    // the file write so their notes never pollute the owner's daily-sprints files.
+    const ctx = await getRequestContext()
+    if (!isOwnerUid(ctx?.uid)) {
+      return NextResponse.json({ ok: true, skipped: 'non-owner (DB-backed)' })
+    }
 
     const today = date ?? new Date().toISOString().slice(0, 10)
     const timestamp = time ?? timeWIB()
