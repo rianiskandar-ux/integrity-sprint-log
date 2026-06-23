@@ -58,6 +58,11 @@ services:
       - ISL_ACCESS_PIN=${ISL_ACCESS_PIN:-}
       # Multi-user mode: tiap orang login pakai OP API token sendiri. 1 = aktif.
       - ISL_MULTIUSER=${ISL_MULTIUSER:-1}
+      # AI Chat providers (server-side only, tidak expose ke client)
+      - AI_CHAT_TR_KEY=${AI_CHAT_TR_KEY:-}
+      - AI_CHAT_TR_BASE=${AI_CHAT_TR_BASE:-https://api.tokenrouter.com/v1}
+      - AI_CHAT_OM_KEY=${AI_CHAT_OM_KEY:-}
+      - AI_CHAT_OM_BASE=${AI_CHAT_OM_BASE:-https://api.openmodel.ai/v1}
     restart: unless-stopped
 
 volumes:
