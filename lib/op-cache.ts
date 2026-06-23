@@ -209,8 +209,9 @@ export async function rebuildCache(
   token: string,
   base: string,
   projectIdentifiers: string[],
-  userId: number,
+  userId: number,          // OP user id — drives assignee/accountable/author filters
   userName?: string,
+  saveUserId?: number,     // internal app uid — file key for saveCache; defaults to userId
 ): Promise<OPCache> {
   const today         = new Date().toISOString().slice(0, 10)
   // Use sprint start date for closed task lookback — falls back to 30 days if no sprint
@@ -373,6 +374,6 @@ export async function rebuildCache(
     sprints,
     watchedProjects,
   }
-  saveCache(cache, userId)
+  saveCache(cache, saveUserId ?? userId)
   return cache
 }

@@ -63,7 +63,7 @@ export async function POST(req: Request) {
   if (!existingCache.lastSync) {
     const defaultProjects = ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
     setImmediate(() => {
-      rebuildCache(opToken, base, defaultProjects, opUserId, name).catch(() => {/* silent */})
+      rebuildCache(opToken, base, defaultProjects, opUserId, name, userRow.id).catch(() => {/* silent */})
     })
   }
 

@@ -36,6 +36,13 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
       setSettings(loadSettings())
       setAppConfig(loadAppConfig())
       setSaved(false)
+      // Multi-user: identity is the logged-in session, not localStorage. Override so the
+      // "I am" selector + cache sync use the real member, never a stale Rian default.
+      fetch('/api/auth/me').then(r => r.json()).then(d => {
+        if (d.multiUser && d.user) {
+          setSettings(prev => prev ? { ...prev, userId: d.user.opUserId, userName: d.user.name, userHref: `/api/v3/users/${d.user.opUserId}` } : prev)
+        }
+      }).catch(() => {})
       fetch('/api/calendar/events?days=1').then(r => r.json()).then(d => setGcalConnected(d.connected)).catch(() => setGcalConnected(false))
       fetch('/api/auth/profile').then(r => r.json()).then(d => setGoogleProfile(d.profile ?? null)).catch(() => {})
       fetch('/api/op/cache').then(r => r.json()).then(d => setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0, incoming: d.incomingTasks?.length ?? 0 })).catch(() => {})
@@ -230,7 +237,7 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                       onClick={async () => {
                         if (!settings) return
                         setSyncing(true)
-                        const res = await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: settings.userId, projects: settings.watchedProjects?.length ? settings.watchedProjects : ['integritys-websites', 'know-your-vendor-kyv'] }) })
+                        const res = await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projects: settings.watchedProjects?.length ? settings.watchedProjects : ['integritys-websites', 'know-your-vendor-kyv'] }) })
                         const d = await res.json()
                         setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0, incoming: d.incomingTasks?.length ?? 0 })
                         setSyncing(false)

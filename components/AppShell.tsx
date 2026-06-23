@@ -228,12 +228,11 @@ export default function AppShell({
         const stale = Date.now() - lastSync > 5 * 60 * 1000
         if (stale) {
           const s = loadSettings()
+          // Don't send userId/userName — server derives identity from the session.
           fetch('/api/op/cache', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              userId: s.userId,
-              userName: s.userName,
               projects: s.watchedProjects?.length ? s.watchedProjects : undefined,
             }),
           }).catch(() => {})

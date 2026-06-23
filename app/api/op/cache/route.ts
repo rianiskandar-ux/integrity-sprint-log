@@ -40,32 +40,30 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const { opToken: token, opBaseUrl: base, uid, opUserId } = ctx
 
+  // Always read this user's settings row (for userName + fallback projects)
+  const rows = await db.select().from(userSettings).where(eq(userSettings.userId, uid)).limit(1)
+  const row = rows[0]
+  const userName = row?.opUserName ?? ''
+
   // Resolve watchedProjects from: request body → userSettings → op-mode.json → defaults
   let projects: string[] = body.projects ?? null
-  let userName = ''
-
-  if (!projects) {
-    // Try to get from userSettings
-    const rows = await db.select().from(userSettings).where(eq(userSettings.userId, uid)).limit(1)
-    const row = rows[0]
-    if (row?.watchedProjects?.length) projects = row.watchedProjects as string[]
-    userName = row?.opUserName ?? ''
-  }
-
+  if (!projects && row?.watchedProjects?.length) projects = row.watchedProjects as string[]
   if (!projects) {
     const mode = readMode()
     projects = mode?.watchedProjects ?? ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
   }
 
-  const resolvedUserId: number = body.userId ?? opUserId
-  const resolvedUserName: string = body.userName ?? userName
+  // SECURITY: ignore client-supplied body.userId — always use the session's OP user id.
+  // A fresh browser's localStorage defaults to Rian (userId=8); trusting it would fetch his tasks.
+  const resolvedUserId: number = opUserId
+  const resolvedUserName: string = userName || body.userName || ''
 
   try {
     const prevCache = loadCache(uid)
     const prevIncoming = ((prevCache.incomingTasks ?? []) as { islStatus?: string }[])
       .filter(t => t.islStatus !== 'done' && t.islStatus !== 'rejected').length
 
-    const cache = await rebuildCache(token, base, projects, resolvedUserId, resolvedUserName)
+    const cache = await rebuildCache(token, base, projects, resolvedUserId, resolvedUserName, uid)
 
     // Telegram notifications — fire and forget
     const tg = getTelegramConfig()
