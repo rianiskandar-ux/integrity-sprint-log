@@ -74,6 +74,8 @@ export default function AppShell({
   const [helpOpen, setHelpOpen] = useState(false)
   const [confirmPull, setConfirmPull] = useState(false)
   const [userName, setUserName] = useState('')
+  const [multiUser, setMultiUser] = useState(false)
+  const [sessionUserName, setSessionUserName] = useState<string | null>(null)
   const [nextReviewDate, setNextReviewDate] = useState<string | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   const [wrapupOpen, setWrapupOpen] = useState(false)
@@ -135,6 +137,19 @@ export default function AppShell({
       saveSettings({ ...s, setupDone: true })
     }
   }, [])
+
+  // Multi-user: fetch session info for logout capability
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      setMultiUser(!!d.multiUser)
+      if (d.user?.name) setSessionUserName(d.user.name.split(' ')[0])
+    }).catch(() => {})
+  }, [])
+
+  async function logout() {
+    await fetch('/api/auth/me', { method: 'DELETE' }).catch(() => {})
+    window.location.href = '/login'
+  }
 
   useEffect(() => {
     fetch('/api/calendar/events?days=20')
@@ -456,10 +471,27 @@ export default function AppShell({
               className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               title="Settings">
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                {(userName || 'U').charAt(0).toUpperCase()}
+                {(sessionUserName || userName || 'U').charAt(0).toUpperCase()}
               </div>
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-300 hidden lg:inline">{userName || 'Settings'}</span>
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-300 hidden lg:inline">
+                {sessionUserName || userName || 'Settings'}
+              </span>
             </button>
+
+            {/* Logout — hanya tampil di multi-user mode */}
+            {multiUser && (
+              <button
+                onClick={logout}
+                title="Logout"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
