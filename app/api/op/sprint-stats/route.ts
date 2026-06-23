@@ -1,23 +1,23 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
+import { getRequestContext } from '@/lib/request-auth'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+export const runtime = 'nodejs'
 
 export async function GET() {
-  if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: OP_TOKEN, opBaseUrl: OP_BASE, uid } = ctx
 
-  const cache = loadCache()
+  const cache = loadCache(uid)
   const currentSprint = (cache.sprints ?? []).find(s => s.isCurrent)
   if (!currentSprint) return NextResponse.json({ error: 'No current sprint' }, { status: 404 })
 
   const auth = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
 
-  // Fetch ALL work packages in current sprint version — all statuses, all types except Epic
   const filters = encodeURIComponent(JSON.stringify([
     { version: { operator: '=', values: [String(currentSprint.id)] } },
-    { type:    { operator: '!', values: ['5'] } },  // exclude Epics (type 5)
+    { type:    { operator: '!', values: ['5'] } },
   ]))
 
   try {

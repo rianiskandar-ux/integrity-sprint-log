@@ -1,11 +1,15 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('project') ?? 'integritys-websites'
-  const token = process.env.OP_API_TOKEN
-  const base = process.env.OP_BASE_URL
+
+  const ctx = await getRequestContext()
+  const token = ctx?.opToken || process.env.OP_API_TOKEN
+  const base  = ctx?.opBaseUrl || process.env.OP_BASE_URL
 
   if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getAllSessions, getSessionBySessionId, saveSession, createSessionId, type SessionLog } from '@/lib/session-store'
 import { loadCache } from '@/lib/op-cache'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
 
 // GET /api/isl/sessions
 export async function GET(req: Request) {
@@ -10,7 +13,14 @@ export async function GET(req: Request) {
     const status   = searchParams.get('status')
     const validate = searchParams.get('needsValidation')
 
+    const ctx = await getRequestContext()
     let sessions = await getAllSessions()
+
+    // Isolate by userId when multi-user is active and user is known
+    if (ctx?.uid && process.env.ISL_MULTIUSER === '1') {
+      sessions = sessions.filter(s => s.userId === ctx.uid || s.userId == null)
+    }
+
     if (taskId)   sessions = sessions.filter(s => s.opTaskId === Number(taskId))
     if (status)   sessions = sessions.filter(s => s.pushStatus === status)
     if (validate) sessions = sessions.filter(s => s.needsValidation === (validate === 'true'))
@@ -27,6 +37,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     if (body.bullets && !Array.isArray(body.bullets)) body.bullets = [String(body.bullets)]
 
+    const ctx = await getRequestContext()
     const now  = new Date().toISOString()
     const date = (body.startedAt ?? now).slice(0, 10)
 
@@ -60,11 +71,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, session: updated })
     }
 
-    const cache = loadCache()
+    // Tag session with the logged-in user's uid (falls back to null)
+    const uid = ctx?.uid ?? ('userId' in body ? (body.userId ?? null) : null)
+
+    const cache = loadCache(ctx?.uid)
     const session: SessionLog = {
       id:               createSessionId(),
       sessionId:        body.sessionId,
-      userId:           'userId' in body ? (body.userId ?? null) : null,
+      userId:           uid,
       date,
       title:            body.title ?? 'Work Session',
       bullets:          body.bullets ?? [],

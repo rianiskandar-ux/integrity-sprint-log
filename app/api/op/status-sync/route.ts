@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getAllSessions, saveSession } from '@/lib/session-store'
-import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
+import { getRequestContext } from '@/lib/request-auth'
 
-const CLOSED_STATUSES = new Set(['Closed', 'Rejected', 'Done', 'Won\'t fix', 'Duplicate', 'Cancelled'])
+export const runtime = 'nodejs'
+
+const CLOSED_STATUSES = new Set(['Closed', 'Rejected', 'Done', "Won't fix", 'Duplicate', 'Cancelled'])
 
 async function fetchOPStatus(base: string, token: string, taskId: number): Promise<string | null> {
   try {
-    const url = `${base}/api/v3/work_packages/${taskId}`
-    const res = await fetch(url, {
+    const res = await fetch(`${base}/api/v3/work_packages/${taskId}`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`apikey:${token}`).toString('base64')}`,
         'Content-Type': 'application/json',
@@ -21,19 +22,15 @@ async function fetchOPStatus(base: string, token: string, taskId: number): Promi
   }
 }
 
-// GET /api/op/status-sync
 export async function GET() {
-  const token = getOpToken()
-  const base  = getOpBaseUrl()
-
-  if (!token || !base) {
-    return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
-  }
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: token, opBaseUrl: base, uid } = ctx
 
   const sessions = await getAllSessions()
-  // Only sessions that were pushed to OP, have an opTaskId, and aren't already done
   const candidates = sessions.filter(
     s => s.opTaskId && s.pushStatus === 'pushed' && s.taskStatus !== 'done' && s.taskStatus !== 'abandoned'
+      && (process.env.ISL_MULTIUSER !== '1' || s.userId === uid || s.userId == null)
   )
 
   let checked = 0
@@ -45,12 +42,7 @@ export async function GET() {
     checked++
 
     if (CLOSED_STATUSES.has(opStatus)) {
-      const updated = {
-        ...session,
-        taskStatus: 'done' as const,
-        updatedAt: new Date().toISOString(),
-      }
-      await saveSession(updated)
+      await saveSession({ ...session, taskStatus: 'done', updatedAt: new Date().toISOString() })
       synced++
     }
   }

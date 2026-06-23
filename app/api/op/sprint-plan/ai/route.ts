@@ -1,20 +1,21 @@
-import { getOpToken, getOpBaseUrl, loadUserConfig } from '@/lib/user-config'
 import { callLLM, getLLMConfig } from '@/lib/llm'
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
+import { loadUserConfig } from '@/lib/user-config'
+import { getRequestContext } from '@/lib/request-auth'
 
-function getConfig() {
-  return { base: getOpBaseUrl(), token: getOpToken() }
-}
+export const runtime = 'nodejs'
 
 export async function GET() {
   const llmCfg = getLLMConfig()
   if (!llmCfg) return NextResponse.json({ aiName: null, aiSummary: null, aiSuggestedTasks: [] })
-  const { base: OP_BASE, token: OP_TOKEN } = getConfig()
-  if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
+
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: OP_TOKEN, opBaseUrl: OP_BASE, uid, opUserId } = ctx
 
   const auth  = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
-  const cache = loadCache()
+  const cache = loadCache(uid)
 
   const sprintList = (cache.sprints ?? [])
   const currentSprint = sprintList.find(s => s.isCurrent)
@@ -22,7 +23,7 @@ export async function GET() {
 
   const userCfg      = loadUserConfig()
   const displayName  = userCfg.displayName || 'Team Member'
-  const userId       = String(cache.userId ?? 8)
+  const userId       = String(cache.userId ?? opUserId)
   const currentNum   = parseInt(currentSprint.name.replace(/\D/g, '')) || 0
   const suggestedNum = currentNum + 1
   const sprintPeriod = `${currentSprint.startDate} – ${currentSprint.endDate}`

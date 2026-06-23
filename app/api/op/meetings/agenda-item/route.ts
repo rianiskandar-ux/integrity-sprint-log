@@ -1,19 +1,17 @@
-import { getOpBaseUrl, getOpToken } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
 
-function getAuth() {
-  const base  = getOpBaseUrl() || process.env.OP_BASE_URL!
-  const token = getOpToken()   || process.env.OP_API_TOKEN!
-  const auth  = Buffer.from(`apikey:${token}`).toString('base64')
-  return { base, auth }
-}
+export const runtime = 'nodejs'
 
-// POST — create new agenda item
 export async function POST(req: Request) {
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: token, opBaseUrl: base } = ctx
+  const auth = Buffer.from(`apikey:${token}`).toString('base64')
+
   const { meetingId, title, notes, durationMins } = await req.json()
   if (!meetingId || !title) return NextResponse.json({ error: 'meetingId and title required' }, { status: 400 })
 
-  const { base, auth } = getAuth()
   const body = {
     title,
     notes:    { format: 'markdown', raw: notes ?? '' },
@@ -30,19 +28,18 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, id: data.id })
 }
 
-// PATCH — update existing agenda item by itemId
 export async function PATCH(req: Request) {
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: token, opBaseUrl: base } = ctx
+  const auth = Buffer.from(`apikey:${token}`).toString('base64')
+
   const { meetingId, itemId, title, notes, durationMins } = await req.json()
   if (!meetingId || !itemId) return NextResponse.json({ error: 'meetingId and itemId required' }, { status: 400 })
 
-  const { base, auth } = getAuth()
-
-  // First fetch current lockVersion (required by OP for optimistic locking)
   const getRes = await fetch(`${base}/api/v3/meetings/${meetingId}/agenda_items/${itemId}`, {
     headers: { Authorization: `Basic ${auth}` },
   })
-
-  // 404 means item was deleted — signal caller to POST new
   if (getRes.status === 404) return NextResponse.json({ notFound: true }, { status: 404 })
   if (!getRes.ok) return NextResponse.json({ error: await getRes.text() }, { status: getRes.status })
 

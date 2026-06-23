@@ -1,12 +1,13 @@
-import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
 
 export async function GET() {
-  const token = getOpToken()
-  const base  = getOpBaseUrl()
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
-
+  const { opToken: token, opBaseUrl: base } = ctx
   const auth = 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
   const res  = await fetch(`${base}/api/v3/users/me`, { headers: { Authorization: auth } })
   const data = await res.json()

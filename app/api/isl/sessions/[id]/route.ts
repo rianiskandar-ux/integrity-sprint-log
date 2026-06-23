@@ -4,18 +4,12 @@ import path from 'path'
 import { eq } from 'drizzle-orm'
 import { db, sessions as sessionsTable } from '@/lib/db'
 import { getSession, updateSession } from '@/lib/session-store'
-import { getOpToken } from '@/lib/user-config'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
 
 const MODE_FILE = path.join(process.env.CACHE_DATA_DIR ?? process.cwd(), 'op-mode.json')
-const OP_BASE   = process.env.OP_BASE_URL ?? ''
-const OP_TOKEN  = getOpToken()
 
-function opHeaders() {
-  return {
-    Authorization: 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64'),
-    'Content-Type': 'application/json',
-  }
-}
 function isTestMode() {
   try { return JSON.parse(fs.readFileSync(MODE_FILE, 'utf-8')).mode !== 'live' } catch { return true }
 }
@@ -34,8 +28,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 // DELETE /api/isl/sessions/[id]?hard=1
-// Default: move OP task to backlog [REVIEW] + mark session discarded
-// hard=1: hard delete OP task (TEST mode only) + remove session file
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -51,28 +43,36 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     const errors: string[] = []
 
-    if (session.opTaskId && OP_BASE && OP_TOKEN) {
-      if (doHard) {
-        const res = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, {
-          method: 'DELETE', headers: opHeaders(),
+    if (session.opTaskId) {
+      const ctx = await getRequestContext()
+      if (ctx) {
+        const { opToken, opBaseUrl: OP_BASE } = ctx
+        const mkHeaders = () => ({
+          Authorization: 'Basic ' + Buffer.from(`apikey:${opToken}`).toString('base64'),
+          'Content-Type': 'application/json',
         })
-        if (res.status !== 204 && res.status !== 404) errors.push(`Delete failed: ${res.status}`)
-      } else {
-        // Move to backlog [REVIEW]
-        const wpRes = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, { headers: opHeaders() })
-        if (wpRes.ok) {
-          const wp = await wpRes.json()
-          const patchRes = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, {
-            method: 'PATCH', headers: opHeaders(),
-            body: JSON.stringify({
-              lockVersion: wp.lockVersion,
-              subject: wp.subject.startsWith('[REVIEW] ') ? wp.subject : `[REVIEW] ${wp.subject}`,
-              _links: { status: { href: '/api/v3/statuses/1' }, version: { href: null } },
-            }),
-          }).catch(() => null)
-          if (!patchRes?.ok) errors.push(`OP task #${session.opTaskId} could not be moved to [REVIEW]`)
+
+        if (doHard) {
+          const res = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, {
+            method: 'DELETE', headers: mkHeaders(),
+          })
+          if (res.status !== 204 && res.status !== 404) errors.push(`Delete failed: ${res.status}`)
         } else {
-          errors.push(`OP task #${session.opTaskId} not accessible`)
+          const wpRes = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, { headers: mkHeaders() })
+          if (wpRes.ok) {
+            const wp = await wpRes.json()
+            const patchRes = await fetch(`${OP_BASE}/api/v3/work_packages/${session.opTaskId}`, {
+              method: 'PATCH', headers: mkHeaders(),
+              body: JSON.stringify({
+                lockVersion: wp.lockVersion,
+                subject: wp.subject.startsWith('[REVIEW] ') ? wp.subject : `[REVIEW] ${wp.subject}`,
+                _links: { status: { href: '/api/v3/statuses/1' }, version: { href: null } },
+              }),
+            }).catch(() => null)
+            if (!patchRes?.ok) errors.push(`OP task #${session.opTaskId} could not be moved to [REVIEW]`)
+          } else {
+            errors.push(`OP task #${session.opTaskId} not accessible`)
+          }
         }
       }
     }

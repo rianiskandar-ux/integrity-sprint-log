@@ -1,19 +1,20 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+export const runtime = 'nodejs'
 
 export async function GET() {
-  if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ active: null })
-  const auth = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ active: null })
+  const { opToken: OP_TOKEN, opBaseUrl: OP_BASE } = ctx
 
+  const auth = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
   try {
     const filters = encodeURIComponent(JSON.stringify([{ ongoing: { operator: '=', values: ['t'] } }]))
     const res  = await fetch(`${OP_BASE}/api/v3/time_entries?filters=${filters}&pageSize=1`, { headers: { Authorization: auth } })
     if (!res.ok) return NextResponse.json({ active: null })
 
-    const data = await res.json()
+    const data  = await res.json()
     const entry = data._embedded?.elements?.[0]
     if (!entry?.ongoing) return NextResponse.json({ active: null })
 

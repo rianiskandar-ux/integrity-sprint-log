@@ -1,19 +1,17 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { getLLMConfig } from '@/lib/llm'
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
+import { getRequestContext } from '@/lib/request-auth'
 
-// Read per-request to avoid stale values if config files are updated after startup
-function getConfig() {
-  return { base: getOpBaseUrl(), token: getOpToken() }
-}
+export const runtime = 'nodejs'
 
 export async function GET() {
-  const { base: OP_BASE, token: OP_TOKEN } = getConfig()
-  if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: OP_TOKEN, opBaseUrl: OP_BASE, uid, opUserId } = ctx
 
   const auth  = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
-  const cache = loadCache()
+  const cache = loadCache(uid)
 
   const sprintList = (cache.sprints ?? [])
   const currentSprint = sprintList.find(s => s.isCurrent)
@@ -23,8 +21,7 @@ export async function GET() {
     .filter(s => !s.isCurrent && s.startDate > currentSprint.startDate)
     .sort((a, b) => a.startDate.localeCompare(b.startDate))[0] ?? null
 
-  // Get current user ID from cache (set during rebuild from /users/me)
-  const userId = String(cache.userId ?? 8)
+  const userId = String(cache.userId ?? opUserId)
 
   type WPItem = {
     id: number; subject: string; status: string; type: string; project: string; assignee: string | null
@@ -55,11 +52,9 @@ export async function GET() {
     })
   }
 
-  // Fetch ALL my tasks in current sprint — single query, no status filter
-  // Filter into carryOver/done in code to avoid status ID uncertainty
   const allFilters = encodeURIComponent(JSON.stringify([
     { version:     { operator: '=', values: [String(currentSprint.id)] } },
-    { type:        { operator: '!', values: ['5'] } },  // not epic
+    { type:        { operator: '!', values: ['5'] } },
     { assigned_to: { operator: '=', values: [userId] } },
   ]))
 
@@ -70,20 +65,12 @@ export async function GET() {
     const res = await fetch(`${OP_BASE}/api/v3/work_packages?filters=${allFilters}&pageSize=200`, { headers: { Authorization: auth } })
     if (res.ok) {
       const all = parseWPs((await res.json())._embedded?.elements ?? [])
-      // Closed = Closed status (title). Everything else = carry-over.
       carryOver = all.filter(t => t.status !== 'Closed' && t.status !== 'Rejected')
       doneTasks = all.filter(t => t.status === 'Closed')
     }
   } catch { /* non-fatal */ }
 
-  // Sprint number
   const currentNum = parseInt(currentSprint.name.replace(/\D/g, '')) || 0
-  const suggestedNum = currentNum + 1
-
-  // Work stats for AI context
-  const totalEst   = [...carryOver, ...doneTasks].reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
-  const totalSpent = [...carryOver, ...doneTasks].reduce((a, t) => a + (t.spentHours ?? 0), 0)
-  const openEst    = carryOver.reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
 
   return NextResponse.json({
     currentSprint, nextSprint, carryOver, doneTasks,
@@ -91,6 +78,6 @@ export async function GET() {
     aiName: null,
     aiSummary: null,
     aiSuggestedTasks: [],
-    suggestedNum,
+    suggestedNum: currentNum + 1,
   })
 }

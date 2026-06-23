@@ -1,11 +1,7 @@
-import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
-
-// GET /api/op/wp-context?wpId=123
-// Tarik konteks LENGKAP & LIVE dari ticket OP: deskripsi, hierarki induk
-// (story→epic→feature), komentar/activity, daftar lampiran. Untuk di-inject ke chat AI.
 
 function authHeader(token: string) {
   return 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
@@ -28,12 +24,12 @@ export async function GET(req: Request) {
   const wpId = new URL(req.url).searchParams.get('wpId')
   if (!wpId) return NextResponse.json({ error: 'wpId required' }, { status: 400 })
 
-  const base = (getOpBaseUrl() || '').replace(/\/$/, '')
-  const token = getOpToken()
-  if (!base || !token) return NextResponse.json({ error: 'OP not configured' }, { status: 400 })
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: token, opBaseUrl: baseRaw } = ctx
+  const base = baseRaw.replace(/\/$/, '')
 
   try {
-    // 1) WP utama
     const wp = await opGet(base, token, `/work_packages/${wpId}`)
     const main = {
       id: wp.id,
@@ -43,7 +39,6 @@ export async function GET(req: Request) {
       description: (wp.description?.raw ?? '').slice(0, 2000),
     }
 
-    // 2) Hierarki induk (naik max 3 level: story → epic → feature)
     const hierarchy: { type: string; id: number; subject: string; description: string }[] = []
     let pid = parentIdOf(wp)
     let hops = 0
@@ -61,7 +56,6 @@ export async function GET(req: Request) {
       hops++
     }
 
-    // 3) Komentar / activity (ambil yang ada comment raw, max 10 terakhir)
     let comments: { user: string; at: string; text: string }[] = []
     try {
       const act = await opGet(base, token, `/work_packages/${wpId}/activities`)
@@ -78,7 +72,6 @@ export async function GET(req: Request) {
         }))
     } catch { /* activities optional */ }
 
-    // 4) Lampiran (nama + ukuran saja; isi file = Phase 2)
     let attachments: { name: string; size: number }[] = []
     try {
       const att = await opGet(base, token, `/work_packages/${wpId}/attachments`)
@@ -86,7 +79,6 @@ export async function GET(req: Request) {
         .map(a => ({ name: a.fileName ?? 'file', size: a.fileSize ?? 0 }))
     } catch { /* attachments optional */ }
 
-    // Pre-format jadi teks siap inject ke system prompt
     const lines: string[] = []
     lines.push(`KONTEKS TICKET OP (live dari OpenProject):`)
     lines.push(`#${main.id} [${main.type}] ${main.subject} — status: ${main.status}`)

@@ -1,21 +1,19 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const q = searchParams.get('q')?.trim()
   if (!q || q.length < 2) return NextResponse.json({ results: [] })
-  if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ results: [] })
+
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ results: [] })
+  const { opToken: OP_TOKEN, opBaseUrl: OP_BASE } = ctx
 
   const auth = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
-
-  // OP supports subject/id search via subjectOrId operator
-  // Also try numeric search by ID
   const isNumeric = /^\d+$/.test(q)
-
   const filters = isNumeric
     ? JSON.stringify([{ id: { operator: '=', values: [q] } }])
     : JSON.stringify([{ subjectOrId: { operator: '**', values: [q] } }])

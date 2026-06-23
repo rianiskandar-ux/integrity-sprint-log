@@ -1,5 +1,5 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
 
 interface PushPayload {
   title: string
@@ -123,8 +123,9 @@ export async function POST(req: Request) {
     const payload: PushPayload = await req.json()
     const { title, time, bullets, date, userSettings } = payload
 
-    const token = userSettings.opApiToken || process.env.OP_API_TOKEN
-    const base  = process.env.OP_BASE_URL
+    const ctx   = await getRequestContext()
+    const token = userSettings.opApiToken || ctx?.opToken || process.env.OP_API_TOKEN
+    const base  = ctx?.opBaseUrl || process.env.OP_BASE_URL
     if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
     const project  = detectProject(title, bullets)

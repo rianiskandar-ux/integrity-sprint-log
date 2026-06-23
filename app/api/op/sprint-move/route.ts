@@ -1,11 +1,12 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
+import { getRequestContext } from '@/lib/request-auth'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
-  if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { opToken: OP_TOKEN, opBaseUrl: OP_BASE } = ctx
 
   const { taskIds, targetSprintId, edits } = await req.json() as {
     taskIds: number[]
@@ -24,7 +25,6 @@ export async function POST(req: Request) {
 
   for (const id of taskIds) {
     try {
-      // Get current WP for lockVersion
       const wpRes = await fetch(`${OP_BASE}/api/v3/work_packages/${id}`, { headers })
       if (!wpRes.ok) { results.push({ id, ok: false, error: `WP ${id} not found` }); continue }
       const wp = await wpRes.json()
@@ -33,7 +33,6 @@ export async function POST(req: Request) {
         lockVersion: wp.lockVersion,
         _links: { version: { href: `/api/v3/versions/${targetSprintId}` } },
       }
-      // Optional subject edit
       const subjectEdit = edits?.[id]?.subject
       if (subjectEdit && subjectEdit.trim()) body.subject = subjectEdit.trim()
 

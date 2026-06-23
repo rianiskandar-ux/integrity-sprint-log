@@ -1,11 +1,9 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
 import { getAllSessions } from '@/lib/session-store'
+import { getRequestContext } from '@/lib/request-auth'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+export const runtime = 'nodejs'
 
-// Parse ISO 8601 duration to hours: "PT2H30M" → 2.5, "P1DT3H" → 27
 function parseIsoDurationHours(dur: string): number {
   const m = dur.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?/)
   if (!m) return 0
@@ -17,25 +15,25 @@ export async function GET(req: Request) {
   const taskId = Number(searchParams.get('taskId'))
   if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
 
-  // ISL sessions linked to this task
+  const ctx = await getRequestContext()
+
   const islSessions = (await getAllSessions())
     .filter(s => s.opTaskId === taskId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(s => ({
-      id:           s.id,
-      date:         s.date,
-      title:        s.title,
-      bullets:      s.bullets,
-      actualMins:   s.actualMins,
+      id:            s.id,
+      date:          s.date,
+      title:         s.title,
+      bullets:       s.bullets,
+      actualMins:    s.actualMins,
       estimatedMins: s.estimatedMins,
-      pushStatus:   s.pushStatus,
-      createdAt:    s.createdAt,
+      pushStatus:    s.pushStatus,
+      createdAt:     s.createdAt,
     }))
 
-  // OP time entries for this WP
-  // OP uses entity_type + entity_id filters (confirmed from WP _links.timeEntries href)
   let opEntries: { id: number; hours: number; comment: string; date: string; user: string; ongoing: boolean }[] = []
-  if (OP_BASE && OP_TOKEN) {
+  if (ctx) {
+    const { opToken: OP_TOKEN, opBaseUrl: OP_BASE } = ctx
     try {
       const auth    = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
       const filters = encodeURIComponent(JSON.stringify([
@@ -50,7 +48,6 @@ export async function GET(req: Request) {
         const data = await res.json()
         opEntries = (data._embedded?.elements ?? []).map((e: Record<string, unknown>) => {
           const links = (e._links ?? {}) as Record<string, { title?: string } | null>
-          // hours field is ISO 8601 duration: "PT2H30M" or "P1DT3H"
           const hours = parseIsoDurationHours(String(e.hours ?? ''))
           const comment = typeof e.comment === 'object' && e.comment !== null
             ? (e.comment as { raw?: string }).raw ?? ''

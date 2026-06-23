@@ -1,9 +1,15 @@
-﻿import { getOpToken, getOpBaseUrl, loadUserConfig } from '@/lib/user-config'
+import { getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { loadCache, rebuildCache } from '@/lib/op-cache'
 import { getTelegramConfig, sendTelegram, notifIncoming, notifSprintDeadline } from '@/lib/telegram'
+import { getRequestContext } from '@/lib/request-auth'
+import { db } from '@/lib/db'
+import { userSettings } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+
+export const runtime = 'nodejs'
 
 const DATA_DIR  = process.env.CACHE_DATA_DIR ?? process.cwd()
 const MODE_FILE = path.join(DATA_DIR, 'op-mode.json')
@@ -12,56 +18,54 @@ function readMode() {
   try { return JSON.parse(fs.readFileSync(MODE_FILE, 'utf-8')) } catch { return null }
 }
 
-// GET — return current cache + server-side config for frontend (avoids localStorage dependency)
+// GET — return current user's cache + server-side config for frontend
 export async function GET() {
-  const cache = loadCache()
-  const mode  = readMode()
+  const ctx = await getRequestContext()
+  const cache = loadCache(ctx?.uid)
   const opUrl = getOpBaseUrl() || 'https://tokek.integrity-asia.com'
   return NextResponse.json({
     ...cache,
     _opUrl:  opUrl,
-    _userId: (mode?.userId ?? cache.userId ?? null) as number | null,
+    _userId: ctx?.opUserId ?? (cache.userId ?? null),
   })
 }
 
-// POST — rebuild cache
-// Body (all optional, falls back to op-mode.json config):
+// POST — rebuild cache for the logged-in user using their own OP token
+// Body (all optional, falls back to userSettings → op-mode.json → defaults):
 //   { projects?: string[], userId?: number, userName?: string }
 export async function POST(req: Request) {
-  const body  = await req.json().catch(() => ({}))
-  const token = process.env.OP_API_TOKEN
-  const base  = process.env.OP_BASE_URL
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
+  const body = await req.json().catch(() => ({}))
+  const { opToken: token, opBaseUrl: base, uid, opUserId } = ctx
 
-  // Resolve userId + projects from: request body → op-mode.json → defaults
-  const mode     = readMode()
-  const userId: number   = body.userId   ?? mode?.userId   ?? 8
-  const userName: string = body.userName ?? mode?.userName ?? ''
+  // Resolve watchedProjects from: request body → userSettings → op-mode.json → defaults
+  let projects: string[] = body.projects ?? null
+  let userName = ''
 
-  // watchedProjects: from body, or from mode, or fallback defaults
-  const projects: string[] = body.projects
-    ?? mode?.watchedProjects
-    ?? ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
+  if (!projects) {
+    // Try to get from userSettings
+    const rows = await db.select().from(userSettings).where(eq(userSettings.userId, uid)).limit(1)
+    const row = rows[0]
+    if (row?.watchedProjects?.length) projects = row.watchedProjects as string[]
+    userName = row?.opUserName ?? ''
+  }
 
-  // Persist watchedProjects + userId back to op-mode.json so server-side scripts use them too
-  try {
-    const existing = mode ?? {}
-    fs.writeFileSync(MODE_FILE, JSON.stringify({
-      ...existing,
-      userId,
-      userName,
-      watchedProjects: projects,
-      updatedAt: new Date().toISOString(),
-    }, null, 2))
-  } catch { /* non-fatal */ }
+  if (!projects) {
+    const mode = readMode()
+    projects = mode?.watchedProjects ?? ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
+  }
+
+  const resolvedUserId: number = body.userId ?? opUserId
+  const resolvedUserName: string = body.userName ?? userName
 
   try {
-    const prevCache = loadCache()
+    const prevCache = loadCache(uid)
     const prevIncoming = ((prevCache.incomingTasks ?? []) as { islStatus?: string }[])
       .filter(t => t.islStatus !== 'done' && t.islStatus !== 'rejected').length
 
-    const cache = await rebuildCache(token, base, projects, userId, userName)
+    const cache = await rebuildCache(token, base, projects, resolvedUserId, resolvedUserName)
 
     // Telegram notifications — fire and forget
     const tg = getTelegramConfig()
@@ -70,12 +74,10 @@ export async function POST(req: Request) {
         .filter(t => t.islStatus !== 'done' && t.islStatus !== 'rejected')
       const newCount = newIncoming.length - prevIncoming
 
-      // Notify new incoming tasks
       if (newCount > 0) {
         sendTelegram(notifIncoming(newCount, newIncoming.slice(-newCount).map(t => ({ id: t.id, subject: t.subject })))).catch(() => {})
       }
 
-      // Notify sprint deadline (1d and 3d warnings)
       const sprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) as { name: string; endDate: string } | undefined
       if (sprint) {
         const daysLeft = Math.max(0, Math.floor((new Date(sprint.endDate).getTime() - Date.now()) / 86400000))

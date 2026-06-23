@@ -4,6 +4,11 @@ import path from 'path'
 const CACHE_DIR  = process.env.CACHE_DATA_DIR ?? process.cwd()
 const CACHE_FILE = path.join(CACHE_DIR, 'op-cache.json')
 
+function cacheFileFor(userId?: number | null): string {
+  if (!userId) return CACHE_FILE
+  return path.join(CACHE_DIR, `op-cache-${userId}.json`)
+}
+
 // OP status ID → ISL status label mapping
 export const OP_STATUS_MAP: Record<number, { isl: string; label: string; color: string }> = {
   1:  { isl: 'new',         label: 'New',         color: '#6b7280' },
@@ -114,20 +119,25 @@ const EMPTY: OPCache = {
   watchedProjects: [],
 }
 
-export function loadCache(): OPCache {
+export function loadCache(userId?: number | null): OPCache {
+  const file = cacheFileFor(userId)
   try {
-    if (!fs.existsSync(CACHE_FILE)) return EMPTY
-    return { ...EMPTY, ...JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')) }
+    if (!fs.existsSync(file)) {
+      // Fall back to legacy shared cache for backward compat (first run after upgrade)
+      if (userId && fs.existsSync(CACHE_FILE)) return { ...EMPTY, ...JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')) }
+      return EMPTY
+    }
+    return { ...EMPTY, ...JSON.parse(fs.readFileSync(file, 'utf-8')) }
   } catch { return EMPTY }
 }
 
-export function saveCache(cache: OPCache) {
-  fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8')
+export function saveCache(cache: OPCache, userId?: number | null) {
+  fs.writeFileSync(cacheFileFor(userId), JSON.stringify(cache, null, 2), 'utf-8')
 }
 
 // Update a single WP's status in the local cache (after OP PATCH)
-export function updateCachedWPStatus(wpId: number, opStatusId: number) {
-  const cache = loadCache()
+export function updateCachedWPStatus(wpId: number, opStatusId: number, userId?: number | null) {
+  const cache = loadCache(userId)
   const mapped = OP_STATUS_MAP[opStatusId]
   const update = (wp: CachedWorkPackage) =>
     wp.id === wpId
@@ -136,7 +146,7 @@ export function updateCachedWPStatus(wpId: number, opStatusId: number) {
   cache.myOpenTasks  = cache.myOpenTasks.map(update)
   cache.myClosedTasks = cache.myClosedTasks.map(update)
   cache.incomingTasks = cache.incomingTasks.map(update)
-  saveCache(cache)
+  saveCache(cache, userId)
 }
 
 async function opGet(base: string, token: string, opPath: string) {
@@ -367,6 +377,6 @@ export async function rebuildCache(
     sprints,
     watchedProjects,
   }
-  saveCache(cache)
+  saveCache(cache, userId)
   return cache
 }

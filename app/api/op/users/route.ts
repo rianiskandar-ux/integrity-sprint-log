@@ -1,15 +1,16 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
 import { TEAM_MEMBERS } from '@/lib/op-config'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const search = (searchParams.get('q') ?? '').toLowerCase().trim()
-  const token = getOpToken()
-  const base  = getOpBaseUrl()
 
-  // Try OP API via /principals (accessible to non-admin users)
-  if (token && base) {
+  const ctx = await getRequestContext()
+  if (ctx) {
+    const { opToken: token, opBaseUrl: base } = ctx
     try {
       const params = new URLSearchParams({ pageSize: '200', sortBy: JSON.stringify([['name', 'asc']]) })
       if (search) params.set('filters', JSON.stringify([{ name: { operator: '~', values: [search] } }]))
@@ -29,10 +30,8 @@ export async function GET(req: Request) {
     } catch { /* fall through to hardcoded list */ }
   }
 
-  // Fallback: hardcoded team members
   const members = TEAM_MEMBERS.map(m => ({
-    id: m.id,
-    name: m.name,
+    id: m.id, name: m.name,
     login: m.name.toLowerCase().replace(/\s+/g, '.'),
     avatar: null,
   }))

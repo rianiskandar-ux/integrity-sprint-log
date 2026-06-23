@@ -1,32 +1,19 @@
-﻿import { getOpToken, getOpBaseUrl } from '@/lib/user-config'
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { getSprintDir } from '@/lib/parser'
 import { getAllSessions } from '@/lib/session-store'
+import { getRequestContext } from '@/lib/request-auth'
 
-const OP_BASE = getOpBaseUrl()
-const OP_TOKEN = getOpToken()
+export const runtime = 'nodejs'
 
-// All projects to query for daily activity
 const OP_PROJECTS = [
   process.env.OP_PROJECT_ID ?? 'integritys-websites',
   'scrum-project',
 ].filter(Boolean)
 
-async function opGet(endpoint: string) {
-  const res = await fetch(`${OP_BASE}/api/v3${endpoint}`, {
-    headers: {
-      Authorization: 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64'),
-      'Content-Type': 'application/json',
-    },
-    next: { revalidate: 0 },
-  })
-  if (!res.ok) return null
-  return res.json()
-}
-
 export async function POST(req: Request) {
+  const ctx = await getRequestContext()
   const { date, force } = await req.json()
   const today = date ?? new Date().toISOString().slice(0, 10)
   const dir = getSprintDir()
@@ -34,19 +21,28 @@ export async function POST(req: Request) {
 
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
 
-  // Pull OpenProject data from all projects
+  async function opGet(endpoint: string) {
+    if (!ctx) return null
+    const { opToken, opBaseUrl } = ctx
+    const res = await fetch(`${opBaseUrl}/api/v3${endpoint}`, {
+      headers: {
+        Authorization: 'Basic ' + Buffer.from(`apikey:${opToken}`).toString('base64'),
+        'Content-Type': 'application/json',
+      },
+      next: { revalidate: 0 },
+    })
+    if (!res.ok) return null
+    return res.json()
+  }
+
   const wpMap = new Map<number, string>()
 
   for (const projectId of OP_PROJECTS) {
     const filters = JSON.stringify([
-      { project:    { operator: '=',  values: [projectId] } },
-      { updatedAt:  { operator: '>d', values: [`${today}T00:00:00Z`] } },
+      { project:   { operator: '=',  values: [projectId] } },
+      { updatedAt: { operator: '>d', values: [`${today}T00:00:00Z`] } },
     ])
-    const params = new URLSearchParams({
-      filters,
-      pageSize: '50',
-      sortBy: JSON.stringify([['updatedAt', 'desc']]),
-    })
+    const params = new URLSearchParams({ filters, pageSize: '50', sortBy: JSON.stringify([['updatedAt', 'desc']]) })
     const result = await opGet(`/work_packages?${params}`)
     if (result?._embedded?.elements) {
       for (const wp of result._embedded.elements) {
@@ -60,8 +56,13 @@ export async function POST(req: Request) {
 
   const workPackages = Array.from(wpMap.values())
 
-  // Pull ISL session logs for this date
-  const daySessions = (await getAllSessions()).filter(s => s.date === today && s.pushStatus !== 'discarded')
+  const allSessions = await getAllSessions()
+  const daySessions = allSessions.filter(s => {
+    if (s.date !== today || s.pushStatus === 'discarded') return false
+    if (ctx && process.env.ISL_MULTIUSER === '1') return s.userId === ctx.uid || s.userId == null
+    return true
+  })
+
   const sessionLines: string[] = []
   for (const s of daySessions) {
     const dur  = s.actualMins ? `${s.actualMins}m` : ''
@@ -73,21 +74,16 @@ export async function POST(req: Request) {
     }
   }
 
-  // Open tasks (next 3 days) — all projects
   const openTaskMap = new Map<number, string>()
   const cutoff = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
 
   for (const projectId of OP_PROJECTS) {
     const filtersTomorrow = JSON.stringify([
-      { project:  { operator: '=',  values: [projectId] } },
-      { status:   { operator: '!',  values: ['12', '14', '6'] } },
-      { dueDate:  { operator: '<=d', values: [cutoff] } },
+      { project: { operator: '=',  values: [projectId] } },
+      { status:  { operator: '!',  values: ['12', '14', '6'] } },
+      { dueDate: { operator: '<=d', values: [cutoff] } },
     ])
-    const paramsTomorrow = new URLSearchParams({
-      filters: filtersTomorrow,
-      pageSize: '20',
-      sortBy: JSON.stringify([['dueDate', 'asc']]),
-    })
+    const paramsTomorrow = new URLSearchParams({ filters: filtersTomorrow, pageSize: '20', sortBy: JSON.stringify([['dueDate', 'asc']]) })
     const resultTomorrow = await opGet(`/work_packages?${paramsTomorrow}`)
     if (resultTomorrow?._embedded?.elements) {
       for (const wp of resultTomorrow._embedded.elements) {
@@ -102,7 +98,6 @@ export async function POST(req: Request) {
 
   const openTasks = Array.from(openTaskMap.values())
 
-  // Build sections
   const allDoneItems = [
     ...workPackages.map(w => `- ${w}`),
     ...(sessionLines.length
