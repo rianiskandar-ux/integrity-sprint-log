@@ -634,11 +634,20 @@ export default function PushQueueView() {
   const [userId, setUserId]       = useState(8)
   const [toast, setToast]         = useState<string | null>(null)
   const [pushed, setPushed]       = useState<Set<string>>(new Set())
-  const [chatTask, setChatTask]   = useState<TaskChatContext | null>(null)
+  const [chatTasks, setChatTasks] = useState<TaskChatContext[]>([])
 
   useEffect(() => { load() }, [])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  // Open chats run in parallel — each is a docked floating window. Re-opening an
+  // already-open task is a no-op (keeps its existing conversation in place).
+  function openChat(t: TaskChatContext) {
+    setChatTasks(prev => prev.some(x => x.id === t.id) ? prev : [...prev, t])
+  }
+  function closeChat(id: string) {
+    setChatTasks(prev => prev.filter(x => x.id !== id))
+  }
 
   async function load() {
     setLoading(true)
@@ -739,23 +748,22 @@ export default function PushQueueView() {
               onDiscard={onDiscard}
               onClearOpMatch={onClearOpMatch}
               userId={userId}
-              onOpenChat={setChatTask}
+              onOpenChat={openChat}
             />
           ))}
         </div>
       )}
 
-      {chatTask && (
+      {chatTasks.map((ct, i) => (
         <TaskChatModal
-          task={chatTask}
-          onClose={() => setChatTask(null)}
-          onPush={(id) => {
-            setChatTask(null)
-            const s = sessions.find(x => x.id === id)
-            if (s) { /* user can push from modal header — just close */ }
-          }}
+          key={ct.id}
+          task={ct}
+          docked
+          offsetIndex={i}
+          onClose={() => closeChat(ct.id)}
+          onPush={() => closeChat(ct.id)}
         />
-      )}
+      ))}
     </div>
   )
 }

@@ -24,9 +24,11 @@ interface Props {
   onClose: () => void
   onPush?: (id: string) => void
   onAddToQueue?: (bullets: string[]) => void
+  docked?: boolean        // floating window (no backdrop) so multiple can stay open in parallel
+  offsetIndex?: number     // horizontal slot when docked — shifts each window left
 }
 
-export default function TaskChatModal({ task, onClose, onPush, onAddToQueue }: Props) {
+export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, docked, offsetIndex = 0 }: Props) {
   const [messages,  setMessages]  = useState<Message[]>([])
   const [input,     setInput]     = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -177,10 +179,19 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue }: P
   const typeLabel = task.taskType === 'incoming' ? '📥 Incoming' : task.taskType === 'session' ? '📤 Push Queue' : '✨ New'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white dark:bg-gray-900 w-full sm:max-w-xl sm:rounded-2xl shadow-2xl flex flex-col"
-        style={{ height: '90vh', maxHeight: '720px' }}>
+    <div
+      className={docked
+        ? 'fixed z-40 flex flex-col'
+        : 'fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4'}
+      style={docked
+        ? { bottom: 12, right: 12 + offsetIndex * 364, width: 352, height: 520, maxHeight: '78vh' }
+        : undefined}
+      onClick={docked ? undefined : (e => { if (e.target === e.currentTarget) onClose() })}>
+      <div
+        className={docked
+          ? 'bg-white dark:bg-gray-900 w-full h-full rounded-2xl shadow-2xl flex flex-col border border-gray-200 dark:border-gray-700 overflow-hidden'
+          : 'bg-white dark:bg-gray-900 w-full sm:max-w-xl sm:rounded-2xl shadow-2xl flex flex-col'}
+        style={docked ? undefined : { height: '90vh', maxHeight: '720px' }}>
 
         {/* Header */}
         <div className="flex items-start gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800"
