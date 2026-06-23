@@ -18,9 +18,13 @@ function isTestMode() {
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const body = await req.json()
+    const ctx     = await getRequestContext()
+    const session = await getSession(id)
+    if (!session) return NextResponse.json({ error: 'not found' }, { status: 404 })
+    if (ctx?.uid && session.userId != null && session.userId !== ctx.uid)
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const body    = await req.json()
     const updated = await updateSession(id, body)
-    if (!updated) return NextResponse.json({ error: 'not found' }, { status: 404 })
     return NextResponse.json({ ok: true, session: updated })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
@@ -40,11 +44,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     const session = await getSession(id)
     if (!session) return NextResponse.json({ error: 'not found' }, { status: 404 })
+    const ctx = await getRequestContext()
+    if (ctx?.uid && session.userId != null && session.userId !== ctx.uid)
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const errors: string[] = []
 
     if (session.opTaskId) {
-      const ctx = await getRequestContext()
       if (ctx) {
         const { opToken, opBaseUrl: OP_BASE } = ctx
         const mkHeaders = () => ({

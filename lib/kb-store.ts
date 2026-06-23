@@ -35,7 +35,13 @@ function rowToEntry(r: typeof kbEntries.$inferSelect): KBEntry {
   }
 }
 
-export async function getAllKBEntries(): Promise<KBEntry[]> {
+export async function getAllKBEntries(uid?: number | null): Promise<KBEntry[]> {
+  if (uid != null) {
+    const rows = await db.select().from(kbEntries)
+      .where(eq(kbEntries.userId, uid))
+      .orderBy(desc(kbEntries.createdAt))
+    return rows.map(rowToEntry)
+  }
   const rows = await db.select().from(kbEntries).orderBy(desc(kbEntries.createdAt))
   return rows.map(rowToEntry)
 }

@@ -1,23 +1,17 @@
 import { NextResponse } from 'next/server'
 import { saveSession, createSessionId } from '@/lib/session-store'
-
-const OP_BASE  = process.env.OP_BASE_URL ?? ''
-const OP_TOKEN = process.env.OP_API_TOKEN ?? ''
+import { getRequestContext } from '@/lib/request-auth'
 
 function toISODuration(minutes: number): string {
   const h = Math.floor(minutes / 60), m = minutes % 60
   return h > 0 ? `PT${h}H${m > 0 ? m + 'M' : ''}` : `PT${m}M`
 }
 
-function opHeaders() {
-  return {
-    Authorization: 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64'),
-    'Content-Type': 'application/json',
-  }
-}
-
 export async function POST(req: Request) {
   try {
+    const ctx = await getRequestContext()
+    const OP_TOKEN = ctx?.opToken || ''
+    const OP_BASE  = ctx?.opBaseUrl || ''
     const body = await req.json() as {
       title: string
       durationMins: number
@@ -39,6 +33,7 @@ export async function POST(req: Request) {
     const bullets = note?.trim() ? [note.trim()] : ['Manual quick log — no automated session']
     await saveSession({
       id,
+      userId:        ctx?.uid ?? null,
       date,
       title: title.trim(),
       bullets,
@@ -57,7 +52,10 @@ export async function POST(req: Request) {
 
     // Push time entry to OP if task linked and OP is configured
     if (opTaskId && OP_BASE && OP_TOKEN) {
-      const headers = opHeaders()
+      const headers = {
+        Authorization: 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64'),
+        'Content-Type': 'application/json',
+      }
       const h = Math.floor(durationMins / 60), m = durationMins % 60
       const durLabel = durationMins >= 60 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${durationMins}m`
 

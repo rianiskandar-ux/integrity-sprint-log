@@ -178,7 +178,7 @@ export async function POST(req: Request) {
   } else if (body.action === 'create_new') {
     if (!body.newTask) return NextResponse.json({ error: 'newTask required for create_new' }, { status: 400 })
 
-    const { subject, projectId, parentId, sprintId, estimatedMins, typeId = 1, userId = 8 } = body.newTask
+    const { subject, projectId, parentId, sprintId, estimatedMins, typeId = 1, userId = ctx?.opUserId ?? 0 } = body.newTask
 
     const bullets = body.bullets?.length ? body.bullets : session.bullets
     const { groups, needsEpic } = clusterIntoTasks(subject, bullets, mins)

@@ -16,8 +16,8 @@ function timeToMinutes(t: string): number {
 export async function POST(req: Request) {
   const { wpId, statusId, percentDone, spentTimeStr, userSettings } = await req.json()
   const ctx   = await getRequestContext()
-  const token = userSettings?.opApiToken || ctx?.opToken || process.env.OP_API_TOKEN
-  const base  = ctx?.opBaseUrl || process.env.OP_BASE_URL
+  const token = userSettings?.opApiToken || ctx?.opToken || ''
+  const base  = ctx?.opBaseUrl || ''
   if (!token || !base || !wpId) return NextResponse.json({ error: 'Missing config' }, { status: 400 })
 
   const headers = {

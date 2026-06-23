@@ -124,8 +124,8 @@ export async function POST(req: Request) {
     const { title, time, bullets, date, userSettings } = payload
 
     const ctx   = await getRequestContext()
-    const token = userSettings.opApiToken || ctx?.opToken || process.env.OP_API_TOKEN
-    const base  = ctx?.opBaseUrl || process.env.OP_BASE_URL
+    const token = userSettings.opApiToken || ctx?.opToken || ''
+    const base  = ctx?.opBaseUrl || ''
     if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
     const project  = detectProject(title, bullets)

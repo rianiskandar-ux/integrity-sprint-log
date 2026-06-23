@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     const ctx  = await getRequestContext()
 
     const hubSessions = (await getAllSessions(ctx?.uid)).filter(s => s.pushStatus === 'hub' || s.pushStatus === 'live')
-    const kbEntries = (await getAllKBEntries()).filter(e => e.triageStatus === 'hub')
+    const kbEntries = (await getAllKBEntries(ctx?.uid)).filter(e => e.triageStatus === 'hub')
 
     // Load sprint context for AI suggest
     let sprintContext = null

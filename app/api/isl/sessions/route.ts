@@ -40,6 +40,8 @@ export async function POST(req: Request) {
     const existing = body.sessionId ? await getSessionBySessionId(body.sessionId) : null
 
     if (existing) {
+      if (ctx?.uid && existing.userId != null && existing.userId !== ctx.uid)
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       const updated: SessionLog = {
         ...existing,
         title:            body.title            ?? existing.title,
