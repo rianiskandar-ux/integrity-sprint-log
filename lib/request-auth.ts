@@ -45,12 +45,11 @@ export async function getRequestContext(): Promise<RequestContext | null> {
   const rows = await db.select().from(userSettings).where(eq(userSettings.userId, user.uid)).limit(1)
   const row = rows[0]
 
-  // If no row or token not set, fall back to env token (owner of the server)
   const rawToken = row?.opApiToken || ''
-  const opToken = rawToken ? decrypt(rawToken) : (process.env.OP_API_TOKEN || '')
-  if (!opToken) return null
+  const opToken  = rawToken ? decrypt(rawToken) : ''
+  if (!opToken) return null  // must re-login if token missing in DB
 
-  const opUserId = (row?.opUserId ?? user.opUserId) ?? 8
+  const opUserId = row?.opUserId ?? user.opUserId ?? 0
 
   return { uid: user.uid, opUserId, opToken, opBaseUrl }
 }

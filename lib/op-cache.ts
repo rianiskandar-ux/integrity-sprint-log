@@ -122,11 +122,7 @@ const EMPTY: OPCache = {
 export function loadCache(userId?: number | null): OPCache {
   const file = cacheFileFor(userId)
   try {
-    if (!fs.existsSync(file)) {
-      // Fall back to legacy shared cache for backward compat (first run after upgrade)
-      if (userId && fs.existsSync(CACHE_FILE)) return { ...EMPTY, ...JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')) }
-      return EMPTY
-    }
+    if (!fs.existsSync(file)) return EMPTY
     return { ...EMPTY, ...JSON.parse(fs.readFileSync(file, 'utf-8')) }
   } catch { return EMPTY }
 }
