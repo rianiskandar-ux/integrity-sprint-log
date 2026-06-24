@@ -63,6 +63,8 @@ services:
       - ISL_OP_USER_ID=${ISL_OP_USER_ID:-0}
       # Internal uid pemilik markdown lama (daily-sprints/). Default 1 = user pertama.
       - ISL_OWNER_UID=${ISL_OWNER_UID:-1}
+      # Local key untuk perintah terminal `isl-timer.ps1` (kosong = pakai ISL_ENCRYPTION_KEY).
+      - ISL_TIMER_KEY=${ISL_TIMER_KEY:-}
       # AI Chat providers (server-side only, tidak expose ke client)
       - AI_CHAT_TR_KEY=${AI_CHAT_TR_KEY:-}
       - AI_CHAT_TR_BASE=${AI_CHAT_TR_BASE:-https://api.tokenrouter.com/v1}

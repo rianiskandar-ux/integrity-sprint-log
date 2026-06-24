@@ -259,6 +259,12 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
             <p className="text-sm font-bold text-white leading-tight line-clamp-2">{task.title}</p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('isl:start-timer', { detail: { taskTitle: task.title, sessionId: task.taskType === 'session' ? task.id : null, opTaskId: task.opTaskId ?? null } }))}
+              title="Mulai timer untuk task ini (ukur waktu actual)"
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg text-white border border-white/30 hover:bg-white/20 transition">
+              ▶ Timer
+            </button>
             {task.taskType === 'session' && (
               <button onClick={pushToOp} disabled={pushing}
                 title={task.opTaskId ? `Push worklog ke OP #${task.opTaskId}` : 'Pilih ticket di Push Queue dulu'}

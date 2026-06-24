@@ -347,7 +347,16 @@ function SessionDetailPopup({
           {/* Meta grid */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] text-gray-500 dark:text-gray-400">
             <div><span className="font-semibold text-gray-600 dark:text-gray-300">Duration</span><br />
-              {session.actualMins ? `${formatDur(session.actualMins)} (actual)` : formatDur(session.estimatedMins) + ' (est)'}
+              {session.actualMins && session.estimatedMins && session.actualMins !== session.estimatedMins ? (
+                <span>
+                  {formatDur(session.estimatedMins)} <span className="text-gray-300">est →</span> <span className="font-semibold text-gray-700 dark:text-gray-200">{formatDur(session.actualMins)}</span>
+                  {(() => {
+                    const diff = session.actualMins - session.estimatedMins
+                    const over = diff > 0
+                    return <span className={`ml-1 text-[10px] font-bold ${over ? 'text-orange-500' : 'text-emerald-500'}`}>({over ? '+' : ''}{diff}m)</span>
+                  })()}
+                </span>
+              ) : session.actualMins ? `${formatDur(session.actualMins)} (actual)` : formatDur(session.estimatedMins) + ' (est)'}
             </div>
             <div><span className="font-semibold text-gray-600 dark:text-gray-300">Date</span><br />{formatDate(session.startedAt)}</div>
             {opStatus && (
