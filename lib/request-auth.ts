@@ -30,10 +30,11 @@ export interface RequestContext {
 export async function getRequestContext(): Promise<RequestContext | null> {
   const opBaseUrl = getOpBaseUrl() || process.env.OP_BASE_URL || 'https://tokek.integrity-asia.com'
 
-  // Single-user / PIN mode: fall back to global env token
+  // Single-user / PIN mode: fall back to global env token.
+  // opUserId from ISL_OP_USER_ID (each personal instance sets their own); 0 = unknown.
   if (process.env.ISL_MULTIUSER !== '1') {
     const token = getOpToken() || process.env.OP_API_TOKEN || ''
-    return { uid: 1, opUserId: 8, opToken: token, opBaseUrl }
+    return { uid: 1, opUserId: Number(process.env.ISL_OP_USER_ID ?? 0), opToken: token, opBaseUrl }
   }
 
   // Multi-user mode: resolve from session cookie

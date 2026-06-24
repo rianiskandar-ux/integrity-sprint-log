@@ -33,10 +33,11 @@ services:
       # user-config.json + op-cache.json (persisted across restarts)
       - isl-data:/app/data
       # Kredensial Claude Code (login akun kamu) → biar claude-cli jalan di container.
-      # AI dipakai = akun pemilik kredensial ini. Untuk tim, tiap orang mount kredensialnya sendiri.
-      - C:/Users/user199/.claude:/home/nextjs/.claude
+      # AI dipakai = akun pemilik kredensial ini. Tiap orang set CLAUDE_CREDS_DIR / CLAUDE_CONFIG_FILE
+      # di .env ke folder .claude mereka sendiri (lihat .env.example + TEAM-SETUP.md).
+      - ${CLAUDE_CREDS_DIR:-C:/Users/user199/.claude}:/home/nextjs/.claude
       # Config utama claude (.claude.json) read-only: container baca, host aman dari corrupt.
-      - C:/Users/user199/.claude.json:/home/nextjs/.claude.json:ro
+      - ${CLAUDE_CONFIG_FILE:-C:/Users/user199/.claude.json}:/home/nextjs/.claude.json:ro
     environment:
       - DATABASE_URL=postgresql://isl:${POSTGRES_PASSWORD:-isl-local-2026}@postgres:5432/isl
       - OP_BASE_URL=${OP_BASE_URL:-https://tokek.integrity-asia.com}
@@ -58,6 +59,8 @@ services:
       - ISL_ACCESS_PIN=${ISL_ACCESS_PIN:-}
       # Multi-user mode: tiap orang login pakai OP API token sendiri. 1 = aktif.
       - ISL_MULTIUSER=${ISL_MULTIUSER:-1}
+      # OP user id pemilik instance — hanya dipakai kalau ISL_MULTIUSER=0 (single-user).
+      - ISL_OP_USER_ID=${ISL_OP_USER_ID:-0}
       # AI Chat providers (server-side only, tidak expose ke client)
       - AI_CHAT_TR_KEY=${AI_CHAT_TR_KEY:-}
       - AI_CHAT_TR_BASE=${AI_CHAT_TR_BASE:-https://api.tokenrouter.com/v1}
