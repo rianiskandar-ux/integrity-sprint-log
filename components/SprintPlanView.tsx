@@ -170,8 +170,13 @@ export default function SprintPlanView() {
       const r = await fetch('/api/op/sprint-move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskIds, targetSprintId: data.nextSprint.id, edits: editMap }),
+        // defaultEstMins: never let a Task land in the next sprint with an empty
+        // estimate. Route fills it ONLY for type Task with no existing estimate
+        // (Feature/Epic/US untouched).
+        body: JSON.stringify({ taskIds, targetSprintId: data.nextSprint.id, edits: editMap, defaultEstMins: 60 }),
       }).then(r => r.json())
+      // Route returns { error } (no results) on 401/400 — guard before .filter to avoid a crash.
+      if (!Array.isArray(r.results)) { showToast(`❌ ${r.error ?? 'Gagal pindah'}`); setPushing(false); return }
       setPushResults(r.results)
       const ok   = r.results.filter((x: { ok: boolean }) => x.ok).length
       const fail = r.results.length - ok
@@ -183,6 +188,22 @@ export default function SprintPlanView() {
       }
     } catch (e) { showToast(`❌ ${String(e)}`) }
     setPushing(false)
+  }
+
+  // Batch status change from the recap (New / In Progress / Hold / Close) → syncs to OP.
+  async function batchStatus(ids: number[], islStatus: string) {
+    let ok = 0
+    for (const id of ids) {
+      const r = await fetch('/api/op/status', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wpId: id, islStatus }),
+      }).then(res => res.json()).catch(() => ({ ok: false }))
+      if (r.ok) ok++
+    }
+    showToast(`✅ ${ok}/${ids.length} status diupdate`)
+    await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
+    window.dispatchEvent(new Event('isl:cache-refreshed'))
+    load()
   }
 
   // Send selected tasks to Push Queue as pending ISL sessions
@@ -289,6 +310,7 @@ export default function SprintPlanView() {
   }
 
   function toggleOne(id: number) {
+    setPushResults(null)  // a fresh selection shouldn't show a prior move's results
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
 
@@ -884,6 +906,7 @@ export default function SprintPlanView() {
             tasks={[...carryOver, ...doneTasks] as RecapTask[]}
             opUrl={opUrl}
             onTaskClick={(tk) => setOpTask(tk)}
+            onBatchStatus={batchStatus}
           />
         </div>
       </div>

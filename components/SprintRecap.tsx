@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+
 export interface RecapTask {
   id: number
   subject: string
@@ -17,6 +19,11 @@ const STATUS_COLOR: Record<string, string> = {
 const TYPE_ICON: Record<string, string> = {
   'Task': '⬜', 'User Story': '🔵', 'Bug': '🔴', 'Feature': '🟢', 'Epic': '🟣',
 }
+// Feature/Epic are managed at the OP level (wrappers) — view-only in the recap,
+// no in-ISL estimate edit and not part of batch status actions.
+function isManaged(type: string): boolean {
+  return !/^(feature|epic)$/i.test(type)
+}
 function fmtH(h: number | null): string {
   if (h === null) return '—'
   if (h < 1) return `${Math.round(h * 60)}m`
@@ -24,15 +31,29 @@ function fmtH(h: number | null): string {
   return mm > 0 ? `${hh}h ${mm}m` : `${hh}h`
 }
 
+const BATCH_ACTIONS: { key: string; label: string; cls: string }[] = [
+  { key: 'new',         label: '⬜ New',         cls: 'text-gray-600 border-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800' },
+  { key: 'in_progress', label: '🔵 In Progress', cls: 'text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950' },
+  { key: 'on_hold',     label: '⏸ Hold',         cls: 'text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950' },
+  { key: 'done',        label: '✅ Close',        cls: 'text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950' },
+]
+
 // Compact comprehensive recap of one sprint — ALL tasks (any status) in a single
 // card with a totals summary footer. Mirrors the OpenProject sprint table view.
-export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick }: {
+// When onBatchStatus is provided, a "Select" mode lets the user pick multiple
+// tasks and batch-set their status (New / In Progress / Hold / Close) in OP.
+export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick, onBatchStatus }: {
   title: string
   subtitle?: string
   tasks: RecapTask[]
   opUrl: string
   onTaskClick?: (task: RecapTask) => void
+  onBatchStatus?: (taskIds: number[], islStatus: string) => Promise<void>
 }) {
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [busy, setBusy] = useState(false)
+
   if (!tasks.length) return null
   const rank = (s: string) => {
     const k = s.toLowerCase()
@@ -48,6 +69,23 @@ export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick
     acc[key] = (acc[key] ?? 0) + 1; return acc
   }, {} as Record<string, number>)
 
+  // Only managed types (not Feature/Epic) can be batch-selected.
+  const selectableIds = sorted.filter(t => isManaged(t.type)).map(t => t.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
+
+  function toggle(id: number) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(selectableIds))
+  }
+  async function runBatch(islStatus: string) {
+    if (!onBatchStatus || !selected.size || busy) return
+    setBusy(true)
+    try { await onBatchStatus(Array.from(selected), islStatus); setSelected(new Set()); setSelectMode(false) }
+    finally { setBusy(false) }
+  }
+
   return (
     <div className="rounded-2xl border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800/60 overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700/50 bg-gray-50/60 dark:bg-gray-900/30 flex-wrap">
@@ -60,10 +98,36 @@ export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick
           {c.new ? <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{c.new} new</span> : null}
           {c.hold ? <span className="px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-500">{c.hold} hold</span> : null}
           {c.closed ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-500">{c.closed} done</span> : null}
+          {onBatchStatus && (
+            <button onClick={() => { setSelectMode(v => !v); setSelected(new Set()) }}
+              className={`ml-1 px-2 py-0.5 rounded-full border transition ${selectMode ? 'bg-violet-600 text-white border-violet-600' : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              {selectMode ? '✕ Batal' : '☑ Pilih'}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Batch action bar */}
+      {selectMode && onBatchStatus && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-700/50 bg-violet-50/50 dark:bg-violet-950/20 flex-wrap">
+          <label className="flex items-center gap-1 text-[10px] font-semibold text-gray-500 cursor-pointer">
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} className="rounded accent-violet-600" />
+            Semua ({selectableIds.length})
+          </label>
+          <span className="text-[10px] text-violet-600 dark:text-violet-400 font-bold">{selected.size} dipilih</span>
+          <div className="flex-1" />
+          {selected.size > 0 && BATCH_ACTIONS.map(a => (
+            <button key={a.key} onClick={() => runBatch(a.key)} disabled={busy}
+              className={`text-[10px] font-semibold px-2 py-1 rounded-lg border transition disabled:opacity-40 ${a.cls}`}>
+              {busy ? '⏳' : a.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-72 overflow-y-auto">
         {sorted.map(t => {
+          const managed = isManaged(t.type)
           const inner = (
             <>
               <span className="flex-shrink-0">{TYPE_ICON[t.type] ?? '⬜'}</span>
@@ -74,10 +138,30 @@ export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick
               <span className="text-[9px] text-gray-400 flex-shrink-0 w-8 text-right">{t.percentDone}%</span>
             </>
           )
-          const cls = 'flex items-center gap-2 px-4 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition text-[11px] w-full text-left'
-          return onTaskClick
-            ? <button key={t.id} type="button" onClick={() => onTaskClick(t)} className={cls}>{inner}</button>
-            : <a key={t.id} href={`${opUrl}/work_packages/${t.id}`} target="_blank" rel="noopener" className={cls}>{inner}</a>
+          const base = 'flex items-center gap-2 px-4 py-1.5 transition text-[11px] w-full text-left'
+
+          // Select mode: managed rows become selectable; Feature/Epic stay greyed + non-selectable.
+          if (selectMode) {
+            return (
+              <div key={t.id}
+                onClick={() => managed && toggle(t.id)}
+                className={`${base} ${managed ? 'cursor-pointer hover:bg-violet-50/60 dark:hover:bg-violet-950/20' : 'opacity-40 cursor-not-allowed'} ${selected.has(t.id) ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}>
+                <input type="checkbox" checked={selected.has(t.id)} disabled={!managed} readOnly
+                  className="rounded accent-violet-600 flex-shrink-0" />
+                {inner}
+              </div>
+            )
+          }
+
+          // Normal mode: managed → editable (opens OP modal); Feature/Epic → greyed link to OP.
+          if (onTaskClick && managed) {
+            return <button key={t.id} type="button" onClick={() => onTaskClick(t)} className={`${base} hover:bg-gray-50 dark:hover:bg-gray-800/40`}>{inner}</button>
+          }
+          return (
+            <a key={t.id} href={`${opUrl}/work_packages/${t.id}`} target="_blank" rel="noopener"
+              title={managed ? '' : 'Feature/Epic — dikelola di OpenProject'}
+              className={`${base} ${managed ? 'hover:bg-gray-50 dark:hover:bg-gray-800/40' : 'opacity-40'}`}>{inner}</a>
+          )
         })}
       </div>
       <div className="flex items-center justify-between gap-2 px-4 py-2 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/60 dark:bg-gray-900/30 text-[10px] font-bold flex-wrap">

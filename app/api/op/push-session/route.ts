@@ -121,7 +121,8 @@ export async function POST(req: Request) {
     action: 'create_new' | 'link_existing'
     bullets?: string[]
     opTaskId?: number
-    loggedMins?: number   // explicit worklog minutes chosen by the user (estimate vs actual)
+    loggedMins?: number     // explicit worklog minutes chosen by the user (estimate vs actual)
+    estimatedMins?: number  // estimate to back-fill on an existing Task that has none
     newTask?: {
       subject: string
       projectId: number
@@ -155,7 +156,19 @@ export async function POST(req: Request) {
 
     const wpRes = await fetch(`${OP_BASE}/api/v3/work_packages/${body.opTaskId}`, { headers })
     if (!wpRes.ok) return NextResponse.json({ error: `OP task #${body.opTaskId} not found` }, { status: 404 })
+    const wp = await wpRes.json() as { lockVersion?: number; estimatedTime?: string | null; _links?: { type?: { title?: string } } }
     taskId = body.opTaskId
+
+    // Back-fill the estimate so a worked Task never stays estimate-less in OP. Only
+    // for type Task with no existing estimate (Feature/Epic/US left untouched). Use the
+    // session's estimate (NOT the worklog minutes).
+    const estMins = body.estimatedMins ?? session.estimatedMins ?? 60
+    if (estMins > 0 && !wp.estimatedTime && wp._links?.type?.title === 'Task') {
+      await fetch(`${OP_BASE}/api/v3/work_packages/${taskId}`, {
+        method: 'PATCH', headers,
+        body: JSON.stringify({ lockVersion: wp.lockVersion, estimatedTime: toISODuration(estMins) }),
+      }).catch(() => {})
+    }
 
     // Activity comment
     const bulletLines = (body.bullets?.length ? body.bullets : session.bullets).map(b => `- ${b}`)

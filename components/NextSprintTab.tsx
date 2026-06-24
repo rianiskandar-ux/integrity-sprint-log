@@ -112,8 +112,8 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
     setReverting(taskId)
     try {
       const body = target === 'current'
-        ? { taskIds: [taskId], targetSprintId: curSprint?.id ?? null }
-        : { taskIds: [taskId], targetSprintId: null, statusId: 1 } // remove + set New
+        ? { taskIds: [taskId], targetSprintId: curSprint?.id ?? null, defaultEstMins: 60 } // re-adds to active sprint → keep estimate invariant
+        : { taskIds: [taskId], targetSprintId: null, statusId: 1 } // remove + set New (backlog needs no estimate)
       const r = await fetch('/api/op/sprint-move', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       }).then(res => res.json())
@@ -129,6 +129,22 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
       }
     } catch (e) { setToast(`⚠️ ${String(e)}`); setTimeout(() => setToast(null), 4000) }
     finally { setReverting(null) }
+  }
+
+  // Batch status change from the recap (New / In Progress / Hold / Close) → syncs to OP.
+  async function batchStatus(ids: number[], islStatus: string) {
+    let ok = 0
+    for (const id of ids) {
+      const r = await fetch('/api/op/status', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wpId: id, islStatus }),
+      }).then(res => res.json()).catch(() => ({ ok: false }))
+      if (r.ok) ok++
+    }
+    setToast(`✅ ${ok}/${ids.length} status diupdate`); setTimeout(() => setToast(null), 3500)
+    await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
+    window.dispatchEvent(new Event('isl:cache-refreshed'))
+    loadPlan()
   }
 
   const [filling, setFilling] = useState(false)
@@ -195,7 +211,8 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   }
 
   function stageAI(t: SuggestedTask, idx: number, bucket: 'next' | 'backlog') {
-    const key = `ai-${idx}-${t.subject.slice(0, 20)}`
+    // Stable content-based key — index collides after Load-AI regenerates suggestions.
+    const key = `ai-${t.subject}`
     const existing = staged.find(s => s.key === key)
     if (existing) {
       saveStaged(staged.map(s => s.key === key ? { ...s, bucket } : s))
@@ -255,7 +272,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   const selectedNext = nextItems.filter(s => selected.has(s.key))
 
   const isCarryStaged = (id: number) => staged.find(s => s.key === `carry-${id}`)
-  const isAIStaged    = (idx: number, t: SuggestedTask) => staged.find(s => s.key === `ai-${idx}-${t.subject.slice(0, 20)}`)
+  const isAIStaged    = (_idx: number, t: SuggestedTask) => staged.find(s => s.key === `ai-${t.subject}`)
 
   if (loading) return <div className="py-12 text-center text-gray-400 text-sm">Loading sprint data…</div>
 
@@ -271,6 +288,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
             tasks={nextRecap}
             opUrl={opUrl}
             onTaskClick={(t) => setOpTaskId(t.id)}
+            onBatchStatus={batchStatus}
           />
           {nextRecap.some(t => t.type === 'Task' && t.estimatedHours == null) && (
             <button onClick={fillEmptyEstimates} disabled={filling}

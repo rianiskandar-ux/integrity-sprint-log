@@ -46,10 +46,14 @@ export async function POST(req: Request) {
   const remainingMin  = Math.max(0, estimatedMin - totalSpentMin)
   const autoPct       = estimatedMin > 0 ? Math.min(100, Math.round((totalSpentMin / estimatedMin) * 100)) : percentDone
 
+  // Feature/Epic estimates are managed in OP, not from ISL — never write an estimate to them.
+  const wpType = (wp._links?.type?.title ?? '') as string
+  const estimateAllowed = !/^(feature|epic)$/i.test(wpType)
+
   const body: Record<string, unknown> = { lockVersion: wp.lockVersion }
   if (statusId)            body._links        = { status: { href: `/api/v3/statuses/${statusId}` } }
   if (percentDone !== undefined) body.percentageDone = percentDone ?? autoPct
-  if (typeof estimatedMins === 'number' && estimatedMins > 0) body.estimatedTime = toISODuration(estimatedMins)
+  if (typeof estimatedMins === 'number' && estimatedMins > 0 && estimateAllowed) body.estimatedTime = toISODuration(estimatedMins)
   if (estimatedMin > 0)    body.remainingTime = toISODuration(remainingMin)
 
   const patchRes = await fetch(`${base}/api/v3/work_packages/${wpId}`, {
