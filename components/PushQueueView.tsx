@@ -21,8 +21,91 @@ interface PendingSession {
 }
 
 interface OPTask  { id: number; subject: string; project?: string; sprintId?: number | null }
-interface OPStory { id: number; subject: string; epicId?: number | null }
+interface OPStory { id: number; subject: string; epicId?: number | null; project?: string; status?: string }
 interface OPEpic  { id: number; subject: string }
+
+// Searchable parent (User Story) picker — searches the synced cache instantly AND
+// live OP, and shows each result's relation (Epic · project · status) so similar
+// names can be told apart before picking.
+function ParentPicker({ value, valueLabel, onChange, userStories, epics }: {
+  value: number | null
+  valueLabel?: string | null
+  onChange: (id: number | null, label: string) => void
+  userStories: OPStory[]
+  epics: OPEpic[]
+}) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [live, setLive] = useState<{ id: number; subject: string; type: string; project?: string; status?: string }[]>([])
+  const [searching, setSearching] = useState(false)
+
+  const epicName = (id?: number | null) => (id ? epics.find(e => e.id === id)?.subject ?? null : null)
+
+  useEffect(() => {
+    if (q.trim().length < 2) { setLive([]); return }
+    const t = setTimeout(() => {
+      setSearching(true)
+      fetch(`/api/op/search?q=${encodeURIComponent(q.trim())}`)
+        .then(r => r.json())
+        .then(d => setLive((d.results ?? []) as typeof live))
+        .catch(() => {})
+        .finally(() => setSearching(false))
+    }, 350)
+    return () => clearTimeout(t)
+  }, [q])
+
+  if (value) {
+    return (
+      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-violet-50/50 dark:bg-violet-950/20">
+        <span className="truncate text-violet-800 dark:text-violet-200">✓ #{value} {valueLabel}</span>
+        <button type="button" onClick={() => { onChange(null, ''); setQ('') }}
+          className="text-[10px] font-bold text-gray-400 hover:text-red-500 flex-shrink-0">✕ ganti</button>
+      </div>
+    )
+  }
+
+  const ql = q.trim().toLowerCase()
+  const localMatches = ql.length >= 2
+    ? userStories.filter(s => String(s.id).includes(ql) || s.subject.toLowerCase().includes(ql)).slice(0, 8)
+    : []
+  const localIds = new Set(localMatches.map(s => s.id))
+  const merged = [
+    ...localMatches.map(s => ({ id: s.id, subject: s.subject, type: 'User Story', project: s.project, status: s.status, epic: epicName(s.epicId) })),
+    ...live.filter(r => !localIds.has(r.id)).map(r => ({ id: r.id, subject: r.subject, type: r.type, project: r.project, status: r.status, epic: null as string | null })),
+  ].slice(0, 12)
+
+  return (
+    <div className="relative mt-1">
+      <input
+        value={q}
+        onChange={e => { setQ(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Cari User Story / parent (nama atau #id)…"
+        className="w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-violet-300" />
+      {open && ql.length >= 2 && (
+        <div className="absolute z-30 mt-1 w-full max-h-60 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl">
+          {merged.length === 0 ? (
+            <p className="px-2 py-2 text-[10px] text-gray-400">{searching ? 'Mencari di OP…' : 'Tidak ada hasil'}</p>
+          ) : merged.map(m => (
+            <button key={`${m.id}-${m.type}`} type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { onChange(m.id, m.subject.slice(0, 70)); setOpen(false); setQ('') }}
+              className="w-full text-left px-2 py-1.5 hover:bg-violet-50 dark:hover:bg-violet-950/30 border-b border-gray-50 dark:border-gray-800 last:border-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-300 flex-shrink-0">{m.type}</span>
+                <span className="text-[11px] font-medium text-gray-800 dark:text-gray-100 truncate">#{m.id} {m.subject}</span>
+              </div>
+              <div className="text-[9px] text-gray-400 truncate mt-0.5">
+                {m.epic ? `Epic: ${m.epic} · ` : ''}{m.project ?? ''}{m.status ? ` · ${m.status}` : ''}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 interface OPSprint { id: number; name: string; isCurrent: boolean; startDate: string; endDate: string }
 
 interface OPCache {
@@ -80,6 +163,7 @@ interface NewTaskForm {
   projectId: number
   projectIdentifier: string
   parentId: number | null
+  parentLabel?: string
   sprintId: number | null
   estimatedMins: number
   typeId: number
@@ -295,6 +379,7 @@ function SessionCard({
     projectId:           defaultProject.id,
     projectIdentifier:   defaultProject.identifier,
     parentId:            null,
+    parentLabel:         '',
     sprintId:            currentSprint?.id ?? null,
     estimatedMins:       session.actualMins ?? session.estimatedMins ?? 60,
     typeId:              1,
@@ -304,14 +389,11 @@ function SessionCard({
   const h = Math.floor(mins / 60), m = mins % 60
   const dur = mins >= 60 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${mins}m`
 
-  const stories = (cache.userStories ?? []).filter(s => {
-    // Show stories from selected project (no direct project link in cache, show all)
-    return true
-  })
-
   // OP preview of the task that will be created
   const previewProject = projects.find(p => p.id === form.projectId) ?? defaultProject
-  const previewParent  = form.parentId ? (cache.userStories ?? []).find(s => s.id === form.parentId) : null
+  const previewParent  = form.parentId
+    ? { id: form.parentId, subject: form.parentLabel || (cache.userStories ?? []).find(s => s.id === form.parentId)?.subject || '' }
+    : null
   const previewSprint  = form.sprintId ? sprints.find(s => s.id === form.sprintId) : null
   const previewType    = TYPE_OPTIONS.find(t => t.id === form.typeId)?.label ?? 'Task'
 
@@ -539,14 +621,16 @@ function SessionCard({
               </div>
             </div>
 
-            {/* Parent (User Story) */}
+            {/* Parent (User Story) — searchable, synced from OP, shows relation */}
             <div>
               <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Parent / User Story (optional)</label>
-              <select value={form.parentId ?? ''} onChange={e => setForm(f => ({ ...f, parentId: e.target.value ? Number(e.target.value) : null }))}
-                className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none">
-                <option value="">— No parent —</option>
-                {stories.slice(0, 30).map(s => <option key={s.id} value={s.id}>#{s.id} {s.subject.slice(0, 60)}</option>)}
-              </select>
+              <ParentPicker
+                value={form.parentId}
+                valueLabel={form.parentLabel}
+                onChange={(id, label) => setForm(f => ({ ...f, parentId: id, parentLabel: label }))}
+                userStories={cache.userStories ?? []}
+                epics={cache.epics ?? []}
+              />
             </div>
           </div>
 
