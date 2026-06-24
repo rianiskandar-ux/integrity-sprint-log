@@ -61,6 +61,8 @@ services:
       - ISL_MULTIUSER=${ISL_MULTIUSER:-1}
       # OP user id pemilik instance — hanya dipakai kalau ISL_MULTIUSER=0 (single-user).
       - ISL_OP_USER_ID=${ISL_OP_USER_ID:-0}
+      # Internal uid pemilik markdown lama (daily-sprints/). Default 1 = user pertama.
+      - ISL_OWNER_UID=${ISL_OWNER_UID:-1}
       # AI Chat providers (server-side only, tidak expose ke client)
       - AI_CHAT_TR_KEY=${AI_CHAT_TR_KEY:-}
       - AI_CHAT_TR_BASE=${AI_CHAT_TR_BASE:-https://api.tokenrouter.com/v1}

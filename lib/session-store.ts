@@ -167,10 +167,26 @@ export async function saveSession(session: SessionLog): Promise<void> {
   })
 }
 
+// Only these columns may be patched — anything else (e.g. a stray key from a raw
+// request body) is dropped so Drizzle never receives an unknown column.
+const EDITABLE_SESSION_KEYS: ReadonlySet<string> = new Set([
+  'sessionId', 'userId', 'date', 'title', 'bullets', 'source', 'startedAt', 'endedAt',
+  'actualMins', 'estimatedMins', 'opTaskId', 'opStoryId', 'opEpicId', 'isNewTask',
+  'taskStatus', 'aiStatus', 'hasExplicitCmd', 'needsValidation', 'command',
+  'ticketBinding', 'relatedOldTaskId', 'tokenUsage', 'pushStatus', 'autoPushed',
+  'undoneAt', 'createdAt',
+])
+
 export async function updateSession(id: string, updates: Partial<SessionLog>): Promise<SessionLog | null> {
-  const patch: Record<string, unknown> = { ...updates, updatedAt: new Date() }
-  if (patch.createdAt) patch.createdAt = new Date(patch.createdAt as string)
-  delete patch.id
+  const patch: Record<string, unknown> = { updatedAt: new Date() }
+  for (const [k, v] of Object.entries(updates)) {
+    if (EDITABLE_SESSION_KEYS.has(k)) patch[k] = v
+  }
+  if (patch.createdAt != null) {
+    const d = new Date(patch.createdAt as string)
+    if (isNaN(d.getTime())) delete patch.createdAt
+    else patch.createdAt = d
+  }
 
   const rows = await db.update(sessions).set(patch).where(eq(sessions.id, id)).returning()
   return rows[0] ? rowToLog(rows[0]) : null

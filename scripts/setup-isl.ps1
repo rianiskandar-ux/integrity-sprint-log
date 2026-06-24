@@ -26,9 +26,16 @@ $claudeDir  = Join-Path $env:USERPROFILE ".claude"
 $claudeJson = Join-Path $env:USERPROFILE ".claude.json"
 $claudeDirFwd  = $claudeDir  -replace '\\','/'
 $claudeJsonFwd = $claudeJson -replace '\\','/'
-if (-not (Test-Path $claudeDir)) {
-  Write-Host "PERINGATAN: $claudeDir belum ada. AI Chat (claude-cli) butuh kamu sudah login Claude Code." -ForegroundColor Yellow
-  Write-Host "  Install + login dulu: npm install -g @anthropic-ai/claude-code ; claude  (login)" -ForegroundColor Yellow
+$claudeMissing = $false
+if (-not (Test-Path $claudeDir))  { Write-Host "PERINGATAN: folder $claudeDir belum ada." -ForegroundColor Yellow; $claudeMissing = $true }
+# .claude.json is bind-mounted as a FILE; if it's missing Docker creates an empty
+# DIRECTORY at that path and claude-cli breaks. Guard it explicitly.
+if (-not (Test-Path $claudeJson)) { Write-Host "PERINGATAN: file $claudeJson belum ada (mount-nya per-file)." -ForegroundColor Yellow; $claudeMissing = $true }
+if ($claudeMissing) {
+  Write-Host "  AI Chat (claude-cli) butuh Claude Code sudah terinstall & login:" -ForegroundColor Yellow
+  Write-Host "    npm install -g @anthropic-ai/claude-code ; claude   (ikuti login)" -ForegroundColor Yellow
+  $go = Read-Host "  Lanjut setup tanpa AI Chat dulu? (ketik 'yes' untuk lanjut, lainnya batal)"
+  if ($go -ne 'yes') { Write-Host "Dibatalkan. Login Claude dulu lalu jalankan ulang." -ForegroundColor Red; exit 0 }
 }
 
 # 4. Random secrets
@@ -66,7 +73,9 @@ AI_CHAT_TR_BASE=https://api.tokenrouter.com/v1
 AI_CHAT_OM_KEY=
 AI_CHAT_OM_BASE=https://api.openmodel.ai/v1
 "@
-Set-Content -Path ".env" -Value $envText -Encoding utf8
+# Write WITHOUT BOM (Set-Content -Encoding utf8 on PS 5.1 adds a BOM that breaks
+# docker-compose parsing of the first variable).
+[System.IO.File]::WriteAllText((Join-Path $root ".env"), $envText, (New-Object System.Text.UTF8Encoding $false))
 Write-Host ".env dibuat (creds Claude: $claudeDirFwd, secret di-generate acak)." -ForegroundColor Green
 
 # 7. Build & start
