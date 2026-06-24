@@ -5,7 +5,11 @@ import { getRequestContext } from '@/lib/request-auth'
 
 export async function GET() {
   try {
-    const ctx      = await getRequestContext()
+    const ctx = await getRequestContext()
+    // Multi-user: require auth so the dashboard never aggregates across users.
+    if (process.env.ISL_MULTIUSER === '1' && !ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const sessions = await getAllSessions(ctx?.uid)
     const cache    = loadCache(ctx?.uid)
 
@@ -78,7 +82,28 @@ export async function GET() {
 
     // Note: OP direct time entries not cached — capacity shows ISL actual only
 
+    // Estimation accuracy — only sessions with a MEASURED actual time (not defaulted).
+    // Period: current sprint if available, else last 14 days.
+    const since14 = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const accPeriodStart = currentSprint ? sprintStart : since14
+    const accPeriodEnd   = currentSprint ? sprintEnd   : today
+    const accuracySessions = sessions.filter(s =>
+      s.actualMins != null && s.actualMins > 0 &&
+      s.estimatedMins != null && s.estimatedMins > 0 &&
+      s.date >= accPeriodStart && s.date <= accPeriodEnd
+    )
+    const accEst    = accuracySessions.reduce((a, s) => a + (s.estimatedMins ?? 0), 0)
+    const accActual = accuracySessions.reduce((a, s) => a + (s.actualMins ?? 0), 0)
+    const accuracy = accuracySessions.length >= 2 && accEst > 0 ? {
+      count:       accuracySessions.length,
+      totalEst:    Math.round(accEst),
+      totalActual: Math.round(accActual),
+      variancePct: Math.round((accActual - accEst) / accEst * 100),  // + = over estimate, - = under
+      period:      currentSprint ? (currentSprint.name ?? 'sprint ini') : '14 hari terakhir',
+    } : { count: accuracySessions.length, period: currentSprint ? (currentSprint.name ?? 'sprint ini') : '14 hari terakhir' }
+
     return NextResponse.json({
+      accuracy,
       queue: {
         count:    queueSessions.length,
         sessions: queueSessions.slice(0, 3).map(s => ({ id: s.id, title: s.title, date: s.date })),

@@ -13,6 +13,36 @@ interface DashData {
   sprint: { current: { id: number; name: string; startDate: string; endDate: string } | null; stats: { total: number; done: number; pct: number } | null }
   backlog: { count: number; preview: { id: number; subject: string }[] }
   capacity?: { islLoggedMins: number; islPendingMins: number; targetMinMins: number; targetMaxMins: number }
+  accuracy?: { count: number; totalEst?: number; totalActual?: number; variancePct?: number; period: string }
+}
+
+function EstAccuracy({ a }: { a: NonNullable<DashData['accuracy']> }) {
+  if (a.count < 2 || a.variancePct == null) {
+    return (
+      <p className="text-[10px] text-gray-400 dark:text-gray-500">
+        Estimasi vs actual: butuh ≥2 task ter-ukur ({a.period}). Pakai ▶ Timer biar kekumpul.
+      </p>
+    )
+  }
+  const v = a.variancePct
+  const over = v > 0
+  const onPoint = Math.abs(v) <= 10
+  const color = onPoint ? '#7c3aed' : over ? '#ea580c' : '#059669'
+  const verdict = onPoint ? 'cukup akurat 👍' : over ? `${v}% lebih lama dari estimasi` : `${Math.abs(v)}% lebih cepat dari estimasi`
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Akurasi Estimasi · {a.period}</p>
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${color}1a`, color }}>
+          {over ? '+' : ''}{v}%
+        </span>
+      </div>
+      <p className="text-[11px] text-gray-600 dark:text-gray-300">
+        {a.count} task: <span className="font-semibold">{Math.round((a.totalEst ?? 0) / 60 * 10) / 10}h</span> est →{' '}
+        <span className="font-semibold">{Math.round((a.totalActual ?? 0) / 60 * 10) / 10}h</span> actual — {verdict}
+      </p>
+    </div>
+  )
 }
 
 function CapacityBar({ islLoggedMins, islPendingMins, targetMinMins, targetMaxMins, onClick }: {
@@ -139,7 +169,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
 
   if (!data) return null
 
-  const { queue, autoLog, incoming, sprint, backlog, capacity } = data
+  const { queue, autoLog, incoming, sprint, backlog, capacity, accuracy } = data
   const days  = sprint.current ? daysLeft(sprint.current.endDate) : null
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
@@ -379,6 +409,13 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
                 targetMaxMins={capacity.targetMaxMins}
                 onClick={() => onNavigate('autolog')}
               />
+            </>
+          )}
+
+          {accuracy && (
+            <>
+              <div className="h-px bg-gray-50 dark:bg-gray-700 my-4" />
+              <EstAccuracy a={accuracy} />
             </>
           )}
         </div>
