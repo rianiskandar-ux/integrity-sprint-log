@@ -39,6 +39,28 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
   const [opContext, setOpContext] = useState<string>('')
   const [pushing, setPushing]     = useState(false)
   const [pushResult, setPushResult] = useState<string | null>(null)
+  const [ticketLog, setTicketLog] = useState<{ totalMins: number; count: number } | null>(null)
+
+  // Total time already logged on this ticket (sum across all sessions for opTaskId)
+  useEffect(() => {
+    if (!task.opTaskId) { setTicketLog(null); return }
+    function load() {
+      fetch(`/api/isl/sessions?taskId=${task.opTaskId}`)
+        .then(r => r.json())
+        .then(d => {
+          const ss = (d.sessions ?? []) as { actualMins?: number | null; estimatedMins?: number | null; pushStatus?: string }[]
+          const live = ss.filter(s => s.pushStatus !== 'discarded')
+          const totalMins = live.reduce((a, s) => a + (s.actualMins ?? s.estimatedMins ?? 0), 0)
+          setTicketLog(live.length ? { totalMins, count: live.length } : null)
+        })
+        .catch(() => {})
+    }
+    load()
+    // Refresh when a timer stops (actual may have changed)
+    const onStopped = () => load()
+    window.addEventListener('isl:timer-stopped', onStopped)
+    return () => window.removeEventListener('isl:timer-stopped', onStopped)
+  }, [task.opTaskId])
 
   // Per-chat model picker — default Claude CLI (local subscription, free)
   const [aiProvider, setAiProvider] = useState('claude-cli')
@@ -257,6 +279,11 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
               )}
             </div>
             <p className="text-sm font-bold text-white leading-tight line-clamp-2">{task.title}</p>
+            {ticketLog && (
+              <p className="text-[10px] text-emerald-200/90 mt-0.5">
+                ⏱ {ticketLog.totalMins >= 60 ? `${Math.floor(ticketLog.totalMins / 60)}j ${ticketLog.totalMins % 60}m` : `${ticketLog.totalMins}m`} tercatat · {ticketLog.count} session
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
             <button
