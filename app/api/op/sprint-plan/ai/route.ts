@@ -154,13 +154,13 @@ like a real team member reflecting (not a stiff status report). EXACT format:
 Sprint #${currentNum} — ${sprintPeriod}
 ${projectNames} · ${displayName}
 
-[2-3 NARRATIVE sentences: what got done and the outcome, any blockers or smooth sailing. Tell the gist & impact, not just task names. No jargon, no the-team filler.]
+[1-2 SHORT sentences, to the point: what got done + overall state (blocked or smooth). No filler, no jargon, no the-team. Keep it tight — this is a quick read.]
 
 ✅ COMPLETED
-[each done task: ✓ subject — (if it's in the work notes, add a short outcome/impact phrase)]
+[each done task, one line: ✓ subject]
 
 ➡️ CARRYING OVER → Sprint #${suggestedNum}
-[each carry-over: → subject (status) — (short why it's not done / suggestion to finish)]
+[each carry-over, one line: → subject (status)]
 
 🔍 FINDINGS & NEW TASK IDEAS
 [2-4 insights from the WORK NOTES above — things discovered while working (edge case, tech debt, follow-up, bug) worth turning into new tasks. Each: • insight → task idea]

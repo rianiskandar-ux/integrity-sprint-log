@@ -36,6 +36,9 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
   const [agendaTitle,   setAgendaTitle]  = useState('')
   const [durMins,       setDurMins]      = useState(15)
   const [postDone,      setPostDone]     = useState<number[]>([])
+  const [savedSummaries, setSavedSummaries] = useState<{ sprint: string; summary: string; savedAt: string }[]>([])
+  const [saving,        setSaving]       = useState(false)
+  const [showSaved,     setShowSaved]    = useState(false)
   // Track owned agenda item IDs: { [meetingId]: itemId } per sprint
   const idsKey = `agenda-item-ids-${currentSprintNo}`
   function getOwnedIds(): Record<number, number> {
@@ -222,6 +225,33 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
   const matchedMeetings = meetings.filter(m => m.autoMatched)
   const otherMeetings   = meetings.filter(m => !m.autoMatched)
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    fetch('/api/sprint/summary').then(r => r.json()).then(d => setSavedSummaries(d.summaries ?? [])).catch(() => {})
+  }, [])
+
+  async function saveSummaryToMemory() {
+    if (saving || !agenda.retrospective.trim() || !agenda.sprintName) return
+    setSaving(true)
+    try {
+      const r = await fetch('/api/sprint/summary', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sprint: agenda.sprintName, summary: agenda.retrospective }),
+      }).then(res => res.json())
+      if (r.summaries) { setSavedSummaries(r.summaries); showToast('💾 Saved to memory') }
+      else showToast(`⚠️ ${r.error ?? 'Gagal simpan'}`)
+    } catch { showToast('⚠️ Gagal simpan') }
+    setSaving(false)
+  }
+
+  async function deleteSavedSummary(sprint: string) {
+    const r = await fetch('/api/sprint/summary', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sprint }),
+    }).then(res => res.json()).catch(() => ({}))
+    if (r.summaries) setSavedSummaries(r.summaries)
+  }
+
   return (
     <div className="space-y-5 pb-10 max-w-2xl">
 
@@ -231,11 +261,50 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
           <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">📋 Sprint Agenda</h3>
           <p className="text-xs text-gray-400 mt-0.5">Sprint summary — auto-posted to relevant OP meetings</p>
         </div>
-        <button onClick={generate} disabled={loading}
-          className="text-[10px] font-semibold px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition disabled:opacity-50">
-          {loading ? '⏳ Generating…' : '✨ Generate from AI'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {agenda.retrospective?.trim() && !agenda.retrospective.startsWith('⚠️') && (
+            <button onClick={saveSummaryToMemory} disabled={saving}
+              title="Simpan summary sprint ini ke memory"
+              className="text-[10px] font-semibold px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition disabled:opacity-50">
+              {saving ? '⏳' : '💾 Save to memory'}
+            </button>
+          )}
+          <button onClick={generate} disabled={loading}
+            className="text-[10px] font-semibold px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition disabled:opacity-50">
+            {loading ? '⏳ Generating…' : '✨ Generate from AI'}
+          </button>
+        </div>
       </div>
+
+      {/* Saved summaries (memory) */}
+      {savedSummaries.length > 0 && (
+        <div className="rounded-xl border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800/40 overflow-hidden">
+          <button onClick={() => setShowSaved(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2 text-[11px] font-bold text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition">
+            <span>📚 Tersimpan di memory ({savedSummaries.length})</span>
+            <span className={`transition-transform ${showSaved ? 'rotate-90' : ''}`}>▶</span>
+          </button>
+          {showSaved && (
+            <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-72 overflow-y-auto">
+              {savedSummaries.map(s => (
+                <div key={s.sprint} className="px-4 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-300">{s.sprint}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-gray-400">{fmtDate(s.savedAt)}</span>
+                      <button onClick={() => setAgenda(prev => ({ ...prev, sprintName: s.sprint, retrospective: s.summary }))}
+                        className="text-[9px] font-semibold text-indigo-500 hover:underline">muat</button>
+                      <button onClick={() => deleteSavedSummary(s.sprint)}
+                        className="text-[9px] font-semibold text-gray-400 hover:text-red-500">hapus</button>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap line-clamp-3">{s.summary.slice(0, 240)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sprint name badge */}
       {agenda.sprintName && (
