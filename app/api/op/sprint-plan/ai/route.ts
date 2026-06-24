@@ -119,6 +119,9 @@ ${doneLines || '(none)'}
 WORK NOTES & FINDINGS (detail dari ISL — SUMBER UTAMA buat insight & ide task baru):
 ${findingsBlock || '(none)'}
 
+ALL output (theme, goal, summary, task subjects & reasons) MUST be in ENGLISH —
+this content goes to OpenProject, which is English by default.
+
 Reply with JSON only — no markdown, no extra text:
 {
   "theme": "2-4 word sprint theme",
@@ -126,45 +129,46 @@ Reply with JSON only — no markdown, no extra text:
   "suggestions": ["alt theme 1", "alt theme 2"],
   "suggestedTasks": [
     {
-      "subject": "task title (spesifik, actionable)",
+      "subject": "task title (specific, actionable, English)",
       "type": "Task|Bug|Feature|User Story",
       "projectHint": "project name or area",
       "estimatedHours": 2,
       "priority": "high|medium|low",
-      "reason": "one sentence why — kalau dari WORK NOTES/findings, sebutkan temuannya"
+      "reason": "one sentence why — if from WORK NOTES/findings, name the finding"
     }
   ]
 }
 
 Rules for suggestedTasks:
 - Suggest 3-6 NEW tasks (not carry-over, those are already tracked)
-- PRIORITASKAN ide yang muncul dari WORK NOTES & FINDINGS (follow-up, edge case, tech debt, bug yang ke-spot saat ngerjain)
-- Lalu yang logis datang SETELAH task done atau yang unblock carry-over
-- Spesifik & actionable — bukan generik seperti "fix bugs"
-- Total jam realistis buat 1 sprint
+- PRIORITIZE ideas surfaced by the WORK NOTES & FINDINGS (follow-up, edge case, tech debt, bug spotted while working)
+- Then what logically comes AFTER the done tasks or unblocks carry-over
+- Specific & actionable — not generic like "fix bugs"
+- Realistic total hours for one sprint
 
-SETELAH JSON di atas, tulis baris berisi PERSIS: ===SUMMARY===
-Lalu di bawahnya tulis recap sprint sebagai TEKS BIASA (bukan JSON, boleh multi-baris & emoji),
-Bahasa Indonesia natural seperti orang cerita (bukan laporan kaku), format PERSIS ini:
+After the JSON above, write a line that is EXACTLY: ===SUMMARY===
+Then below it write the sprint recap as PLAIN TEXT (not JSON; multi-line & emoji OK).
+Write in ENGLISH — this goes to OpenProject, which is English by default. Natural,
+like a real team member reflecting (not a stiff status report). EXACT format:
 
 Sprint #${currentNum} — ${sprintPeriod}
 ${projectNames} · ${displayName}
 
-[2-3 kalimat NARATIF: apa yang sudah dikerjakan & hasilnya, ada kendala/blocker atau lancar. Ceritakan inti & dampaknya, jangan cuma sebut nama task. Hindari jargon & kata 'tim'.]
+[2-3 NARRATIVE sentences: what got done and the outcome, any blockers or smooth sailing. Tell the gist & impact, not just task names. No jargon, no the-team filler.]
 
-✅ SELESAI
-[tiap task done: ✓ subject — (kalau ada di work notes, tambah 1 frasa hasil/dampaknya)]
+✅ COMPLETED
+[each done task: ✓ subject — (if it's in the work notes, add a short outcome/impact phrase)]
 
-➡️ LANJUT KE Sprint #${suggestedNum}
-[tiap carry-over: → subject (status) — (1 frasa kenapa belum kelar / saran biar kelar)]
+➡️ CARRYING OVER → Sprint #${suggestedNum}
+[each carry-over: → subject (status) — (short why it's not done / suggestion to finish)]
 
-🔍 TEMUAN & IDE TASK BARU
-[2-4 poin insight dari WORK NOTES di atas — hal yang ke-discover saat ngerjain (edge case, tech debt, follow-up, bug) yang layak jadi task baru. Tiap poin: • insight → ide task]
+🔍 FINDINGS & NEW TASK IDEAS
+[2-4 insights from the WORK NOTES above — things discovered while working (edge case, tech debt, follow-up, bug) worth turning into new tasks. Each: • insight → task idea]
 
-🎯 FOKUS Sprint #${suggestedNum}
-[1 kalimat: yang paling penting dikerjain di Sprint #${suggestedNum}]
+🎯 NEXT SPRINT FOCUS
+[1 sentence: the most important thing to do in Sprint #${suggestedNum}]
 
-${doneTasks.length} selesai · ${carryOver.length} lanjut · ${openEst.toFixed(1)}h sisa`
+${doneTasks.length} done · ${carryOver.length} carrying over · ${openEst.toFixed(1)}h remaining`
 
   try {
     const text = await callLLM(prompt, llmCfg)
