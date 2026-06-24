@@ -70,16 +70,20 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
         fetch('/api/op/sprint-plan').then(r => r.json()),
         fetch('/api/op/sprint-plan/ai').then(r => r.json()),
       ])
-      const retro  = aiRes.aiSummary ?? ''
       const sprint = planRes.currentSprint?.name ?? `Sprint #${currentSprintNo}`
       const done   = (planRes.doneTasks ?? []).length
       const carry  = (planRes.carryOver ?? []).length
-      // Summary already contains COMPLETED + CARRYING OVER sections — no need for separate keyWins
+      // Surface why nothing came back instead of failing silently.
+      const retro  = aiRes.aiSummary
+        ?? (aiRes.error ? `⚠️ AI error: ${String(aiRes.error).slice(0, 160)}`
+                        : '⚠️ AI tidak mengembalikan hasil. Pastikan Claude Code sudah login (claude di terminal), lalu coba lagi.')
       const updated = { ...agenda, sprintName: sprint, retrospective: retro, keyWins: [], doneCount: done, carriedOver: carry }
       setAgenda(updated)
       localStorage.setItem(storageKey, JSON.stringify(updated))
       setAgendaTitle(`Sprint Summary — ${sprint}`)
-    } catch { /* ignore */ }
+    } catch (e) {
+      setAgenda(prev => ({ ...prev, retrospective: `⚠️ Gagal generate: ${String(e).slice(0, 160)}` }))
+    }
     setLoading(false)
   }
 
@@ -176,7 +180,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
     if (agenda.retrospective) {
       // If AI-generated, it already contains full structured report — use as-is
       // If manually typed, wrap with a header
-      const isStructured = agenda.retrospective.includes('COMPLETED') || agenda.retrospective.includes('CARRYING OVER')
+      const isStructured = /COMPLETED|CARRYING OVER|SELESAI|LANJUT KE|TEMUAN/i.test(agenda.retrospective)
       if (isStructured) {
         lines.push(agenda.retrospective)
       } else {
@@ -235,7 +239,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
 
       {/* Sprint Report */}
       {(() => {
-        const isStructured = agenda.retrospective.includes('COMPLETED') || agenda.retrospective.includes('CARRYING OVER')
+        const isStructured = /COMPLETED|CARRYING OVER|SELESAI|LANJUT KE|TEMUAN/i.test(agenda.retrospective)
         return (
           <div>
             <div className="flex items-center justify-between mb-1.5">

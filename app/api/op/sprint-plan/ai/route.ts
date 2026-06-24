@@ -7,8 +7,9 @@ import { getRequestContext } from '@/lib/request-auth'
 export const runtime = 'nodejs'
 
 export async function GET() {
-  const llmCfg = getLLMConfig()
-  if (!llmCfg) return NextResponse.json({ aiName: null, aiSummary: null, aiSuggestedTasks: [] })
+  // Fall back to the local Claude CLI (always available) when no global LLM is set,
+  // so AI generate works without configuring an API key in Settings.
+  const llmCfg = getLLMConfig() ?? { provider: 'claude-cli' as const, apiKey: '', model: 'claude' }
 
   const ctx = await getRequestContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -121,7 +122,6 @@ Reply with JSON only — no markdown, no extra text:
   "theme": "2-4 word sprint theme",
   "goal": "one clear sentence sprint goal for Sprint #${suggestedNum}",
   "suggestions": ["alt theme 1", "alt theme 2"],
-  "summary": "Sprint recap — output plain text (not a JSON string), tulis dalam BAHASA INDONESIA yang natural seperti orang cerita (bukan laporan kaku). Format PERSIS ini:\\nSprint #${currentNum} — ${sprintPeriod}\\n${projectNames} · ${displayName}\\n\\n[2-3 kalimat NARATIF: apa yang sudah dikerjakan & hasilnya, ada kendala/blocker atau lancar, kondisi keseluruhan. Jangan cuma sebut nama task — ceritakan inti & dampaknya. Hindari jargon & kata 'tim'.]\\n\\n✅ SELESAI\\n[tiap task done: ✓ subject — (kalau ada di work notes, tambah 1 frasa hasil/dampaknya)]\\n\\n➡️ LANJUT KE Sprint #${suggestedNum}\\n[tiap carry-over: → subject (status) — (1 frasa singkat kenapa belum kelar / saran biar kelar)]\\n\\n🔍 TEMUAN & IDE TASK BARU\\n[2-4 poin insight yang muncul DARI WORK NOTES di atas — hal yang ke-discover saat ngerjain (edge case, tech debt, follow-up, bug potensial) yang layak jadi task baru. Tiap poin: • insight singkat → ide task]\\n\\n🎯 FOKUS Sprint #${suggestedNum}\\n[1 kalimat: apa yang paling penting dikerjain di Sprint #${suggestedNum}]\\n\\n${doneTasks.length} selesai · ${carryOver.length} lanjut · ${openEst.toFixed(1)}h sisa",
   "suggestedTasks": [
     {
       "subject": "task title (spesifik, actionable)",
@@ -139,11 +139,39 @@ Rules for suggestedTasks:
 - PRIORITASKAN ide yang muncul dari WORK NOTES & FINDINGS (follow-up, edge case, tech debt, bug yang ke-spot saat ngerjain)
 - Lalu yang logis datang SETELAH task done atau yang unblock carry-over
 - Spesifik & actionable — bukan generik seperti "fix bugs"
-- Total jam realistis buat 1 sprint`
+- Total jam realistis buat 1 sprint
+
+SETELAH JSON di atas, tulis baris berisi PERSIS: ===SUMMARY===
+Lalu di bawahnya tulis recap sprint sebagai TEKS BIASA (bukan JSON, boleh multi-baris & emoji),
+Bahasa Indonesia natural seperti orang cerita (bukan laporan kaku), format PERSIS ini:
+
+Sprint #${currentNum} — ${sprintPeriod}
+${projectNames} · ${displayName}
+
+[2-3 kalimat NARATIF: apa yang sudah dikerjakan & hasilnya, ada kendala/blocker atau lancar. Ceritakan inti & dampaknya, jangan cuma sebut nama task. Hindari jargon & kata 'tim'.]
+
+✅ SELESAI
+[tiap task done: ✓ subject — (kalau ada di work notes, tambah 1 frasa hasil/dampaknya)]
+
+➡️ LANJUT KE Sprint #${suggestedNum}
+[tiap carry-over: → subject (status) — (1 frasa kenapa belum kelar / saran biar kelar)]
+
+🔍 TEMUAN & IDE TASK BARU
+[2-4 poin insight dari WORK NOTES di atas — hal yang ke-discover saat ngerjain (edge case, tech debt, follow-up, bug) yang layak jadi task baru. Tiap poin: • insight → ide task]
+
+🎯 FOKUS Sprint #${suggestedNum}
+[1 kalimat: yang paling penting dikerjain di Sprint #${suggestedNum}]
+
+${doneTasks.length} selesai · ${carryOver.length} lanjut · ${openEst.toFixed(1)}h sisa`
 
   try {
     const text = await callLLM(prompt, llmCfg)
-    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
+    // Summary is emitted as PLAIN TEXT after ===SUMMARY=== (robust — avoids the
+    // fragile multi-line-string-inside-JSON parsing that silently produced null).
+    const parts = text.split(/===\s*SUMMARY\s*===/i)
+    const summary = (parts[1] ?? '').trim() || null
+    let json: Record<string, unknown> = {}
+    try { json = JSON.parse((parts[0] ?? text).match(/\{[\s\S]*\}/)?.[0] ?? '{}') } catch { /* keep summary even if JSON fails */ }
     return NextResponse.json({
       aiName: json.theme ? {
         full: `Sprint #${suggestedNum}: ${json.theme}`,
@@ -151,7 +179,7 @@ Rules for suggestedTasks:
         goal: json.goal ?? null,
         suggestions: json.suggestions ?? [],
       } : null,
-      aiSummary: json.summary ?? null,
+      aiSummary: summary ?? (json.summary as string) ?? null,
       aiSuggestedTasks: json.suggestedTasks ?? [],
     })
   } catch (e) {
