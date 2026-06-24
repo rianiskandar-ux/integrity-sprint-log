@@ -18,11 +18,28 @@ export async function POST(req: Request) {
   const base = (getOpBaseUrl() || '').replace(/\/$/, '')
   if (!base) return NextResponse.json({ ok: false, error: 'OP base URL belum dikonfigurasi' }, { status: 400 })
 
-  // 1) Verify token ke OP
+  // 1) Verify token ke OP — distinguish a network/DNS failure from an invalid token,
+  // and retry once on transient connection errors (Docker DNS can flake).
   const auth = 'Basic ' + Buffer.from(`apikey:${opToken}`).toString('base64')
-  const meRes = await fetch(`${base}/api/v3/users/me`, { headers: { Authorization: auth } }).catch(() => null)
-  if (!meRes || !meRes.ok) {
-    return NextResponse.json({ ok: false, error: 'OP token tidak valid' }, { status: 401 })
+  let meRes: Response | null = null
+  for (let attempt = 0; attempt < 2 && !meRes; attempt++) {
+    meRes = await fetch(`${base}/api/v3/users/me`, {
+      headers: { Authorization: auth },
+      signal: AbortSignal.timeout(12000),
+    }).catch(() => null)
+    if (!meRes && attempt === 0) await new Promise(r => setTimeout(r, 800))
+  }
+  if (!meRes) {
+    return NextResponse.json({
+      ok: false,
+      error: `Tidak bisa terhubung ke OpenProject (${base}). Pastikan kamu terhubung ke jaringan/VPN kantor, lalu coba lagi.`,
+    }, { status: 503 })
+  }
+  if (!meRes.ok) {
+    return NextResponse.json({
+      ok: false,
+      error: `OP token tidak valid (OP ${meRes.status}). Cek/buat ulang token: OpenProject → My Account → Access Tokens → API.`,
+    }, { status: 401 })
   }
   const me = await meRes.json() as { id: number; name?: string; email?: string; login?: string }
   const opUserId = me.id

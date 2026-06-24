@@ -126,7 +126,15 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                   <label className="block">
                     <span className={lbl}>{t('settings.i_am')}</span>
                     <select value={settings.userId} onChange={(e) => handleUserChange(Number(e.target.value))} className={sel}>
-                      {TEAM_MEMBERS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      {(() => {
+                        // Full OP user list (like Default Accountable), and always
+                        // include the logged-in user even if not in that list.
+                        const src = allUsers.length > 0 ? allUsers : TEAM_MEMBERS
+                        const opts = src.some(m => m.id === settings.userId)
+                          ? src
+                          : [{ id: settings.userId, name: settings.userName || `User ${settings.userId}` }, ...src]
+                        return opts.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)
+                      })()}
                     </select>
                   </label>
                   <label className="block">
