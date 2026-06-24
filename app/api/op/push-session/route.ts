@@ -121,6 +121,7 @@ export async function POST(req: Request) {
     action: 'create_new' | 'link_existing'
     bullets?: string[]
     opTaskId?: number
+    loggedMins?: number   // explicit worklog minutes chosen by the user (estimate vs actual)
     newTask?: {
       subject: string
       projectId: number
@@ -141,7 +142,9 @@ export async function POST(req: Request) {
     'Content-Type': 'application/json',
   }
   const date    = (session.startedAt ?? new Date().toISOString()).slice(0, 10)
-  const mins    = session.actualMins ?? session.estimatedMins ?? 30
+  // Worklog (spent time) logged to OP. User's explicit choice (estimate/actual) wins;
+  // else fall back to actual-if-measured, then estimate.
+  const mins    = body.loggedMins ?? session.actualMins ?? session.estimatedMins ?? 30
 
   let taskId: number | null = null   // main WP id stored in ISL (User Story when create_new)
 

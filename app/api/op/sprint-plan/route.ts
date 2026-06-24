@@ -52,28 +52,28 @@ export async function GET() {
     })
   }
 
-  const allFilters = encodeURIComponent(JSON.stringify([
-    { version:     { operator: '=', values: [String(currentSprint.id)] } },
-    { type:        { operator: '!', values: ['5'] } },
-    { assigned_to: { operator: '=', values: [userId] } },
-  ]))
+  async function fetchSprintTasks(versionId: number): Promise<WPItem[]> {
+    const filters = encodeURIComponent(JSON.stringify([
+      { version:     { operator: '=', values: [String(versionId)] } },
+      { type:        { operator: '!', values: ['5'] } },
+      { assigned_to: { operator: '=', values: [userId] } },
+    ]))
+    try {
+      const res = await fetch(`${OP_BASE}/api/v3/work_packages?filters=${filters}&pageSize=200`, { headers: { Authorization: auth } })
+      if (res.ok) return parseWPs((await res.json())._embedded?.elements ?? [])
+    } catch { /* non-fatal */ }
+    return []
+  }
 
-  let carryOver: WPItem[] = []
-  let doneTasks: WPItem[] = []
-
-  try {
-    const res = await fetch(`${OP_BASE}/api/v3/work_packages?filters=${allFilters}&pageSize=200`, { headers: { Authorization: auth } })
-    if (res.ok) {
-      const all = parseWPs((await res.json())._embedded?.elements ?? [])
-      carryOver = all.filter(t => t.status !== 'Closed' && t.status !== 'Rejected')
-      doneTasks = all.filter(t => t.status === 'Closed')
-    }
-  } catch { /* non-fatal */ }
+  const allCurrent = await fetchSprintTasks(currentSprint.id)
+  const carryOver  = allCurrent.filter(t => t.status !== 'Closed' && t.status !== 'Rejected')
+  const doneTasks  = allCurrent.filter(t => t.status === 'Closed')
+  const nextTasks  = nextSprint ? await fetchSprintTasks(nextSprint.id) : []
 
   const currentNum = parseInt(currentSprint.name.replace(/\D/g, '')) || 0
 
   return NextResponse.json({
-    currentSprint, nextSprint, carryOver, doneTasks,
+    currentSprint, nextSprint, carryOver, doneTasks, nextTasks,
     aiConfigured: !!getLLMConfig(),
     aiName: null,
     aiSummary: null,

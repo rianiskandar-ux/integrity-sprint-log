@@ -340,7 +340,9 @@ function SessionCard({
   const [pushing, setPushing]     = useState(false)
   const [linkId, setLinkId]       = useState(session.opTaskId ? String(session.opTaskId) : '')
   const [error, setError]         = useState<string | null>(null)
-  const [segments, setSegments] = useState<ActivitySegment[]>(() => bulletsToSegments(session.bullets, session.actualMins ?? session.estimatedMins ?? 60))
+  const [segments, setSegments] = useState<ActivitySegment[]>(() => bulletsToSegments(session.bullets, session.estimatedMins ?? 60))
+  // Which time to log to OP as worklog — default to actual when a timer measured it
+  const [pushTimeMode, setPushTimeMode] = useState<'estimate' | 'actual'>(session.actualMins ? 'actual' : 'estimate')
   const [sprintMoving, setSprintMoving] = useState(false)
   const [sprintMoved, setSprintMoved]   = useState(false)
 
@@ -381,13 +383,33 @@ function SessionCard({
     parentId:            null,
     parentLabel:         '',
     sprintId:            currentSprint?.id ?? null,
-    estimatedMins:       session.actualMins ?? session.estimatedMins ?? 60,
+    estimatedMins:       session.estimatedMins ?? 60,
     typeId:              1,
   })
 
-  const mins = session.actualMins ?? session.estimatedMins ?? 30
-  const h = Math.floor(mins / 60), m = mins % 60
-  const dur = mins >= 60 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${mins}m`
+  const fmtMin = (x: number) => x >= 60 ? `${Math.floor(x / 60)}h${x % 60 > 0 ? ` ${x % 60}m` : ''}` : `${x}m`
+  const estMins = form.estimatedMins
+  const actMins = session.actualMins ?? null
+  // The worklog minutes that will be logged to OP, per the toggle
+  const loggedMins = pushTimeMode === 'actual' && actMins ? actMins : estMins
+
+  // Estimate-vs-actual worklog toggle — only when a measured actual exists (real choice)
+  const pushTimeToggle = actMins != null ? (
+    <div className="flex items-center gap-1.5 mb-2 text-[10px] flex-wrap">
+      <span className="text-gray-400 font-semibold">Log waktu ke OP:</span>
+      <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+        <button type="button" onClick={() => setPushTimeMode('estimate')}
+          className={`px-2 py-1 font-bold transition ${pushTimeMode === 'estimate' ? 'bg-violet-500 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+          Est {fmtMin(estMins)}
+        </button>
+        <button type="button" onClick={() => setPushTimeMode('actual')}
+          className={`px-2 py-1 font-bold transition ${pushTimeMode === 'actual' ? 'bg-emerald-500 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+          ⏱ Actual {fmtMin(actMins)}
+        </button>
+      </div>
+      <span className="text-gray-400">→ push <span className="font-bold text-gray-600 dark:text-gray-300">{fmtMin(loggedMins)}</span></span>
+    </div>
+  ) : null
 
   // OP preview of the task that will be created
   const previewProject = projects.find(p => p.id === form.projectId) ?? defaultProject
@@ -401,7 +423,7 @@ function SessionCard({
     setPushing(true); setError(null)
     try {
       const bullets = segmentsToBullets(segments)
-      const body: Record<string, unknown> = { sessionId: session.id, action, bullets }
+      const body: Record<string, unknown> = { sessionId: session.id, action, bullets, loggedMins }
       if (action === 'link_existing') {
         body.opTaskId = Number(linkId)
       } else {
@@ -427,7 +449,10 @@ function SessionCard({
           <p className="text-[13px] font-semibold text-gray-800 dark:text-gray-100 leading-snug">{session.title}</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[10px] text-gray-400">{session.date}</span>
-            <span className="text-[10px] text-indigo-500 font-medium">{dur}</span>
+            <span className="text-[10px] text-indigo-500 font-medium">est {fmtMin(estMins)}</span>
+            {actMins != null && (
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">⏱ actual {fmtMin(actMins)}</span>
+            )}
             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
               session.taskStatus === 'done'        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600' :
               session.taskStatus === 'in_progress' ? 'bg-blue-100 dark:bg-blue-950 text-blue-600' :
@@ -551,9 +576,10 @@ function SessionCard({
           </div>
 
           {/* Activity timeline editor */}
-          <ActivityTimeline segments={segments} onChange={setSegments} totalMins={mins} accentColor="teal" taskTitle={session.title} />
+          <ActivityTimeline segments={segments} onChange={setSegments} totalMins={estMins} accentColor="teal" taskTitle={session.title} />
 
           {error && <p className="text-[10px] text-red-500">{error}</p>}
+          {pushTimeToggle}
           <div className="flex gap-2">
             <button onClick={() => doPush('link_existing')} disabled={!linkId || pushing}
               className="px-3 py-1.5 text-[10px] font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition disabled:opacity-40">
@@ -723,6 +749,7 @@ function SessionCard({
 
           {error && <p className="text-[10px] text-red-500">{error}</p>}
 
+          {pushTimeToggle}
           <div className="flex items-center gap-2">
             <button onClick={() => doPush('create_new')} disabled={!form.subject.trim() || pushing}
               className="px-4 py-1.5 text-[11px] font-bold bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition disabled:opacity-40">
