@@ -57,11 +57,16 @@ interface ActivitySegment { duration: number; note: string }
 
 function bulletsToSegments(bullets: string[], totalMins: number): ActivitySegment[] {
   if (!bullets.length) return [{ duration: totalMins, note: '' }]
-  const perSlot = Math.max(1, Math.round(totalMins / bullets.length))
+  // Weight each item by note length (a rough proxy for effort) so durations vary
+  // naturally instead of a flat even split. Floor keeps short notes from going to ~0.
+  const weights = bullets.map(b => Math.max(10, b.trim().length))
+  const totalW  = weights.reduce((a, b) => a + b, 0)
+  let allocated = 0
   return bullets.map((note, i) => {
-    // Last segment gets remaining time
-    const used = perSlot * i
-    const d = i === bullets.length - 1 ? Math.max(1, totalMins - used) : perSlot
+    const d = i === bullets.length - 1
+      ? Math.max(1, totalMins - allocated)                       // last gets remainder → exact sum
+      : Math.max(1, Math.round(totalMins * weights[i] / totalW))
+    if (i < bullets.length - 1) allocated += d
     return { duration: d, note }
   })
 }
@@ -94,18 +99,30 @@ function ActivityTimeline({
   async function suggestSegments() {
     setSuggesting(true)
     try {
-      const prompt = `You are a work log assistant. Given a task title and estimated duration, suggest 3-4 realistic activity timeline segments showing how the work was likely broken up.
+      const items = segments.filter(s => s.note.trim())
+      // If there are real activities, REFINE them (keep items, assign realistic minutes).
+      // Otherwise fall back to generating phases from the title.
+      const prompt = items.length > 0
+        ? `You are a work-log assistant. Below are the activities done for a task and the total time spent. Assign a REALISTIC duration (minutes) to EACH activity based on its likely effort — some longer, some shorter, NOT an even split. Keep the SAME activities, SAME order, SAME count.
 
 Task: "${taskTitle ?? 'Work session'}"
-Total estimated time: ${totalMins} minutes
+Total time: ${totalMins} minutes
+Activities:
+${items.map((s, i) => `${i + 1}. ${s.note.trim()}`).join('\n')}
 
-Reply with ONLY a JSON array, no explanation:
-[{"duration": 15, "note": "..."}, {"duration": 30, "note": "..."}, ...]
-
+Reply with ONLY a JSON array (exactly ${items.length} items, same order), no explanation:
+[{"duration": N, "note": "..."}, ...]
 Rules:
 - durations must sum to exactly ${totalMins}
-- notes must be in English, concise (max 10 words), action-oriented (e.g. "Reviewed requirements and planned approach")
-- reflect realistic phases for this type of task`
+- keep each note's meaning and language; you may lightly tidy wording
+- bigger/complex items get more minutes, trivial ones less`
+        : `You are a work-log assistant. Suggest 3-4 realistic activity segments for this task.
+
+Task: "${taskTitle ?? 'Work session'}"
+Total: ${totalMins} minutes
+
+Reply with ONLY a JSON array: [{"duration": N, "note": "..."}, ...]
+- durations sum to exactly ${totalMins}; notes concise & action-oriented`
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -128,9 +145,18 @@ Rules:
 
       const match = full.match(/\[[\s\S]*\]/)
       if (match) {
-        const parsed = JSON.parse(match[0]) as { duration: number; note: string }[]
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          onChange(parsed.map(s => ({ duration: Math.max(1, Number(s.duration)), note: String(s.note) })))
+        let parsed = (JSON.parse(match[0]) as { duration: number; note: string }[])
+          .filter(s => s && s.note != null)
+          .map(s => ({ duration: Math.max(1, Math.round(Number(s.duration) || 1)), note: String(s.note) }))
+        if (parsed.length > 0) {
+          // Normalize so durations sum EXACTLY to totalMins (AI can be off by a few)
+          const sum = parsed.reduce((a, s) => a + s.duration, 0)
+          if (sum !== totalMins) {
+            const diff = totalMins - sum
+            const last = parsed.length - 1
+            parsed[last] = { ...parsed[last], duration: Math.max(1, parsed[last].duration + diff) }
+          }
+          onChange(parsed)
         }
       }
     } catch { /* ignore */ }
@@ -158,8 +184,9 @@ Rules:
         <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Activity Timeline</label>
         <div className="flex items-center gap-2">
           <button type="button" onClick={suggestSegments} disabled={suggesting}
+            title="AI atur ulang durasi tiap item secara natural (item dipertahankan, sum tetap pas)"
             className="text-[9px] font-semibold text-amber-500 hover:text-amber-700 disabled:opacity-50 flex items-center gap-0.5">
-            {suggesting ? '⏳ Suggesting…' : '✨ Suggest'}
+            {suggesting ? '⏳ Suggesting…' : '✨ Suggest durasi'}
           </button>
           <button type="button"
             onClick={() => onChange([...segments, { duration: Math.max(1, totalMins - usedMins), note: '' }])}
