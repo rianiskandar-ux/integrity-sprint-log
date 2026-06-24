@@ -11,7 +11,7 @@
 #   function isl { powershell -File "C:\path\to\integrity-sprint-log\scripts\isl-timer.ps1" @args }
 
 param(
-  [Parameter(Position = 0)][ValidateSet('start', 'stop', 'status')] [string]$Action = 'status',
+  [Parameter(Position = 0)][ValidateSet('start', 'stop', 'pause', 'resume', 'status')] [string]$Action = 'status',
   [Parameter(Position = 1, ValueFromRemainingArguments = $true)] [string[]]$TitleParts
 )
 
@@ -51,10 +51,19 @@ try {
     $r = Invoke-RestMethod -Uri "$url/api/timer" -Headers $headers -Method Post -Body $body
     Write-Host ("▶ Timer mulai: {0}" -f $r.timer.taskTitle) -ForegroundColor Green
   }
+  elseif ($Action -eq 'pause' -or $Action -eq 'resume') {
+    $body = @{ action = $Action } | ConvertTo-Json
+    $r = Invoke-RestMethod -Uri "$url/api/timer" -Headers $headers -Method Post -Body $body
+    if ($r.timer) {
+      $state = if ($r.timer.paused) { '⏸ paused' } else { '▶ jalan' }
+      Write-Host ("Timer: {0}  ({1})" -f $r.timer.taskTitle, $state) -ForegroundColor Cyan
+    } else { Write-Host "Tidak ada timer." -ForegroundColor Gray }
+  }
   elseif ($Action -eq 'stop') {
     $body = @{ action = 'stop' } | ConvertTo-Json
     $r = Invoke-RestMethod -Uri "$url/api/timer" -Headers $headers -Method Post -Body $body
-    if ($r.elapsedMins) { Write-Host ("⏹ Stop — {0} menit tercatat." -f $r.elapsedMins) -ForegroundColor Yellow }
+    if ($r.suspicious) { Write-Host ("⏱ {0} menit terukur — kemungkinan lupa stop, ga ditulis otomatis. Set manual kalau perlu." -f $r.elapsedMins) -ForegroundColor Red }
+    elseif ($r.elapsedMins) { Write-Host ("⏹ Stop — {0} menit tercatat." -f $r.elapsedMins) -ForegroundColor Yellow }
     else { Write-Host "Tidak ada timer yang jalan." -ForegroundColor Gray }
   }
 } catch {
