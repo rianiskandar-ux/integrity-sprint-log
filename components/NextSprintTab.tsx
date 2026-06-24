@@ -55,6 +55,8 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   const [nextRecap,  setNextRecap]  = useState<RecapTask[]>([])
   const [opUrl,      setOpUrl]      = useState('https://tokek.integrity-asia.com')
   const [opTaskId,   setOpTaskId]   = useState<number | null>(null)
+  const [curSprint,  setCurSprint]  = useState<{ id: number; name: string } | null>(null)
+  const [reverting,  setReverting]  = useState<number | null>(null)
 
   const storageKey = `next-sprint-staged-${currentSprintNo}`
 
@@ -66,6 +68,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
         const sprints = (d.sprints ?? []) as { id: number; name: string; startDate: string; endDate: string; isCurrent: boolean }[]
         const cur = sprints.find(s => s.isCurrent)
         if (!cur) return
+        setCurSprint({ id: cur.id, name: cur.name })
         const next = sprints
           .filter(s => (s.startDate ?? '') > (cur.endDate ?? ''))
           .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))[0]
@@ -100,6 +103,32 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
       setNextRecap((d.nextTasks ?? []) as RecapTask[])
     } catch { /* ignore */ }
     setLoading(false)
+  }
+
+  // Revert a task already moved to next sprint: back to current sprint, or remove
+  // from any sprint (back to backlog/Incoming as New).
+  async function revertTask(taskId: number, target: 'current' | 'remove') {
+    if (reverting) return
+    setReverting(taskId)
+    try {
+      const body = target === 'current'
+        ? { taskIds: [taskId], targetSprintId: curSprint?.id ?? null }
+        : { taskIds: [taskId], targetSprintId: null, statusId: 1 } // remove + set New
+      const r = await fetch('/api/op/sprint-move', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }).then(res => res.json())
+      if (r.results?.[0]?.ok) {
+        setInNext(prev => prev.filter(x => x.id !== taskId))
+        setNextRecap(prev => prev.filter(x => x.id !== taskId))
+        setToast(target === 'current' ? `← Dibalikin ke ${curSprint?.name ?? 'current'}` : '✕ Dikeluarkan dari next sprint (jadi New)')
+        setTimeout(() => setToast(null), 3500)
+        await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
+        window.dispatchEvent(new Event('isl:cache-refreshed'))
+      } else {
+        setToast(`⚠️ ${r.results?.[0]?.error ?? 'Gagal revert'}`); setTimeout(() => setToast(null), 4000)
+      }
+    } catch (e) { setToast(`⚠️ ${String(e)}`); setTimeout(() => setToast(null), 4000) }
+    finally { setReverting(null) }
   }
 
   async function generateAI() {
@@ -248,7 +277,17 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
               <div key={t.id} className="flex items-center gap-2 text-[11px] bg-white dark:bg-gray-800 rounded-lg px-2.5 py-1.5 border border-purple-100 dark:border-purple-900/40">
                 <span className="font-mono font-bold text-purple-500">#{t.id}</span>
                 <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{t.subject}</span>
-                <span className="text-[9px] text-gray-400">{t.type} · {t.status}</span>
+                <span className="text-[9px] text-gray-400 hidden sm:inline">{t.type} · {t.status}</span>
+                <button onClick={() => revertTask(t.id, 'current')} disabled={reverting === t.id}
+                  title={`Balikin ke ${curSprint?.name ?? 'current sprint'}`}
+                  className="text-[9px] font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded px-1.5 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950 disabled:opacity-40">
+                  ← current
+                </button>
+                <button onClick={() => revertTask(t.id, 'remove')} disabled={reverting === t.id}
+                  title="Keluarkan dari sprint (jadi New / backlog)"
+                  className="text-[9px] font-semibold text-gray-500 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40">
+                  ✕ keluar
+                </button>
               </div>
             ))}
           </div>

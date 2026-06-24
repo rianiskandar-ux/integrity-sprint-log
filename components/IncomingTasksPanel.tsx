@@ -57,7 +57,7 @@ export default function IncomingTasksPanel() {
     const r = await fetch('/api/op/sprint-move', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskIds: [task.id], targetSprintId: nextSprint.id }),
+      body: JSON.stringify({ taskIds: [task.id], targetSprintId: nextSprint.id, defaultEstMins: 60 }),
     }).then(r => r.json()).catch(() => ({ results: [{ ok: false }] }))
     const ok = r.results?.[0]?.ok
     if (ok) {
