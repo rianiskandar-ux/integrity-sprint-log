@@ -91,6 +91,7 @@ export default function SprintPlanView() {
   const [sendingToQueue, setSendingToQueue] = useState(false)
   const [selectedSuggests, setSelectedSuggests] = useState<Set<number>>(new Set())
   const [sendingSuggests, setSendingSuggests]   = useState(false)
+  const [filling, setFilling]                   = useState(false)
 
   const [selected, setSelected]       = useState<Set<number>>(new Set())
   const [edits, setEdits]             = useState<Record<number, string>>({})
@@ -204,6 +205,29 @@ export default function SprintPlanView() {
     await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
     window.dispatchEvent(new Event('isl:cache-refreshed'))
     load()
+  }
+
+  // Fill empty estimates for TASK-type active-sprint tasks (Feature/Epic/US skipped).
+  // Same safety net as the Next Sprint tab. Rebuilds cache so the recap AND the task
+  // table below both reflect the new estimates.
+  async function fillEmptyEstimates() {
+    if (!data || filling) return
+    const targets = [...data.carryOver, ...data.doneTasks].filter(t => t.type === 'Task' && t.estimatedHours == null)
+    if (!targets.length) { showToast('Semua task sudah ada estimasi'); return }
+    setFilling(true)
+    let ok = 0
+    for (const t of targets) {
+      const r = await fetch('/api/op/wp-update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wpId: t.id, estimatedMins: 60 }),
+      }).then(res => res.json()).catch(() => ({ error: true }))
+      if (!r.error) ok++
+    }
+    showToast(`⚡ ${ok}/${targets.length} task diisi estimasi 1h`)
+    await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
+    window.dispatchEvent(new Event('isl:cache-refreshed'))
+    await load()  // re-fetch sprint-plan → recap + task table both update
+    setFilling(false)
   }
 
   // Send selected tasks to Push Queue as pending ISL sessions
@@ -465,6 +489,12 @@ export default function SprintPlanView() {
           onTaskClick={(tk) => setOpTask(tk)}
           onBatchStatus={batchStatus}
         />
+        {[...carryOver, ...doneTasks].some(t => t.type === 'Task' && t.estimatedHours == null) && (
+          <button onClick={fillEmptyEstimates} disabled={filling}
+            className="w-full py-1.5 text-[10px] font-semibold text-violet-600 border border-dashed border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/30 transition disabled:opacity-50">
+            {filling ? '⏳ Mengisi…' : `⚡ Isi estimasi kosong (${[...carryOver, ...doneTasks].filter(t => t.type === 'Task' && t.estimatedHours == null).length} Task × 1h) — Feature/Epic dilewati`}
+          </button>
+        )}
       </div>
 
       {/* Next sprint name card */}
