@@ -85,19 +85,19 @@ export async function GET() {
   const totalSpent = [...carryOver, ...doneTasks].reduce((a, t) => a + (t.spentHours ?? 0), 0)
   const openEst    = carryOver.reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
 
-  const carryLines = carryOver.slice(0, 20).map(t =>
-    `- #${t.id} [${t.type}] ${t.subject} | ${t.project} | ${t.status} | est ${t.estimatedHours ?? 0}h spent ${t.spentHours ?? 0}h (${t.percentDone}%)`
+  // Keep the prompt LEAN — a huge prompt makes claude-cli slow enough to 504.
+  const carryLines = carryOver.slice(0, 12).map(t =>
+    `- ${t.subject} (${t.status})`
   ).join('\n')
-  const doneLines = doneTasks.slice(0, 10).map(t =>
-    `- #${t.id} [${t.type}] ${t.subject} | ${t.project} | est ${t.estimatedHours ?? 0}h spent ${t.spentHours ?? 0}h`
-  ).join('\n')
+  const doneLines = doneTasks.slice(0, 10).map(t => `- ${t.subject}`).join('\n')
 
-  // ISL work notes for this sprint — the DETAIL behind the tasks (source of insights)
+  // ISL work notes for this sprint — the DETAIL behind the tasks (source of insights).
+  // Capped tight so the prompt stays small and fast.
   const { getAllSessions } = await import('@/lib/session-store')
   const sprintSessions = (await getAllSessions(uid))
     .filter(s => s.pushStatus !== 'discarded' && s.date >= currentSprint.startDate && s.date <= currentSprint.endDate)
-  const findingsBlock = sprintSessions.slice(0, 25).map(s =>
-    `- ${s.title}${(s.bullets?.length ? ':\n' + s.bullets.slice(0, 4).map(b => `    • ${b}`).join('\n') : '')}`
+  const findingsBlock = sprintSessions.slice(0, 8).map(s =>
+    `- ${s.title}${(s.bullets?.length ? ': ' + s.bullets.slice(0, 2).map(b => b.slice(0, 90)).join('; ') : '')}`
   ).join('\n')
 
   const prompt = `You are a sprint planning assistant for a software team. Analyze Sprint #${currentNum} and create a complete plan for Sprint #${suggestedNum}.
