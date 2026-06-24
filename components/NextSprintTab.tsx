@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import SprintRecap, { type RecapTask } from './SprintRecap'
+import OpTaskModal from './OpTaskModal'
 
 interface SuggestedTask {
   subject: string
@@ -53,6 +54,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   const [nextName,   setNextName]   = useState<string>('')
   const [nextRecap,  setNextRecap]  = useState<RecapTask[]>([])
   const [opUrl,      setOpUrl]      = useState('https://tokek.integrity-asia.com')
+  const [opTaskId,   setOpTaskId]   = useState<number | null>(null)
 
   const storageKey = `next-sprint-staged-${currentSprintNo}`
 
@@ -212,9 +214,10 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
       {nextRecap.length > 0 && (
         <SprintRecap
           title={`${nextName || 'Next Sprint'} · next`}
-          subtitle="Task yang sudah masuk next sprint (semua status) + total"
+          subtitle="Task yang sudah masuk next sprint — klik untuk lihat/edit di OP"
           tasks={nextRecap}
           opUrl={opUrl}
+          onTaskClick={(t) => setOpTaskId(t.id)}
         />
       )}
 
@@ -417,6 +420,10 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50">
           {toast}
         </div>
+      )}
+
+      {opTaskId && (
+        <OpTaskModal wpId={opTaskId} opUrl={opUrl} onClose={() => setOpTaskId(null)} onSaved={() => loadPlan()} />
       )}
     </div>
   )

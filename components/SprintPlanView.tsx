@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '@/lib/i18n'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import SprintRecap, { type RecapTask } from './SprintRecap'
+import OpTaskModal from './OpTaskModal'
 
 interface TaskItem {
   id: number
@@ -98,6 +99,7 @@ export default function SprintPlanView() {
   const [pushResults, setPushResults] = useState<{ id: number; ok: boolean; error?: string }[] | null>(null)
   const [toast, setToast]             = useState<string | null>(null)
   const [chatTask, setChatTask]       = useState<TaskChatContext | null>(null)
+  const [opTask, setOpTask]           = useState<RecapTask | null>(null)
 
   useEffect(() => {
     load()
@@ -878,16 +880,26 @@ export default function SprintPlanView() {
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recap menyeluruh — sprint aktif</p>
           <SprintRecap
             title={`${currentSprint.name} · aktif`}
-            subtitle="Semua task sprint ini (new · in progress · hold · done) — klik untuk chat/log"
+            subtitle="Semua task sprint ini (new · in progress · hold · done) — klik untuk lihat/edit di OP"
             tasks={[...carryOver, ...doneTasks] as RecapTask[]}
             opUrl={opUrl}
-            onTaskClick={(tk) => setChatTask({
-              id: `sprinttask-${tk.id}`, title: tk.subject, taskType: 'session',
-              opTaskId: tk.id, status: tk.status, sprintName: currentSprint.name,
-            })}
+            onTaskClick={(tk) => setOpTask(tk)}
           />
         </div>
       </div>
+
+      {opTask && (
+        <OpTaskModal
+          wpId={opTask.id}
+          opUrl={opUrl}
+          onClose={() => setOpTask(null)}
+          onSaved={() => load()}
+          onChat={() => {
+            setChatTask({ id: `sprinttask-${opTask.id}`, title: opTask.subject, taskType: 'session', opTaskId: opTask.id, status: opTask.status, sprintName: currentSprint.name })
+            setOpTask(null)
+          }}
+        />
+      )}
 
       {chatTask && (
         <TaskChatModal task={chatTask} onClose={() => setChatTask(null)} />

@@ -14,7 +14,7 @@ function timeToMinutes(t: string): number {
 }
 
 export async function POST(req: Request) {
-  const { wpId, statusId, percentDone, spentTimeStr, userSettings } = await req.json()
+  const { wpId, statusId, percentDone, spentTimeStr, estimatedMins, userSettings } = await req.json()
   const ctx   = await getRequestContext()
   const token = userSettings?.opApiToken || ctx?.opToken || ''
   const base  = ctx?.opBaseUrl || ''
@@ -29,10 +29,12 @@ export async function POST(req: Request) {
   if (!wpRes.ok) return NextResponse.json({ error: 'WP not found' }, { status: 404 })
   const wp = await wpRes.json()
 
-  const estimatedMin = wp.estimatedTime ? (() => {
+  const currentEstMin = wp.estimatedTime ? (() => {
     const m = wp.estimatedTime.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
     return m ? (parseInt(m[1] ?? '0') * 60 + parseInt(m[2] ?? '0')) : 0
   })() : 0
+  // Allow editing the estimate (Work) from the OP popup
+  const estimatedMin = (typeof estimatedMins === 'number' && estimatedMins > 0) ? estimatedMins : currentEstMin
 
   const spentMin = spentTimeStr ? timeToMinutes(spentTimeStr) : 0
   const currentSpentMin = wp.spentTime ? (() => {
@@ -47,6 +49,7 @@ export async function POST(req: Request) {
   const body: Record<string, unknown> = { lockVersion: wp.lockVersion }
   if (statusId)            body._links        = { status: { href: `/api/v3/statuses/${statusId}` } }
   if (percentDone !== undefined) body.percentageDone = percentDone ?? autoPct
+  if (typeof estimatedMins === 'number' && estimatedMins > 0) body.estimatedTime = toISODuration(estimatedMins)
   if (estimatedMin > 0)    body.remainingTime = toISODuration(remainingMin)
 
   const patchRes = await fetch(`${base}/api/v3/work_packages/${wpId}`, {
