@@ -454,6 +454,19 @@ export default function SprintPlanView() {
         )}
       </div>
 
+      {/* Recap menyeluruh sprint aktif — prominent di atas, sama seperti tab Next Sprint */}
+      <div className="space-y-1.5">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recap menyeluruh — sprint aktif</p>
+        <SprintRecap
+          title={`${currentSprint.name} · aktif`}
+          subtitle="Semua task sprint ini (new · in progress · hold · done) — klik untuk lihat/edit di OP"
+          tasks={[...carryOver, ...doneTasks] as RecapTask[]}
+          opUrl={opUrl}
+          onTaskClick={(tk) => setOpTask(tk)}
+          onBatchStatus={batchStatus}
+        />
+      </div>
+
       {/* Next sprint name card */}
       <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -896,19 +909,6 @@ export default function SprintPlanView() {
             📋 Copy carry-over list ke clipboard
           </button>
         )}
-
-        {/* ── Full compact recap of the ACTIVE sprint (next-sprint recap lives in the Next Sprint tab) ── */}
-        <div className="space-y-3 pt-2">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recap menyeluruh — sprint aktif</p>
-          <SprintRecap
-            title={`${currentSprint.name} · aktif`}
-            subtitle="Semua task sprint ini (new · in progress · hold · done) — klik untuk lihat/edit di OP"
-            tasks={[...carryOver, ...doneTasks] as RecapTask[]}
-            opUrl={opUrl}
-            onTaskClick={(tk) => setOpTask(tk)}
-            onBatchStatus={batchStatus}
-          />
-        </div>
       </div>
 
       {opTask && (
