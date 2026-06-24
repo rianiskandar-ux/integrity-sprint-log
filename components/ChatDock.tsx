@@ -6,7 +6,7 @@ import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 interface Props {
   chats: TaskChatContext[]
   onClose: (id: string) => void
-  onPush?: (id: string) => void
+  onPushed?: (sessionId: string, taskId: number) => void
 }
 
 /**
@@ -14,7 +14,7 @@ interface Props {
  * kept mounted (inactive ones are hidden, not unmounted) so each keeps its own
  * conversation state and any in-flight streaming continues in the background.
  */
-export default function ChatDock({ chats, onClose, onPush }: Props) {
+export default function ChatDock({ chats, onClose, onPushed }: Props) {
   const [activeId, setActiveId]   = useState<string | null>(null)
   const [minimized, setMinimized] = useState(false)
 
@@ -69,7 +69,7 @@ export default function ChatDock({ chats, onClose, onPush }: Props) {
                 embedded
                 task={c}
                 onClose={() => onClose(c.id)}
-                onPush={onPush ? () => onPush(c.id) : undefined}
+                onPushed={onPushed}
               />
             </div>
           ))}

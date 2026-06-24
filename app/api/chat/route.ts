@@ -96,6 +96,9 @@ export async function POST(req: NextRequest) {
     taskSection,
     `\nYou have full context of the user's sprint and tasks above. Answer questions directly using this data.`,
     `Be concise and practical. Use markdown for lists. Respond in the same language the user writes in.`,
+    taskContext?.opTaskId
+      ? `\nIMPORTANT: You CANNOT call the OpenProject API yourself. When the user wants to push/log this work to OP, do NOT tell them to do it manually in OpenProject — instead tell them to click the "Push #${taskContext.opTaskId}" button at the top of this chat, which logs the worklog to OP ticket #${taskContext.opTaskId} in one click. You may help draft the progress note first.`
+      : `\nIMPORTANT: You CANNOT call the OpenProject API yourself. To push work to OP, the user uses the Push Queue (to pick or create a ticket). Help draft the note; don't claim you can push automatically.`,
   ].filter(Boolean).join('\n')
 
   try {

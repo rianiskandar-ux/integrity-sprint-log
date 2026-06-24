@@ -755,9 +755,11 @@ export default function PushQueueView() {
         </div>
       )}
 
-      {/* Push to OP is done from the SessionCard, not the chat — so no onPush here
-          (would otherwise render a 'Push OP' button that only closes the tab). */}
-      <ChatDock chats={chatTasks} onClose={closeChat} />
+      <ChatDock
+        chats={chatTasks}
+        onClose={closeChat}
+        onPushed={(sessionId, taskId) => { onPushed(sessionId, taskId); closeChat(sessionId) }}
+      />
     </div>
   )
 }

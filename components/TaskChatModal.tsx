@@ -22,12 +22,12 @@ interface Message { role: 'user' | 'assistant'; content: string; id: string }
 interface Props {
   task: TaskChatContext
   onClose: () => void
-  onPush?: (id: string) => void
+  onPushed?: (sessionId: string, taskId: number) => void  // called after a successful OP push
   onAddToQueue?: (bullets: string[]) => void
   embedded?: boolean      // render just the panel (no fixed overlay) to host inside a ChatDock tab
 }
 
-export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, embedded }: Props) {
+export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, embedded }: Props) {
   const [messages,  setMessages]  = useState<Message[]>([])
   const [input,     setInput]     = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -37,6 +37,8 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, emb
   const streamingIdRef = useRef<string | null>(null)
   const messagesRef = useRef<Message[]>([])
   const [opContext, setOpContext] = useState<string>('')
+  const [pushing, setPushing]     = useState(false)
+  const [pushResult, setPushResult] = useState<string | null>(null)
 
   // Per-chat model picker — default Claude CLI (local subscription, free)
   const [aiProvider, setAiProvider] = useState('claude-cli')
@@ -189,6 +191,46 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, emb
     }
   }, [messages, input, streaming, task, opContext, aiProvider, aiModel])
 
+  // Extract progress bullets from the latest assistant turn (fallback to session bullets)
+  function bulletsFromChat(): string[] {
+    const lastAsst = [...messagesRef.current].reverse().find(m => m.role === 'assistant' && m.id !== 'greeting')
+    let bullets: string[] = []
+    if (lastAsst) {
+      bullets = lastAsst.content.split('\n')
+        .filter(l => /^[-•*]\s+/.test(l) || /^\d+\.\s+/.test(l))
+        .map(l => l.replace(/^[-•*\d.]+\s+/, '').trim())
+        .filter(l => l.length > 3)
+      if (bullets.length === 0) bullets = [lastAsst.content.slice(0, 200).split('\n')[0]]
+    }
+    if (bullets.length === 0) bullets = task.bullets?.length ? task.bullets : [`Update: ${task.title}`]
+    return bullets
+  }
+
+  // Push this session to OP. For a session linked to an existing ticket (opTaskId,
+  // e.g. an Incoming follow-up) this logs a worklog/comment to that ticket directly.
+  async function pushToOp() {
+    if (pushing) return
+    if (!task.opTaskId) {
+      setPushResult('Session ini belum terhubung ke ticket OP. Buka Push Queue → pilih "Link existing" / "Create new" untuk tentukan ticket-nya.')
+      return
+    }
+    setPushing(true); setPushResult(null)
+    try {
+      const r = await fetch('/api/op/push-session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: task.id, action: 'link_existing', opTaskId: task.opTaskId, bullets: bulletsFromChat() }),
+      }).then(res => res.json())
+      if (r.error) throw new Error(r.error)
+      const tid = r.taskId ?? task.opTaskId
+      setPushResult(`✅ Pushed ke OP #${tid}`)
+      onPushed?.(task.id, tid)
+    } catch (e) {
+      setPushResult(`⚠️ Gagal push: ${String(e).slice(0, 140)}`)
+    } finally {
+      setPushing(false)
+    }
+  }
+
   const typeLabel = task.taskType === 'incoming' ? '📥 Incoming' : task.taskType === 'session' ? '📤 Push Queue' : '✨ New'
 
   return (
@@ -217,10 +259,11 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, emb
             <p className="text-sm font-bold text-white leading-tight line-clamp-2">{task.title}</p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-            {task.taskType === 'session' && onPush && (
-              <button onClick={() => onPush(task.id)}
-                className="text-[11px] font-bold px-3 py-1 rounded-lg text-white border border-white/30 hover:bg-white/20 transition">
-                Push OP
+            {task.taskType === 'session' && (
+              <button onClick={pushToOp} disabled={pushing}
+                title={task.opTaskId ? `Push worklog ke OP #${task.opTaskId}` : 'Pilih ticket di Push Queue dulu'}
+                className="text-[11px] font-bold px-3 py-1 rounded-lg text-white border border-white/30 hover:bg-white/20 transition disabled:opacity-50">
+                {pushing ? 'Pushing…' : (task.opTaskId ? `Push #${task.opTaskId}` : 'Push to OP')}
               </button>
             )}
             {task.taskType === 'incoming' && onAddToQueue && (
@@ -249,6 +292,18 @@ export default function TaskChatModal({ task, onClose, onPush, onAddToQueue, emb
             </button>
           </div>
         </div>
+
+        {/* Push result banner */}
+        {pushResult && (
+          <div className={`px-3 py-1.5 text-[11px] border-b flex items-center justify-between gap-2 ${
+            pushResult.startsWith('✅')
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900'
+              : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-100 dark:border-amber-900'
+          }`}>
+            <span className="flex-1">{pushResult}</span>
+            <button onClick={() => setPushResult(null)} className="opacity-60 hover:opacity-100">✕</button>
+          </div>
+        )}
 
         {/* Model picker */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60">
