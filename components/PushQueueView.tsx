@@ -340,9 +340,7 @@ function SessionCard({
   const [pushing, setPushing]     = useState(false)
   const [linkId, setLinkId]       = useState(session.opTaskId ? String(session.opTaskId) : '')
   const [error, setError]         = useState<string | null>(null)
-  const [segments, setSegments] = useState<ActivitySegment[]>(() => bulletsToSegments(session.bullets, session.estimatedMins ?? 60))
-  // Which time to log to OP as worklog — default to actual when a timer measured it
-  const [pushTimeMode, setPushTimeMode] = useState<'estimate' | 'actual'>(session.actualMins ? 'actual' : 'estimate')
+  const [segments, setSegments] = useState<ActivitySegment[]>(() => bulletsToSegments(session.bullets, session.actualMins ?? session.estimatedMins ?? 60))
   const [sprintMoving, setSprintMoving] = useState(false)
   const [sprintMoved, setSprintMoved]   = useState(false)
 
@@ -383,31 +381,29 @@ function SessionCard({
     parentId:            null,
     parentLabel:         '',
     sprintId:            currentSprint?.id ?? null,
-    estimatedMins:       session.estimatedMins ?? 60,
+    estimatedMins:       session.actualMins ?? session.estimatedMins ?? 60,
     typeId:              1,
   })
 
   const fmtMin = (x: number) => x >= 60 ? `${Math.floor(x / 60)}h${x % 60 > 0 ? ` ${x % 60}m` : ''}` : `${x}m`
-  const estMins = form.estimatedMins
+  const origEst = session.estimatedMins ?? 60
   const actMins = session.actualMins ?? null
-  // The worklog minutes that will be logged to OP, per the toggle
-  const loggedMins = pushTimeMode === 'actual' && actMins ? actMins : estMins
+  // The "Estimated (mins)" field IS the worklog value pushed to OP.
+  const loggedMins = form.estimatedMins
+  const activeMode: 'estimate' | 'actual' = actMins != null && form.estimatedMins === actMins ? 'actual' : 'estimate'
 
-  // Estimate-vs-actual worklog toggle — only when a measured actual exists (real choice)
+  // Quick-fill the field with estimate or measured-actual (only when actual exists).
   const pushTimeToggle = actMins != null ? (
-    <div className="flex items-center gap-1.5 mb-2 text-[10px] flex-wrap">
-      <span className="text-gray-400 font-semibold">Log waktu ke OP:</span>
-      <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-        <button type="button" onClick={() => setPushTimeMode('estimate')}
-          className={`px-2 py-1 font-bold transition ${pushTimeMode === 'estimate' ? 'bg-violet-500 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
-          Est {fmtMin(estMins)}
-        </button>
-        <button type="button" onClick={() => setPushTimeMode('actual')}
-          className={`px-2 py-1 font-bold transition ${pushTimeMode === 'actual' ? 'bg-emerald-500 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
-          ⏱ Actual {fmtMin(actMins)}
-        </button>
-      </div>
-      <span className="text-gray-400">→ push <span className="font-bold text-gray-600 dark:text-gray-300">{fmtMin(loggedMins)}</span></span>
+    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+      <span className="text-[9px] text-gray-400 font-semibold">isi cepat:</span>
+      <button type="button" onClick={() => setForm(f => ({ ...f, estimatedMins: origEst }))}
+        className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition ${activeMode === 'estimate' ? 'bg-violet-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+        Est {fmtMin(origEst)}
+      </button>
+      <button type="button" onClick={() => setForm(f => ({ ...f, estimatedMins: actMins }))}
+        className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition ${activeMode === 'actual' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+        ⏱ Actual {fmtMin(actMins)}
+      </button>
     </div>
   ) : null
 
@@ -449,7 +445,7 @@ function SessionCard({
           <p className="text-[13px] font-semibold text-gray-800 dark:text-gray-100 leading-snug">{session.title}</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[10px] text-gray-400">{session.date}</span>
-            <span className="text-[10px] text-indigo-500 font-medium">est {fmtMin(estMins)}</span>
+            <span className="text-[10px] text-indigo-500 font-medium">est {fmtMin(origEst)}</span>
             {actMins != null && (
               <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">⏱ actual {fmtMin(actMins)}</span>
             )}
@@ -576,10 +572,15 @@ function SessionCard({
           </div>
 
           {/* Activity timeline editor */}
-          <ActivityTimeline segments={segments} onChange={setSegments} totalMins={estMins} accentColor="teal" taskTitle={session.title} />
+          <ActivityTimeline segments={segments} onChange={setSegments} totalMins={form.estimatedMins} accentColor="teal" taskTitle={session.title} />
 
+          {actMins != null && (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-gray-400 font-semibold">Log waktu ke OP: <span className="text-gray-600 dark:text-gray-300 font-bold">{fmtMin(loggedMins)}</span> ·</span>
+              {pushTimeToggle}
+            </div>
+          )}
           {error && <p className="text-[10px] text-red-500">{error}</p>}
-          {pushTimeToggle}
           <div className="flex gap-2">
             <button onClick={() => doPush('link_existing')} disabled={!linkId || pushing}
               className="px-3 py-1.5 text-[10px] font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition disabled:opacity-40">
@@ -639,11 +640,12 @@ function SessionCard({
                 </select>
               </div>
 
-              {/* Estimated */}
+              {/* Estimated — with est/actual quick-fill toggle */}
               <div>
-                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Estimated (mins)</label>
+                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Estimated (mins) → ini yg di-log ke OP</label>
                 <input type="number" value={form.estimatedMins} onChange={e => setForm(f => ({ ...f, estimatedMins: Number(e.target.value) }))}
                   className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none" />
+                {pushTimeToggle}
               </div>
             </div>
 
@@ -749,7 +751,6 @@ function SessionCard({
 
           {error && <p className="text-[10px] text-red-500">{error}</p>}
 
-          {pushTimeToggle}
           <div className="flex items-center gap-2">
             <button onClick={() => doPush('create_new')} disabled={!form.subject.trim() || pushing}
               className="px-4 py-1.5 text-[11px] font-bold bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition disabled:opacity-40">

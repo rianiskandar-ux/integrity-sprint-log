@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import SprintRecap, { type RecapTask } from './SprintRecap'
 
 interface SuggestedTask {
   subject: string
@@ -50,6 +51,8 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   const [selected,   setSelected]   = useState<Set<string>>(new Set())
   const [inNext,     setInNext]     = useState<{ id: number; subject: string; status: string; type: string }[]>([])
   const [nextName,   setNextName]   = useState<string>('')
+  const [nextRecap,  setNextRecap]  = useState<RecapTask[]>([])
+  const [opUrl,      setOpUrl]      = useState('https://tokek.integrity-asia.com')
 
   const storageKey = `next-sprint-staged-${currentSprintNo}`
 
@@ -57,6 +60,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   useEffect(() => {
     function load() {
       fetch('/api/op/cache').then(r => r.json()).then(d => {
+        if (d._opUrl) setOpUrl(d._opUrl)
         const sprints = (d.sprints ?? []) as { id: number; name: string; startDate: string; endDate: string; isCurrent: boolean }[]
         const cur = sprints.find(s => s.isCurrent)
         if (!cur) return
@@ -91,6 +95,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
     try {
       const d = await fetch('/api/op/sprint-plan').then(r => r.json())
       setCarryOver(d.carryOver ?? [])
+      setNextRecap((d.nextTasks ?? []) as RecapTask[])
     } catch { /* ignore */ }
     setLoading(false)
   }
@@ -202,6 +207,16 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
 
   return (
     <div className="space-y-6 pb-10">
+
+      {/* Recap menyeluruh task yang sudah masuk next sprint (OP-style, semua status + totals) */}
+      {nextRecap.length > 0 && (
+        <SprintRecap
+          title={`${nextName || 'Next Sprint'} · next`}
+          subtitle="Task yang sudah masuk next sprint (semua status) + total"
+          tasks={nextRecap}
+          opUrl={opUrl}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between">
