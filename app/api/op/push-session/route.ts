@@ -127,6 +127,7 @@ export async function POST(req: Request) {
       projectId: number
       projectIdentifier: string
       parentId?: number | null
+      newParent?: { subject: string; typeId: number } | null
       sprintId?: number | null
       estimatedMins?: number
       typeId?: number
@@ -181,7 +182,24 @@ export async function POST(req: Request) {
   } else if (body.action === 'create_new') {
     if (!body.newTask) return NextResponse.json({ error: 'newTask required for create_new' }, { status: 400 })
 
-    const { subject, projectId, parentId, sprintId, estimatedMins, typeId = 1, userId = ctx?.opUserId ?? 0 } = body.newTask
+    const { subject, projectId, parentId: pickedParentId, newParent, sprintId, estimatedMins, typeId = 1, userId = ctx?.opUserId ?? 0 } = body.newTask
+    let parentId = pickedParentId ?? null
+
+    // Create a brand-new parent (Epic/Feature) first, if requested, and use it as parent
+    if (newParent?.subject?.trim()) {
+      const npRes = await fetch(`${OP_BASE}/api/v3/work_packages`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          subject: newParent.subject.trim().slice(0, 255),
+          description: { format: 'markdown', raw: `_Auto-created parent via ISL — ${date}_` },
+          _links: {
+            project: { href: `/api/v3/projects/${projectId}` },
+            type:    { href: `/api/v3/types/${newParent.typeId}` },
+          },
+        }),
+      })
+      if (npRes.ok) { const np = await npRes.json(); parentId = np.id as number }
+    }
 
     const bullets = body.bullets?.length ? body.bullets : session.bullets
     const { groups, needsEpic } = clusterIntoTasks(subject, bullets, mins)

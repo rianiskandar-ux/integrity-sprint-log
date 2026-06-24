@@ -43,8 +43,12 @@ export async function POST(req: Request) {
       const body: Record<string, unknown> = { lockVersion: wp.lockVersion, _links: links }
       const subjectEdit = edits?.[id]?.subject
       if (subjectEdit && subjectEdit.trim()) body.subject = subjectEdit.trim()
-      // Auto-estimate: never leave a task entering a sprint without an estimate
-      if (defaultEstMins && defaultEstMins > 0 && !wp.estimatedTime) body.estimatedTime = toISO(defaultEstMins)
+      // Auto-estimate ONLY for type "Task" (we don't estimate Feature/Epic/User Story —
+      // those are wrapped/handled manually). Never leave an empty estimate otherwise.
+      const wpType = (wp._links?.type?.title ?? '') as string
+      if (defaultEstMins && defaultEstMins > 0 && !wp.estimatedTime && wpType === 'Task') {
+        body.estimatedTime = toISO(defaultEstMins)
+      }
 
       const patchRes = await fetch(`${OP_BASE}/api/v3/work_packages/${id}`, {
         method: 'PATCH', headers, body: JSON.stringify(body),

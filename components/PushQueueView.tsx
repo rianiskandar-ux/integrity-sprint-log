@@ -24,22 +24,21 @@ interface OPTask  { id: number; subject: string; project?: string; sprintId?: nu
 interface OPStory { id: number; subject: string; epicId?: number | null; project?: string; status?: string }
 interface OPEpic  { id: number; subject: string }
 
-// Searchable parent (User Story) picker — searches the synced cache instantly AND
-// live OP, and shows each result's relation (Epic · project · status) so similar
-// names can be told apart before picking.
-function ParentPicker({ value, valueLabel, onChange, userStories, epics }: {
+// Parent picker. ISL creates a User Story (wrapping Tasks), so its parent must be
+// one level UP — an Epic or Feature. We search Epic/Feature only (never US/Task),
+// or let the user create a brand-new Epic/Feature parent inline.
+function ParentPicker({ value, valueLabel, newParent, onChange, onNewParent, epics }: {
   value: number | null
   valueLabel?: string | null
+  newParent: { subject: string; typeId: number } | null
   onChange: (id: number | null, label: string) => void
-  userStories: OPStory[]
+  onNewParent: (np: { subject: string; typeId: number } | null) => void
   epics: OPEpic[]
 }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
-  const [live, setLive] = useState<{ id: number; subject: string; type: string; project?: string; status?: string }[]>([])
+  const [live, setLive] = useState<{ id: number; subject: string; type: string; project?: string }[]>([])
   const [searching, setSearching] = useState(false)
-
-  const epicName = (id?: number | null) => (id ? epics.find(e => e.id === id)?.subject ?? null : null)
 
   useEffect(() => {
     if (q.trim().length < 2) { setLive([]); return }
@@ -47,13 +46,15 @@ function ParentPicker({ value, valueLabel, onChange, userStories, epics }: {
       setSearching(true)
       fetch(`/api/op/search?q=${encodeURIComponent(q.trim())}`)
         .then(r => r.json())
-        .then(d => setLive((d.results ?? []) as typeof live))
+        // Epic / Feature only — a User Story can't be a parent here
+        .then(d => setLive(((d.results ?? []) as typeof live).filter(r => /^(epic|feature)$/i.test(r.type))))
         .catch(() => {})
         .finally(() => setSearching(false))
     }, 350)
     return () => clearTimeout(t)
   }, [q])
 
+  // An existing Epic/Feature is selected
   if (value) {
     return (
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-violet-50/50 dark:bg-violet-950/20">
@@ -64,29 +65,52 @@ function ParentPicker({ value, valueLabel, onChange, userStories, epics }: {
     )
   }
 
+  // Creating a new parent (Epic / Feature)
+  if (newParent) {
+    return (
+      <div className="mt-1 flex items-center gap-1.5">
+        <select value={newParent.typeId} onChange={e => onNewParent({ ...newParent, typeId: Number(e.target.value) })}
+          className="text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-1.5 py-1.5 bg-white dark:bg-gray-900">
+          <option value={5}>Epic</option>
+          <option value={4}>Feature</option>
+        </select>
+        <input value={newParent.subject} autoFocus onChange={e => onNewParent({ ...newParent, subject: e.target.value })}
+          placeholder="Nama parent baru (Epic/Feature)…"
+          className="flex-1 text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-violet-300" />
+        <button type="button" onClick={() => onNewParent(null)} className="text-[10px] font-bold text-gray-400 hover:text-red-500 flex-shrink-0 px-1">✕</button>
+      </div>
+    )
+  }
+
   const ql = q.trim().toLowerCase()
   const localMatches = ql.length >= 2
-    ? userStories.filter(s => String(s.id).includes(ql) || s.subject.toLowerCase().includes(ql)).slice(0, 8)
+    ? epics.filter(e => String(e.id).includes(ql) || e.subject.toLowerCase().includes(ql)).slice(0, 8)
     : []
-  const localIds = new Set(localMatches.map(s => s.id))
+  const localIds = new Set(localMatches.map(e => e.id))
   const merged = [
-    ...localMatches.map(s => ({ id: s.id, subject: s.subject, type: 'User Story', project: s.project, status: s.status, epic: epicName(s.epicId) })),
-    ...live.filter(r => !localIds.has(r.id)).map(r => ({ id: r.id, subject: r.subject, type: r.type, project: r.project, status: r.status, epic: null as string | null })),
+    ...localMatches.map(e => ({ id: e.id, subject: e.subject, type: 'Epic', project: '' })),
+    ...live.filter(r => !localIds.has(r.id)).map(r => ({ id: r.id, subject: r.subject, type: r.type, project: r.project ?? '' })),
   ].slice(0, 12)
 
   return (
     <div className="relative mt-1">
-      <input
-        value={q}
-        onChange={e => { setQ(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Cari User Story / parent (nama atau #id)…"
-        className="w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-violet-300" />
+      <div className="flex gap-1.5">
+        <input
+          value={q}
+          onChange={e => { setQ(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Cari Epic / Feature (nama atau #id)…"
+          className="flex-1 text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-violet-300" />
+        <button type="button" onClick={() => onNewParent({ subject: '', typeId: 5 })}
+          className="text-[10px] font-bold text-violet-600 border border-violet-200 dark:border-violet-700 rounded-lg px-2 hover:bg-violet-50 dark:hover:bg-violet-950/30 whitespace-nowrap">
+          + buat baru
+        </button>
+      </div>
       {open && ql.length >= 2 && (
         <div className="absolute z-30 mt-1 w-full max-h-60 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl">
           {merged.length === 0 ? (
-            <p className="px-2 py-2 text-[10px] text-gray-400">{searching ? 'Mencari di OP…' : 'Tidak ada hasil'}</p>
+            <p className="px-2 py-2 text-[10px] text-gray-400">{searching ? 'Mencari di OP…' : 'Tidak ada Epic/Feature — pakai "+ buat baru"'}</p>
           ) : merged.map(m => (
             <button key={`${m.id}-${m.type}`} type="button"
               onMouseDown={e => e.preventDefault()}
@@ -96,9 +120,7 @@ function ParentPicker({ value, valueLabel, onChange, userStories, epics }: {
                 <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-300 flex-shrink-0">{m.type}</span>
                 <span className="text-[11px] font-medium text-gray-800 dark:text-gray-100 truncate">#{m.id} {m.subject}</span>
               </div>
-              <div className="text-[9px] text-gray-400 truncate mt-0.5">
-                {m.epic ? `Epic: ${m.epic} · ` : ''}{m.project ?? ''}{m.status ? ` · ${m.status}` : ''}
-              </div>
+              {m.project && <div className="text-[9px] text-gray-400 truncate mt-0.5">{m.project}</div>}
             </button>
           ))}
         </div>
@@ -164,6 +186,7 @@ interface NewTaskForm {
   projectIdentifier: string
   parentId: number | null
   parentLabel?: string
+  newParent?: { subject: string; typeId: number } | null
   sprintId: number | null
   estimatedMins: number
   typeId: number
@@ -380,6 +403,7 @@ function SessionCard({
     projectIdentifier:   defaultProject.identifier,
     parentId:            null,
     parentLabel:         '',
+    newParent:           null,
     sprintId:            currentSprint?.id ?? null,
     estimatedMins:       session.actualMins ?? session.estimatedMins ?? 60,
     typeId:              1,
@@ -649,14 +673,15 @@ function SessionCard({
               </div>
             </div>
 
-            {/* Parent (User Story) — searchable, synced from OP, shows relation */}
+            {/* Parent (Epic / Feature) — the User Story ISL creates goes under this */}
             <div>
-              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Parent / User Story (optional)</label>
+              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Parent — Epic / Feature (optional)</label>
               <ParentPicker
                 value={form.parentId}
                 valueLabel={form.parentLabel}
-                onChange={(id, label) => setForm(f => ({ ...f, parentId: id, parentLabel: label }))}
-                userStories={cache.userStories ?? []}
+                newParent={form.newParent ?? null}
+                onChange={(id, label) => setForm(f => ({ ...f, parentId: id, parentLabel: label, newParent: null }))}
+                onNewParent={(np) => setForm(f => ({ ...f, newParent: np, parentId: np ? null : f.parentId }))}
                 epics={cache.epics ?? []}
               />
             </div>
@@ -741,8 +766,16 @@ function SessionCard({
 
                 {previewParent && (
                   <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 dark:border-gray-800">
-                    <span className="text-[9px] text-gray-400">Parent US:</span>
+                    <span className="text-[9px] text-gray-400">Parent:</span>
                     <span className="text-[10px] text-gray-600 dark:text-gray-300">#{previewParent.id} {previewParent.subject.slice(0, 50)}</span>
+                  </div>
+                )}
+                {form.newParent?.subject?.trim() && (
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 dark:border-gray-800">
+                    <span className="text-[9px] text-gray-400">Parent baru:</span>
+                    <span className="text-[10px] text-violet-600 dark:text-violet-400 font-semibold">
+                      ✚ {form.newParent.typeId === 5 ? 'Epic' : 'Feature'}: {form.newParent.subject.slice(0, 50)}
+                    </span>
                   </div>
                 )}
               </div>

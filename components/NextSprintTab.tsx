@@ -131,6 +131,29 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
     finally { setReverting(null) }
   }
 
+  const [filling, setFilling] = useState(false)
+  // Fill empty estimates for TASK-type next-sprint tasks only (Feature/Epic/US skipped).
+  async function fillEmptyEstimates() {
+    if (filling) return
+    const targets = nextRecap.filter(t => t.type === 'Task' && (t.estimatedHours == null))
+    if (!targets.length) { setToast('Semua task sudah ada estimasi'); setTimeout(() => setToast(null), 2500); return }
+    setFilling(true)
+    let ok = 0
+    for (const t of targets) {
+      try {
+        const r = await fetch('/api/op/wp-update', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wpId: t.id, estimatedMins: 60 }),
+        }).then(res => res.json())
+        if (!r.error) ok++
+      } catch { /* skip */ }
+    }
+    setToast(`⚡ ${ok}/${targets.length} task diisi estimasi 1h`)
+    setTimeout(() => setToast(null), 3500)
+    loadPlan()
+    setFilling(false)
+  }
+
   async function generateAI() {
     setGenerating(true)
     try {
@@ -241,13 +264,21 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
 
       {/* Recap menyeluruh task yang sudah masuk next sprint (OP-style, semua status + totals) */}
       {nextRecap.length > 0 && (
-        <SprintRecap
-          title={`${nextName || 'Next Sprint'} · next`}
-          subtitle="Task yang sudah masuk next sprint — klik untuk lihat/edit di OP"
-          tasks={nextRecap}
-          opUrl={opUrl}
-          onTaskClick={(t) => setOpTaskId(t.id)}
-        />
+        <div className="space-y-1.5">
+          <SprintRecap
+            title={`${nextName || 'Next Sprint'} · next`}
+            subtitle="Task yang sudah masuk next sprint — klik untuk lihat/edit di OP"
+            tasks={nextRecap}
+            opUrl={opUrl}
+            onTaskClick={(t) => setOpTaskId(t.id)}
+          />
+          {nextRecap.some(t => t.type === 'Task' && t.estimatedHours == null) && (
+            <button onClick={fillEmptyEstimates} disabled={filling}
+              className="w-full py-1.5 text-[10px] font-semibold text-violet-600 border border-dashed border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/30 transition disabled:opacity-50">
+              {filling ? '⏳ Mengisi…' : `⚡ Isi estimasi kosong (${nextRecap.filter(t => t.type === 'Task' && t.estimatedHours == null).length} Task × 1h) — Feature/Epic dilewati`}
+            </button>
+          )}
+        </div>
       )}
 
       {/* Header */}
