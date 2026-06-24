@@ -2,10 +2,14 @@ import fs from 'fs'
 import path from 'path'
 
 const CACHE_DIR  = process.env.CACHE_DATA_DIR ?? process.cwd()
-const CACHE_FILE = path.join(CACHE_DIR, 'op-cache.json')
 
-function cacheFileFor(userId?: number | null): string {
-  if (!userId) return CACHE_FILE
+// IMPORTANT: no shared/global cache file. If we don't know which user this is
+// (unresolved session), we must NOT fall back to anyone's data — return null so
+// loadCache yields EMPTY and saveCache is a no-op. This structurally prevents
+// one user's OP cache from ever leaking to another (e.g. an unauthenticated or
+// before-login request hitting the dashboard).
+function cacheFileFor(userId?: number | null): string | null {
+  if (!userId) return null
   return path.join(CACHE_DIR, `op-cache-${userId}.json`)
 }
 
@@ -121,6 +125,7 @@ const EMPTY: OPCache = {
 
 export function loadCache(userId?: number | null): OPCache {
   const file = cacheFileFor(userId)
+  if (!file) return EMPTY   // unknown user → empty, never another user's cache
   try {
     if (!fs.existsSync(file)) return EMPTY
     return { ...EMPTY, ...JSON.parse(fs.readFileSync(file, 'utf-8')) }
@@ -128,7 +133,9 @@ export function loadCache(userId?: number | null): OPCache {
 }
 
 export function saveCache(cache: OPCache, userId?: number | null) {
-  fs.writeFileSync(cacheFileFor(userId), JSON.stringify(cache, null, 2), 'utf-8')
+  const file = cacheFileFor(userId)
+  if (!file) return         // never write a shared/global cache
+  fs.writeFileSync(file, JSON.stringify(cache, null, 2), 'utf-8')
 }
 
 // Update a single WP's status in the local cache (after OP PATCH)
