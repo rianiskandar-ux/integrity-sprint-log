@@ -15,6 +15,8 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { opToken: OP_TOKEN, opBaseUrl: OP_BASE, uid, opUserId } = ctx
 
+  try {  // outer guard — ALWAYS return JSON, never an HTML error page
+
   const auth  = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
   const cache = loadCache(uid)
 
@@ -185,5 +187,10 @@ ${doneTasks.length} selesai · ${carryOver.length} lanjut · ${openEst.toFixed(1
   } catch (e) {
     console.error('[sprint-plan/ai] LLM error:', e)
     return NextResponse.json({ aiName: null, aiSummary: null, aiSuggestedTasks: [], error: String(e) })
+  }
+
+  } catch (outer) {
+    console.error('[sprint-plan/ai] fatal:', outer)
+    return NextResponse.json({ aiName: null, aiSummary: null, aiSuggestedTasks: [], error: String(outer) }, { status: 200 })
   }
 }

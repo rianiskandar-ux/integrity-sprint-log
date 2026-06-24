@@ -66,9 +66,17 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
   async function generate() {
     setLoading(true)
     try {
+      // Parse safely — if a route returns an HTML error/redirect page, don't crash
+      // on .json(); surface the reason instead.
+      const safeJson = async (url: string) => {
+        const r = await fetch(url)
+        const body = await r.text()
+        try { return JSON.parse(body) }
+        catch { return { error: r.ok ? body.slice(0, 160) : `HTTP ${r.status}` } }
+      }
       const [planRes, aiRes] = await Promise.all([
-        fetch('/api/op/sprint-plan').then(r => r.json()),
-        fetch('/api/op/sprint-plan/ai').then(r => r.json()),
+        safeJson('/api/op/sprint-plan'),
+        safeJson('/api/op/sprint-plan/ai'),
       ])
       const sprint = planRes.currentSprint?.name ?? `Sprint #${currentSprintNo}`
       const done   = (planRes.doneTasks ?? []).length
