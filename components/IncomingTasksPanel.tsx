@@ -28,6 +28,7 @@ export default function IncomingTasksPanel() {
   const [filter, setFilter]     = useState<'open' | 'all'>('open')
   const [chatTask, setChatTask] = useState<TaskChatContext | null>(null)
   const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set())
+  const [pushedIds, setPushedIds] = useState<Set<number>>(new Set())
   const [nextSprint, setNextSprint] = useState<{ id: number; name: string } | null>(null)
 
   useEffect(() => {
@@ -72,16 +73,21 @@ export default function IncomingTasksPanel() {
     setUpdatingId(null)
   }
 
-  // Tasks yang sudah punya session pending (sudah dipush ke Push Queue) → tandai di Incoming
+  // Tasks yang sudah punya session di Push Queue (pending) ATAU sudah dipush ke OP
+  // (pushed) → tandai + matikan aksi di Incoming biar ga diproses dobel.
   useEffect(() => {
     function loadQueued() {
-      fetch('/api/isl/sessions?status=pending')
+      fetch('/api/isl/sessions')
         .then(r => r.json())
         .then(d => {
-          const ids = ((d.sessions ?? []) as { opTaskId?: number | null }[])
-            .map(s => s.opTaskId)
-            .filter((x): x is number => typeof x === 'number')
-          setQueuedIds(new Set(ids))
+          const pending = new Set<number>(), pushed = new Set<number>()
+          for (const s of (d.sessions ?? []) as { opTaskId?: number | null; pushStatus?: string }[]) {
+            if (typeof s.opTaskId !== 'number') continue
+            if (s.pushStatus === 'pushed') pushed.add(s.opTaskId)
+            else if (s.pushStatus === 'pending') pending.add(s.opTaskId)
+          }
+          setQueuedIds(pending)
+          setPushedIds(pushed)
         })
         .catch(() => {})
     }
@@ -206,10 +212,12 @@ export default function IncomingTasksPanel() {
         <div className="space-y-3">
           {shown.map(task => {
             const statusCfg = ISL_STATUS_CONFIG[task.islStatus] ?? ISL_STATUS_CONFIG.new
-            const isQueued = queuedIds.has(task.id)
+            const isPushed    = pushedIds.has(task.id)
+            const isQueued    = queuedIds.has(task.id) && !isPushed
+            const isProcessed = isPushed || isQueued
             return (
               <div key={task.id} className={`rounded-xl border p-4 transition ${
-                isQueued
+                isProcessed
                   ? 'bg-gray-100 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 opacity-70'
                   : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
               }`}>
@@ -229,6 +237,11 @@ export default function IncomingTasksPanel() {
                       {task.sprintName && (
                         <span className="text-[10px] text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded">
                           🏃 {task.sprintName}
+                        </span>
+                      )}
+                      {isPushed && (
+                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full">
+                          ✅ Sudah di OP
                         </span>
                       )}
                       {isQueued && (
@@ -259,7 +272,12 @@ export default function IncomingTasksPanel() {
 
                   {/* Status quick-set */}
                   <div className="flex-shrink-0 flex flex-col gap-1.5 min-w-[88px]">
-                    {isQueued ? (
+                    {isPushed ? (
+                      <div className="flex flex-col gap-1 items-center text-center px-2 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50">
+                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">✅ Sudah di OP</span>
+                        <span className="text-[9px] text-emerald-600/70 dark:text-emerald-400/60 leading-tight">Sudah dipush, tidak perlu aksi lagi</span>
+                      </div>
+                    ) : isQueued ? (
                       <div className="flex flex-col gap-1 items-center text-center px-2 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
                         <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300">📤 Sudah di Queue</span>
                         <span className="text-[9px] text-amber-600/70 dark:text-amber-400/60 leading-tight">Selesaikan di Push Queue</span>
