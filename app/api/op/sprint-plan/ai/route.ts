@@ -89,6 +89,14 @@ export async function GET() {
     `- #${t.id} [${t.type}] ${t.subject} | ${t.project} | est ${t.estimatedHours ?? 0}h spent ${t.spentHours ?? 0}h`
   ).join('\n')
 
+  // ISL work notes for this sprint — the DETAIL behind the tasks (source of insights)
+  const { getAllSessions } = await import('@/lib/session-store')
+  const sprintSessions = (await getAllSessions(uid))
+    .filter(s => s.pushStatus !== 'discarded' && s.date >= currentSprint.startDate && s.date <= currentSprint.endDate)
+  const findingsBlock = sprintSessions.slice(0, 25).map(s =>
+    `- ${s.title}${(s.bullets?.length ? ':\n' + s.bullets.slice(0, 4).map(b => `    • ${b}`).join('\n') : '')}`
+  ).join('\n')
+
   const prompt = `You are a sprint planning assistant for a software team. Analyze Sprint #${currentNum} and create a complete plan for Sprint #${suggestedNum}.
 
 SPRINT #${currentNum} DATA:
@@ -105,29 +113,33 @@ ${carryLines || '(none)'}
 DONE THIS SPRINT (${doneTasks.length} tasks):
 ${doneLines || '(none)'}
 
+WORK NOTES & FINDINGS (detail dari ISL — SUMBER UTAMA buat insight & ide task baru):
+${findingsBlock || '(none)'}
+
 Reply with JSON only — no markdown, no extra text:
 {
   "theme": "2-4 word sprint theme",
   "goal": "one clear sentence sprint goal for Sprint #${suggestedNum}",
   "suggestions": ["alt theme 1", "alt theme 2"],
-  "summary": "Sprint report in this exact format — output plain text, not JSON string:\\nSprint #${currentNum} — ${sprintPeriod}\\n${projectNames} · ${displayName}\\n\\n[1 short paragraph: what got done, what's still going, and why. Write like a real team member reflecting, not a status report. No jargon, no 'the team', no 'momentum'. Max 3 sentences.]\\n\\nCOMPLETED\\n[list each done task as: ✓ subject]\\n\\nCARRYING OVER → Sprint #${suggestedNum}\\n[list each carry-over as: → subject (status)]\\n\\nNEXT SPRINT FOCUS\\n[1 sentence: what specifically needs to happen in Sprint #${suggestedNum}]\\n\\n${doneTasks.length} done · ${carryOver.length} carry-over · ${openEst.toFixed(1)}h remaining",
+  "summary": "Sprint recap — output plain text (not a JSON string), tulis dalam BAHASA INDONESIA yang natural seperti orang cerita (bukan laporan kaku). Format PERSIS ini:\\nSprint #${currentNum} — ${sprintPeriod}\\n${projectNames} · ${displayName}\\n\\n[2-3 kalimat NARATIF: apa yang sudah dikerjakan & hasilnya, ada kendala/blocker atau lancar, kondisi keseluruhan. Jangan cuma sebut nama task — ceritakan inti & dampaknya. Hindari jargon & kata 'tim'.]\\n\\n✅ SELESAI\\n[tiap task done: ✓ subject — (kalau ada di work notes, tambah 1 frasa hasil/dampaknya)]\\n\\n➡️ LANJUT KE Sprint #${suggestedNum}\\n[tiap carry-over: → subject (status) — (1 frasa singkat kenapa belum kelar / saran biar kelar)]\\n\\n🔍 TEMUAN & IDE TASK BARU\\n[2-4 poin insight yang muncul DARI WORK NOTES di atas — hal yang ke-discover saat ngerjain (edge case, tech debt, follow-up, bug potensial) yang layak jadi task baru. Tiap poin: • insight singkat → ide task]\\n\\n🎯 FOKUS Sprint #${suggestedNum}\\n[1 kalimat: apa yang paling penting dikerjain di Sprint #${suggestedNum}]\\n\\n${doneTasks.length} selesai · ${carryOver.length} lanjut · ${openEst.toFixed(1)}h sisa",
   "suggestedTasks": [
     {
-      "subject": "task title (be specific, actionable)",
+      "subject": "task title (spesifik, actionable)",
       "type": "Task|Bug|Feature|User Story",
       "projectHint": "project name or area",
       "estimatedHours": 2,
       "priority": "high|medium|low",
-      "reason": "one sentence why this should be in Sprint #${suggestedNum}"
+      "reason": "one sentence why — kalau dari WORK NOTES/findings, sebutkan temuannya"
     }
   ]
 }
 
 Rules for suggestedTasks:
 - Suggest 3-6 NEW tasks (not carry-over, those are already tracked)
-- Focus on what logically comes AFTER the done tasks or unblocks carry-over
-- Be specific and actionable — not generic like "fix bugs"
-- Total estimated hours for new tasks should fit a realistic sprint capacity`
+- PRIORITASKAN ide yang muncul dari WORK NOTES & FINDINGS (follow-up, edge case, tech debt, bug yang ke-spot saat ngerjain)
+- Lalu yang logis datang SETELAH task done atau yang unblock carry-over
+- Spesifik & actionable — bukan generik seperti "fix bugs"
+- Total jam realistis buat 1 sprint`
 
   try {
     const text = await callLLM(prompt, llmCfg)
