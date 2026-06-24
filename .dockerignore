@@ -2,10 +2,28 @@ node_modules
 .next
 .git
 *.log
+.env
 .env.local
 .env*.local
+.env.production
 daily-sprints
 data
 auth-data
 cache-data
 README.md
+
+# Runtime / per-user state — must NEVER be baked into the image. These hold the
+# owner's OP cache, identity, config and (in user-config) possibly the OP token,
+# so COPY . . would otherwise ship the owner's data into every team instance.
+op-cache.json
+op-cache-*.json
+op-mode.json
+user-config.json
+processed-sessions.json
+google-token.json
+google-profile.json
+context-draft*.json
+sprint-summaries-*.json
+work-timer-*.json
+daily-hub
+*.bak
