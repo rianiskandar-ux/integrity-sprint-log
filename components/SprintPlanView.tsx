@@ -234,12 +234,23 @@ export default function SprintPlanView() {
   async function sendToPushQueue() {
     if (selected.size === 0 || !data) return
     setSendingToQueue(true)
-    const tasks = Array.from(selected).map(id => {
+    // Dedup: skip tasks that already have a pending (queue) or pushed (OP) session.
+    const existing = await fetch('/api/isl/sessions').then(r => r.json()).then(d => {
+      const s = new Set<number>()
+      for (const sess of (d.sessions ?? []) as { opTaskId?: number | null; pushStatus?: string }[]) {
+        if (typeof sess.opTaskId === 'number' && (sess.pushStatus === 'pending' || sess.pushStatus === 'pushed')) s.add(sess.opTaskId)
+      }
+      return s
+    }).catch(() => new Set<number>())
+
+    const candidates = Array.from(selected).map(id => {
       const t = [...data.carryOver, ...data.doneTasks].find(x => x.id === id)
       return t ? { id, subject: edits[id] ?? t.subject, type: t.type, project: t.project, estimatedHours: t.estimatedHours } : null
     }).filter(Boolean) as { id: number; subject: string; type: string; project: string; estimatedHours: number | null }[]
+    const tasks   = candidates.filter(t => !existing.has(t.id))
+    const skipped = candidates.length - tasks.length
 
-    let ok = 0
+    let ok = 0; const failed: number[] = []
     for (const task of tasks) {
       try {
         const r = await fetch('/api/isl/sessions', {
@@ -255,10 +266,10 @@ export default function SprintPlanView() {
             source: 'sprint-plan',
           }),
         })
-        if (r.ok) ok++
-      } catch {}
+        if (r.ok) ok++; else failed.push(task.id)
+      } catch { failed.push(task.id) }
     }
-    showToast(`📤 ${ok}/${tasks.length} task dikirim ke Push Queue`)
+    showToast(`📤 ${ok}/${tasks.length} ke Push Queue${skipped ? ` · ${skipped} sudah ada (dilewati)` : ''}${failed.length ? ` · ❌ ${failed.length} gagal` : ''}`)
     setSendingToQueue(false)
     setSelected(new Set())
     window.dispatchEvent(new Event('isl:session-updated'))
@@ -268,7 +279,7 @@ export default function SprintPlanView() {
     if (selectedSuggests.size === 0 || !data) return
     setSendingSuggests(true)
     const items = data.aiSuggestedTasks.filter((_, i) => selectedSuggests.has(i))
-    let ok = 0
+    let ok = 0, fail = 0
     for (const item of items) {
       try {
         const r = await fetch('/api/isl/sessions', {
@@ -283,10 +294,10 @@ export default function SprintPlanView() {
             source: 'ai-suggest',
           }),
         })
-        if (r.ok) ok++
-      } catch {}
+        if (r.ok) ok++; else fail++
+      } catch { fail++ }
     }
-    showToast(`📤 ${ok}/${items.length} AI suggest dikirim ke Push Queue`)
+    showToast(`📤 ${ok}/${items.length} AI suggest ke Push Queue${fail ? ` · ❌ ${fail} gagal` : ''}`)
     setSendingSuggests(false)
     setSelectedSuggests(new Set())
     window.dispatchEvent(new Event('isl:session-updated'))
