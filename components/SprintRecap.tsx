@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export interface RecapTask {
   id: number
@@ -54,6 +54,18 @@ export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
 
+  // Reconcile selection when the tasks prop changes (e.g. a sibling revert/move or a
+  // background cache-refresh removed a row). Without this a stale id stays selected
+  // and a batch action would PATCH a task the user can no longer see. (Hook must run
+  // before the early return below.)
+  useEffect(() => {
+    const valid = new Set(tasks.filter(t => isManaged(t.type)).map(t => t.id))
+    setSelected(prev => {
+      const kept = [...prev].filter(id => valid.has(id))
+      return kept.length === prev.size ? prev : new Set(kept)
+    })
+  }, [tasks])
+
   if (!tasks.length) return null
   const rank = (s: string) => {
     const k = s.toLowerCase()
@@ -80,9 +92,12 @@ export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick
     setSelected(allSelected ? new Set() : new Set(selectableIds))
   }
   async function runBatch(islStatus: string) {
-    if (!onBatchStatus || !selected.size || busy) return
+    if (!onBatchStatus || busy) return
+    // Send-time guard: only act on ids still present & selectable (never a phantom id).
+    const ids = Array.from(selected).filter(id => selectableIds.includes(id))
+    if (!ids.length) { setSelected(new Set()); return }
     setBusy(true)
-    try { await onBatchStatus(Array.from(selected), islStatus); setSelected(new Set()); setSelectMode(false) }
+    try { await onBatchStatus(ids, islStatus); setSelected(new Set()); setSelectMode(false) }
     finally { setBusy(false) }
   }
 

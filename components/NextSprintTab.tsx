@@ -133,15 +133,16 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
 
   // Batch status change from the recap (New / In Progress / Hold / Close) → syncs to OP.
   async function batchStatus(ids: number[], islStatus: string) {
-    let ok = 0
+    let ok = 0, offline = 0
     for (const id of ids) {
       const r = await fetch('/api/op/status', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wpId: id, islStatus }),
       }).then(res => res.json()).catch(() => ({ ok: false }))
-      if (r.ok) ok++
+      if (r.ok && r.synced) ok++
+      else if (r.ok) offline++
     }
-    setToast(`✅ ${ok}/${ids.length} status diupdate`); setTimeout(() => setToast(null), 3500)
+    setToast(`✅ ${ok}/${ids.length} sync OP${offline ? ` · ${offline} lokal (OP offline)` : ''}`); setTimeout(() => setToast(null), 3500)
     await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
     window.dispatchEvent(new Event('isl:cache-refreshed'))
     loadPlan()

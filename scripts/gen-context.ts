@@ -23,7 +23,9 @@ async function main() {
     getSessionsByStatus('pending'),
     getSessionsByStatus('hub'),
     getAllKBEntries(),
-    Promise.resolve(loadCache()),
+    // Owner's per-user cache. After the global-cache removal, loadCache() with no
+    // uid returns EMPTY — load the owner's file explicitly (ISL_OWNER_UID, default 1).
+    Promise.resolve(loadCache(Number(process.env.ISL_OWNER_UID ?? 1))),
     Promise.resolve(loadUserConfig()),
   ])
 
