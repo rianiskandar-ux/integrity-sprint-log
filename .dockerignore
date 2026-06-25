@@ -21,7 +21,9 @@ op-mode.json
 user-config.json
 processed-sessions.json
 google-token.json
+google-token-*.json
 google-profile.json
+google-profile-*.json
 context-draft*.json
 sprint-summaries-*.json
 work-timer-*.json

@@ -2,7 +2,11 @@ import fs from 'fs'
 import path from 'path'
 
 const AUTH_DIR = process.env.AUTH_DATA_DIR ?? process.cwd()
-const TOKEN_FILE = path.join(AUTH_DIR, 'google-token.json')
+const OWNER_UID = Number(process.env.ISL_OWNER_UID ?? 1)
+// Legacy single-connection files (pre-multiuser). Kept only as a migration grace
+// for the OWNER, so their existing Google link doesn't drop after this change.
+const LEGACY_TOKEN   = path.join(AUTH_DIR, 'google-token.json')
+const LEGACY_PROFILE = path.join(AUTH_DIR, 'google-profile.json')
 
 interface GoogleToken {
   access_token: string
@@ -17,35 +21,52 @@ export interface GoogleProfile {
   picture?: string
 }
 
-const PROFILE_FILE = path.join(AUTH_DIR, 'google-profile.json')
-
-export function loadProfile(): GoogleProfile | null {
-  try {
-    if (!fs.existsSync(PROFILE_FILE)) return null
-    return JSON.parse(fs.readFileSync(PROFILE_FILE, 'utf-8'))
-  } catch { return null }
+// Google connection is PER-USER. No uid → null: never read/write a shared file,
+// so one user's Google connection can never leak to another on a shared instance.
+function tokenFile(uid?: number | null): string | null {
+  return uid ? path.join(AUTH_DIR, `google-token-${uid}.json`) : null
+}
+function profileFile(uid?: number | null): string | null {
+  return uid ? path.join(AUTH_DIR, `google-profile-${uid}.json`) : null
+}
+function readJson<T>(file: string | null): T | null {
+  if (!file) return null
+  try { return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf-8')) as T : null } catch { return null }
 }
 
-export function saveProfile(p: GoogleProfile) {
-  fs.writeFileSync(PROFILE_FILE, JSON.stringify(p, null, 2), 'utf-8')
+export function loadProfile(uid?: number | null): GoogleProfile | null {
+  return readJson<GoogleProfile>(profileFile(uid))
+    ?? (uid === OWNER_UID ? readJson<GoogleProfile>(LEGACY_PROFILE) : null)
 }
 
-export function deleteProfile() {
-  try { if (fs.existsSync(PROFILE_FILE)) fs.unlinkSync(PROFILE_FILE) } catch { /* noop */ }
+export function saveProfile(uid: number | null | undefined, p: GoogleProfile) {
+  const f = profileFile(uid); if (!f) return
+  fs.writeFileSync(f, JSON.stringify(p, null, 2), 'utf-8')
 }
 
-export function loadToken(): GoogleToken | null {
-  try {
-    if (!fs.existsSync(TOKEN_FILE)) return null
-    return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8'))
-  } catch { return null }
+export function deleteProfile(uid?: number | null) {
+  const f = profileFile(uid)
+  try { if (f && fs.existsSync(f)) fs.unlinkSync(f) } catch { /* noop */ }
+  if (uid === OWNER_UID) { try { if (fs.existsSync(LEGACY_PROFILE)) fs.unlinkSync(LEGACY_PROFILE) } catch { /* noop */ } }
 }
 
-export function saveToken(token: GoogleToken) {
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify(token, null, 2), 'utf-8')
+export function loadToken(uid?: number | null): GoogleToken | null {
+  return readJson<GoogleToken>(tokenFile(uid))
+    ?? (uid === OWNER_UID ? readJson<GoogleToken>(LEGACY_TOKEN) : null)
 }
 
-export function getAuthUrl(): string {
+export function saveToken(uid: number | null | undefined, token: GoogleToken) {
+  const f = tokenFile(uid); if (!f) return
+  fs.writeFileSync(f, JSON.stringify(token, null, 2), 'utf-8')
+}
+
+export function deleteToken(uid?: number | null) {
+  const f = tokenFile(uid)
+  try { if (f && fs.existsSync(f)) fs.unlinkSync(f) } catch { /* noop */ }
+  if (uid === OWNER_UID) { try { if (fs.existsSync(LEGACY_TOKEN)) fs.unlinkSync(LEGACY_TOKEN) } catch { /* noop */ } }
+}
+
+export function getAuthUrl(state?: string | number): string {
   const hint = process.env.GOOGLE_LOGIN_HINT ?? ''
   const params = new URLSearchParams({
     client_id:     process.env.GOOGLE_CLIENT_ID!,
@@ -56,6 +77,8 @@ export function getAuthUrl(): string {
     prompt:        'select_account consent',
   })
   if (hint) params.set('login_hint', hint)
+  // Carry the connecting user's uid so the callback attributes the token correctly.
+  if (state != null && String(state) !== '') params.set('state', String(state))
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
@@ -80,8 +103,8 @@ export async function exchangeCode(code: string): Promise<GoogleToken> {
   }
 }
 
-export async function sendEmail(to: string, subject: string, htmlBody: string): Promise<boolean> {
-  const token = await getValidToken()
+export async function sendEmail(uid: number | null | undefined, to: string, subject: string, htmlBody: string): Promise<boolean> {
+  const token = await getValidToken(uid)
   if (!token) return false
   try {
     const message = [
@@ -104,8 +127,8 @@ export async function sendEmail(to: string, subject: string, htmlBody: string): 
   } catch { return false }
 }
 
-export async function getValidToken(): Promise<string | null> {
-  const token = loadToken()
+export async function getValidToken(uid?: number | null): Promise<string | null> {
+  const token = loadToken(uid)
   if (!token) return null
 
   if (Date.now() < token.expiry) return token.access_token
@@ -129,6 +152,6 @@ export async function getValidToken(): Promise<string | null> {
     access_token: data.access_token,
     expiry: Date.now() + (data.expires_in - 60) * 1000,
   }
-  saveToken(updated)
+  saveToken(uid, updated)   // writes the per-user file (also migrates the owner off legacy)
   return updated.access_token
 }

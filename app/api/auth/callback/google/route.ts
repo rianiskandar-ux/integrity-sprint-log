@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { exchangeCode, saveToken, saveProfile } from '@/lib/google-auth'
+import { getRequestContext } from '@/lib/request-auth'
+import { OWNER_UID } from '@/lib/auth'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -9,9 +11,15 @@ export async function GET(req: Request) {
   if (error) return NextResponse.redirect(new URL('/?gcal=error', req.url))
   if (!code) return NextResponse.json({ error: 'No code' }, { status: 400 })
 
+  // Which user is connecting — from the OAuth state (set by /api/auth/google), or
+  // the session cookie, else the owner. Drives the per-user token/profile file.
+  const stateUid = Number(searchParams.get('state'))
+  const ctx = await getRequestContext()
+  const uid = (Number.isFinite(stateUid) && stateUid > 0) ? stateUid : (ctx?.uid ?? OWNER_UID)
+
   try {
     const token = await exchangeCode(code)
-    saveToken(token)
+    saveToken(uid, token)
 
     // Fetch Google profile
     try {
@@ -20,7 +28,7 @@ export async function GET(req: Request) {
       })
       if (profileRes.ok) {
         const p = await profileRes.json()
-        saveProfile({ id: p.id, name: p.name, email: p.email, picture: p.picture })
+        saveProfile(uid, { id: p.id, name: p.name, email: p.email, picture: p.picture })
       }
     } catch { /* profile is optional */ }
 

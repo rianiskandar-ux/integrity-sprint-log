@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getValidToken, loadToken } from '@/lib/google-auth'
+import { getValidToken, loadToken, deleteToken } from '@/lib/google-auth'
+import { getRequestContext } from '@/lib/request-auth'
 
 export interface CalendarEvent {
   id: string
@@ -14,7 +15,8 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const days = parseInt(searchParams.get('days') ?? '30')
 
-  const token = await getValidToken()
+  const ctx = await getRequestContext()
+  const token = await getValidToken(ctx?.uid)
   if (!token) {
     return NextResponse.json({ connected: false, events: [] })
   }
@@ -71,11 +73,8 @@ export async function GET(req: Request) {
 }
 
 export async function DELETE() {
-  // Disconnect — delete token file
-  const { loadToken } = await import('@/lib/google-auth')
-  const fs = await import('fs')
-  const path = await import('path')
-  const tokenFile = path.join(process.env.AUTH_DATA_DIR ?? process.cwd(), 'google-token.json')
-  if (fs.existsSync(tokenFile)) fs.unlinkSync(tokenFile)
+  // Disconnect — delete THIS user's token file only.
+  const ctx = await getRequestContext()
+  deleteToken(ctx?.uid)
   return NextResponse.json({ ok: true })
 }

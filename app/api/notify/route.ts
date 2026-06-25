@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
 import { sendEmail, loadProfile } from '@/lib/google-auth'
+import { getRequestContext } from '@/lib/request-auth'
+import { OWNER_UID } from '@/lib/auth'
 
 export async function POST(req: Request) {
   try {
     const { type, data } = await req.json()
 
-    const profile = loadProfile()
+    const ctx     = await getRequestContext()
+    const uid     = ctx?.uid ?? OWNER_UID
+    const profile = loadProfile(uid)
     const to      = profile?.email ?? 'rian.iskandar108@gmail.com'
 
     if (type === 'validation_needed') {
@@ -35,7 +39,7 @@ export async function POST(req: Request) {
 <p style="color:#9ca3af;font-size:12px">🤖 Auto-sent by ISL · ${new Date().toLocaleString('id-ID')}</p>
 </body></html>`
 
-      const ok = await sendEmail(to, `[ISL] ⚠️ Validasi status: ${title.slice(0, 50)}`, html)
+      const ok = await sendEmail(uid, to, `[ISL] ⚠️ Validasi status: ${title.slice(0, 50)}`, html)
       return NextResponse.json({ ok, to })
     }
 
