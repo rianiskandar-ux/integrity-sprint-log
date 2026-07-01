@@ -132,12 +132,16 @@ export async function POST(req: NextRequest) {
 }
 
 async function searchRelevantHistory(query: string, uid: number | null): Promise<string> {
-  const q = query.trim()
-  // skip short/generic queries that won't yield useful FTS hits
-  if (q.length < 5) return ''
+  const q = query.trim().slice(0, 120) // cap query length — long messages make noisy FTS queries
+  // skip greetings, acks, and queries too short to be meaningful
+  if (q.length < 15) return ''
+  const isGeneric = /^(ok|oke|ya|iya|yep|yup|halo|hi|thanks|makasih|lanjut|next|done|oke|siap|noted)\b/i.test(q)
+  if (isGeneric) return ''
   try {
     const tsq = sql`plainto_tsquery('simple', ${q})`
     const limit = 4
+    // Fix: use !== null instead of falsy check — uid=0 would skip filter incorrectly with `uid ?`
+    const uidFilter = uid !== null
 
     const sessionRows = await db.select({
       title:   sessions.title,
@@ -146,7 +150,7 @@ async function searchRelevantHistory(query: string, uid: number | null): Promise
       rank:    sql<number>`ts_rank(to_tsvector('simple', ${sessions.title} || ' ' || COALESCE(${sessions.bullets}::text, '')), ${tsq})`,
     }).from(sessions)
       .where(and(
-        uid ? eq(sessions.userId, uid) : sql`true`,
+        uidFilter ? eq(sessions.userId, uid!) : sql`true`,
         sql`to_tsvector('simple', ${sessions.title} || ' ' || COALESCE(${sessions.bullets}::text, '')) @@ ${tsq}`,
       ))
       .orderBy(sql`ts_rank(to_tsvector('simple', ${sessions.title} || ' ' || COALESCE(${sessions.bullets}::text, '')), ${tsq}) DESC`)
@@ -159,7 +163,7 @@ async function searchRelevantHistory(query: string, uid: number | null): Promise
       rank:    sql<number>`ts_rank(to_tsvector('simple', ${kbEntries.title} || ' ' || ${kbEntries.summary}), ${tsq})`,
     }).from(kbEntries)
       .where(and(
-        uid ? eq(kbEntries.userId, uid) : sql`true`,
+        uidFilter ? eq(kbEntries.userId, uid!) : sql`true`,
         sql`to_tsvector('simple', ${kbEntries.title} || ' ' || ${kbEntries.summary}) @@ ${tsq}`,
       ))
       .orderBy(sql`ts_rank(to_tsvector('simple', ${kbEntries.title} || ' ' || ${kbEntries.summary}), ${tsq}) DESC`)
@@ -173,7 +177,7 @@ async function searchRelevantHistory(query: string, uid: number | null): Promise
       rank:     sql<number>`ts_rank(to_tsvector('simple', ${taskMemory.title} || ' ' || COALESCE(${taskMemory.bullets}::text, '')), ${tsq})`,
     }).from(taskMemory)
       .where(and(
-        uid ? eq(taskMemory.userId, uid) : sql`true`,
+        uidFilter ? eq(taskMemory.userId, uid!) : sql`true`,
         sql`to_tsvector('simple', ${taskMemory.title} || ' ' || COALESCE(${taskMemory.bullets}::text, '')) @@ ${tsq}`,
       ))
       .orderBy(sql`ts_rank(to_tsvector('simple', ${taskMemory.title} || ' ' || COALESCE(${taskMemory.bullets}::text, '')), ${tsq}) DESC`)
