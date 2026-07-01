@@ -309,10 +309,11 @@ export async function POST(req: Request) {
       })
       if (!tRes.ok) continue
       const task = await tRes.json()
-      createdTasks.push({ id: task.id as number, subject: taskSubject, mins: group.mins })
+      const taskId_ = task.id as number
+      createdTasks.push({ id: taskId_, subject: taskSubject, mins: group.mins })
 
       // Activity comment per task
-      await fetch(`${OP_BASE}/api/v3/work_packages/${task.id}/activities`, {
+      await fetch(`${OP_BASE}/api/v3/work_packages/${taskId_}/activities`, {
         method: 'POST', headers,
         body: JSON.stringify({ comment: { format: 'markdown', raw: [
           `**Work Log — ${date}** | ${durLabel(group.mins)}`,
@@ -320,21 +321,21 @@ export async function POST(req: Request) {
           `*Session: ${(session.sessionId ?? session.id).slice(0, 8)} · ISL*`,
         ].join('\n') } }),
       }).catch(() => {})
-    }
 
-    // ── Step 3: Time entry on User Story ───────────────────────────────────────
-    await fetch(`${OP_BASE}/api/v3/time_entries`, {
-      method: 'POST', headers,
-      body: JSON.stringify({
-        hours:   toISODuration(mins),
-        spentOn: date,
-        comment: { format: 'markdown', raw: `**${subject}**\n\n⏱ ${durLabel(mins)} · ${createdTasks.length} task(s) | 🤖 ISL Push Queue` },
-        _links: {
-          workPackage: { href: `/api/v3/work_packages/${usId}` },
-          activity:    { href: '/api/v3/time_entries/activities/1' },
-        },
-      }),
-    }).catch(() => {})
+      // ── Time entry per Task (proportional) — logged here, not on US ──────────
+      await fetch(`${OP_BASE}/api/v3/time_entries`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          hours:   toISODuration(group.mins),
+          spentOn: date,
+          comment: { format: 'markdown', raw: `**${taskSubject}**\n\n⏱ ${durLabel(group.mins)} | 🤖 ISL Push Queue` },
+          _links: {
+            workPackage: { href: `/api/v3/work_packages/${taskId_}` },
+            activity:    { href: '/api/v3/time_entries/activities/1' },
+          },
+        }),
+      }).catch(() => {})
+    }
 
     // Return extra info about created structure
     const structureInfo = { usId, tasks: createdTasks }
