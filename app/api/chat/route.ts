@@ -3,6 +3,9 @@ import { getLLMConfig } from '@/lib/llm'
 import { loadCache, type CachedWorkPackage, type CachedSprint } from '@/lib/op-cache'
 import { loadUserConfig } from '@/lib/user-config'
 import { getRequestContext } from '@/lib/request-auth'
+import { db } from '@/lib/db'
+import { sessions, kbEntries, taskMemory } from '@/lib/db/schema'
+import { sql, and, eq } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
 
@@ -73,6 +76,10 @@ export async function POST(req: NextRequest) {
 
   const sprintData = sprint as CachedSprint | undefined
 
+  // Full-text search: inject relevant history from the last user message
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
+  const historySection = await searchRelevantHistory(lastUserMsg, ctx?.uid ?? null)
+
   const taskSection = taskContext?.title ? [
     `\n--- TASK CONTEXT ---`,
     `You are helping with a specific task:`,
@@ -93,6 +100,7 @@ export async function POST(req: NextRequest) {
     sprintData ? `Active sprint: ${sprintData.name} (${sprintData.startDate} → ${sprintData.endDate})` : 'No active sprint.',
     myTasks ? `\nOpen tasks in OP:\n${myTasks}` : 'No tasks cached — user may need to sync OP cache from Settings.',
     pendingSessions ? `\nSessions waiting to push to OP:\n${pendingSessions}` : '',
+    historySection,
     taskSection,
     `\nYou have full context of the user's sprint and tasks above. Answer questions directly using this data.`,
     `Be concise and practical. Use markdown for lists. Respond in the same language the user writes in.`,
@@ -120,6 +128,77 @@ export async function POST(req: NextRequest) {
     else if (raw.includes('rate_limit'))
       msg = 'Rate limit tercapai. Coba lagi dalam beberapa detik.'
     return new Response(JSON.stringify({ error: msg }), { status: 500 })
+  }
+}
+
+async function searchRelevantHistory(query: string, uid: number | null): Promise<string> {
+  const q = query.trim()
+  // skip short/generic queries that won't yield useful FTS hits
+  if (q.length < 5) return ''
+  try {
+    const tsq = sql`plainto_tsquery('simple', ${q})`
+    const limit = 4
+
+    const sessionRows = await db.select({
+      title:   sessions.title,
+      bullets: sessions.bullets,
+      date:    sessions.date,
+      rank:    sql<number>`ts_rank(to_tsvector('simple', ${sessions.title} || ' ' || COALESCE(${sessions.bullets}::text, '')), ${tsq})`,
+    }).from(sessions)
+      .where(and(
+        uid ? eq(sessions.userId, uid) : sql`true`,
+        sql`to_tsvector('simple', ${sessions.title} || ' ' || COALESCE(${sessions.bullets}::text, '')) @@ ${tsq}`,
+      ))
+      .orderBy(sql`ts_rank(to_tsvector('simple', ${sessions.title} || ' ' || COALESCE(${sessions.bullets}::text, '')), ${tsq}) DESC`)
+      .limit(limit)
+
+    const kbRows = await db.select({
+      title:   kbEntries.title,
+      summary: kbEntries.summary,
+      date:    kbEntries.date,
+      rank:    sql<number>`ts_rank(to_tsvector('simple', ${kbEntries.title} || ' ' || ${kbEntries.summary}), ${tsq})`,
+    }).from(kbEntries)
+      .where(and(
+        uid ? eq(kbEntries.userId, uid) : sql`true`,
+        sql`to_tsvector('simple', ${kbEntries.title} || ' ' || ${kbEntries.summary}) @@ ${tsq}`,
+      ))
+      .orderBy(sql`ts_rank(to_tsvector('simple', ${kbEntries.title} || ' ' || ${kbEntries.summary}), ${tsq}) DESC`)
+      .limit(limit)
+
+    const tmRows = await db.select({
+      title:    taskMemory.title,
+      bullets:  taskMemory.bullets,
+      date:     taskMemory.date,
+      opTaskId: taskMemory.opTaskId,
+      rank:     sql<number>`ts_rank(to_tsvector('simple', ${taskMemory.title} || ' ' || COALESCE(${taskMemory.bullets}::text, '')), ${tsq})`,
+    }).from(taskMemory)
+      .where(and(
+        uid ? eq(taskMemory.userId, uid) : sql`true`,
+        sql`to_tsvector('simple', ${taskMemory.title} || ' ' || COALESCE(${taskMemory.bullets}::text, '')) @@ ${tsq}`,
+      ))
+      .orderBy(sql`ts_rank(to_tsvector('simple', ${taskMemory.title} || ' ' || COALESCE(${taskMemory.bullets}::text, '')), ${tsq}) DESC`)
+      .limit(limit)
+
+    type Hit = { title: string; snippet: string; date: string; rank: number }
+    const hits: Hit[] = [
+      ...sessionRows.map(r => ({
+        title: r.title, date: r.date, rank: r.rank,
+        snippet: (r.bullets as string[] ?? []).slice(0, 2).join(' · '),
+      })),
+      ...kbRows.map(r => ({ title: r.title, date: r.date, rank: r.rank, snippet: r.summary.slice(0, 100) })),
+      ...tmRows.map(r => ({
+        title: `#${r.opTaskId} ${r.title}`, date: r.date, rank: r.rank,
+        snippet: (r.bullets as string[] ?? []).slice(0, 2).join(' · '),
+      })),
+    ]
+    hits.sort((a, b) => b.rank - a.rank)
+    const top = hits.slice(0, 5)
+    if (top.length === 0) return ''
+
+    const lines = top.map(h => `- [${h.date}] ${h.title}${h.snippet ? ` — ${h.snippet}` : ''}`)
+    return `\nRelevant past work (from ISL history):\n${lines.join('\n')}`
+  } catch {
+    return ''
   }
 }
 
