@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { saveSession, createSessionId } from '@/lib/session-store'
+import { saveSession, createSessionId, type SessionLog } from '@/lib/session-store'
 import { OWNER_UID } from '@/lib/auth'
 
 export const runtime = 'nodejs'
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const now = new Date().toISOString()
   const sessionDate = date ?? now.slice(0, 10)
 
-  const session = {
+  const session: SessionLog = {
     id:               createSessionId(),
     sessionId:        `kafi-${Date.now()}`,
     userId:           OWNER_UID,
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     ticketBinding:    null,
     relatedOldTaskId: null,
     tokenUsage:       null,
-    pushStatus:       'hub',
+    pushStatus:       'hub' as const,
     autoPushed:       true,
     undoneAt:         null,
     createdAt:        now,
