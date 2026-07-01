@@ -206,7 +206,16 @@ export default function ChatBubble() {
             </p>
           </div>
           {messages.length > 0 && (
-            <button onClick={() => { abortRef.current?.abort(); setMessages([]); setStreaming(false) }}
+            <button onClick={() => {
+              abortRef.current?.abort()
+              setMessages([])
+              setStreaming(false)
+              fetch(`/api/chat/history/${CHAT_ID}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: 'ISL General Chat', taskType: 'general', messages: [] }),
+              }).catch(() => {})
+            }}
               className="text-[10px] text-blue-200/60 hover:text-white transition px-2 py-1 rounded hover:bg-white/10">
               Clear
             </button>
