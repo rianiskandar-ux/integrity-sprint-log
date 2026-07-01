@@ -8,8 +8,6 @@ interface Props {
   onClose: () => void
 }
 
-const ISL_DIR = process.env.NEXT_PUBLIC_ISL_DIR ?? 'C:/Users/user199/ai-apps/daily-sprint-next'
-
 export default function TerminalPanel({ onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef      = useRef<unknown>(null)
@@ -27,45 +25,48 @@ export default function TerminalPanel({ onClose }: Props) {
     setTimeout(() => fitRef.current?.fit(), 50)
   }, [])
 
-  // ── init xterm ──────────────────────────────────────────────────────────
+  // ── init xterm — dynamic import to avoid SSR `self is not defined` ───────
   useEffect(() => {
+    if (!containerRef.current) return
     let disposed = false
 
     async function init() {
-      await loadScript('https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js')
-      await loadScript('https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js')
-      if (!document.getElementById('xterm-css')) {
-        const link = document.createElement('link')
-        link.id = 'xterm-css'; link.rel = 'stylesheet'
-        link.href = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css'
-        document.head.appendChild(link)
-      }
-      if (disposed) return
+      // Dynamic imports: xterm uses `self` (browser global), cannot be static-imported
+      const [{ Terminal }, { FitAddon }] = await Promise.all([
+        import('xterm'),
+        import('xterm-addon-fit'),
+      ])
+      await import('xterm/css/xterm.css')
 
-      const w = window as unknown as { Terminal: new (o: object) => unknown; FitAddon: { FitAddon: new () => { fit: () => void } } }
+      // Bail out immediately if cleanup ran during the (fast, local-bundle) import phase
+      if (disposed || !containerRef.current) return
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const term = new (w.Terminal as any)({
+      const term = new Terminal({
         cursorBlink: true,
         fontFamily: 'Cascadia Code, Consolas, monospace',
         fontSize: 13,
         theme: { background: '#0d1117', foreground: '#c9d1d9', cursor: '#58a6ff' },
       }) as { open: (el: HTMLElement) => void; write: (d: unknown) => void; onData: (cb: (d: string) => void) => void; onResize: (cb: (s: { cols: number; rows: number }) => void) => void; dispose: () => void; loadAddon: (a: unknown) => void }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fitAddon = new (w.FitAddon as any).FitAddon()
+      const fitAddon = new FitAddon()
       term.loadAddon(fitAddon)
-      term.open(containerRef.current!)
+      term.open(containerRef.current)
       fitAddon.fit()
       termRef.current = term
       fitRef.current  = fitAddon
 
-      const dir = encodeURIComponent(ISL_DIR)
-      const ws  = new WebSocket(`ws://localhost:9000/terminal?dir=${dir}`)
+      // Bypass nginx proxy — direct to Docker port 4891 avoids proxy WebSocket issues.
+      // ISL is local-only; 4891 is always the exposed container port.
+      const ws = new WebSocket('ws://localhost:4891/terminal')
       wsRef.current = ws
 
       ws.onopen  = () => { setConnected(true); fitAddon.fit() }
-      ws.onclose = () => { setConnected(false); (term as { write: (d: string) => void }).write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n') }
-      ws.onerror = () => { (term as { write: (d: string) => void }).write('\r\n\x1b[31m[error — launcher on port 9000?]\x1b[0m\r\n') }
+      ws.onclose = (e) => {
+        setConnected(false)
+        ;(term as { write: (d: string) => void }).write(`\r\n\x1b[31m[disconnected — code ${e.code}]\x1b[0m\r\n`)
+      }
+      ws.onerror = () => { (term as { write: (d: string) => void }).write('\r\n\x1b[31m[error — ISL terminal server not available]\x1b[0m\r\n') }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ws.onmessage = (e) => { (term as any).write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data as ArrayBuffer)) }
 
@@ -73,13 +74,16 @@ export default function TerminalPanel({ onClose }: Props) {
       term.onResize(({ cols, rows }) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols, rows })) })
 
       const ro = new ResizeObserver(() => fitAddon.fit())
-      if (containerRef.current) ro.observe(containerRef.current)
+      ro.observe(containerRef.current!)
 
-      return () => { disposed = true; ro.disconnect(); ws.close(); term.dispose() }
+      return () => { ro.disconnect(); ws.close(); term.dispose() }
     }
 
     const cleanup = init()
-    return () => { cleanup.then(fn => fn?.()) }
+    return () => {
+      disposed = true  // Set immediately — checked after await in init()
+      cleanup.then(fn => fn?.())
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -175,13 +179,4 @@ export default function TerminalPanel({ onClose }: Props) {
       )}
     </div>
   )
-}
-
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
-    const s = document.createElement('script')
-    s.src = src; s.onload = () => resolve(); s.onerror = () => reject(new Error(`Failed: ${src}`))
-    document.head.appendChild(s)
-  })
 }

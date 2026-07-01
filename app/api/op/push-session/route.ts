@@ -133,6 +133,7 @@ export async function POST(req: Request) {
       estimatedMins?: number
       typeId?: number
       userId?: number
+      relatesTo?: number | null
     }
   }
 
@@ -146,7 +147,8 @@ export async function POST(req: Request) {
   const date    = (session.startedAt ?? new Date().toISOString()).slice(0, 10)
   // Worklog (spent time) logged to OP. User's explicit choice (estimate/actual) wins;
   // else fall back to actual-if-measured, then estimate.
-  const mins    = body.loggedMins ?? session.actualMins ?? session.estimatedMins ?? 30
+  // Use `|| null` so loggedMins=0 (timer not running) falls through to estimatedMins.
+  const mins    = (body.loggedMins || null) ?? session.actualMins ?? session.estimatedMins ?? 30
 
   let taskId: number | null = null   // main WP id stored in ISL (User Story when create_new)
 
@@ -268,6 +270,17 @@ export async function POST(req: Request) {
     const userStory = await usRes.json()
     const usId = userStory.id as number
     taskId = usId
+
+    // ── Step 1.5: Add "relates" relation if requested ─────────────────────────
+    if (body.newTask.relatesTo) {
+      await fetch(`${OP_BASE}/api/v3/work_packages/${usId}/relations`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          _links: { to: { href: `/api/v3/work_packages/${body.newTask.relatesTo}` } },
+          type: 'relates',
+        }),
+      }).catch(() => {})
+    }
 
     // ── Step 2: Create Tasks under User Story ──────────────────────────────────
     const createdTasks: Array<{ id: number; subject: string; mins: number }> = []

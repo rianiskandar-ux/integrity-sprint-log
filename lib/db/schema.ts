@@ -130,3 +130,56 @@ export const processedSessions = pgTable('processed_sessions', {
   sessionId:   text('session_id').primaryKey(),
   processedAt: timestamp('processed_at').defaultNow().notNull(),
 })
+
+// ── agent_logs ─────────────────────────────────────────────────────────────────
+// Log aktivitas tiap agent ISL — Arka, Rendi, Dira, Luna
+export const agentLogs = pgTable('agent_logs', {
+  id:         text('id').primaryKey(),
+  userId:     integer('user_id').references(() => users.id),
+  agentId:    text('agent_id').notNull(),   // arka | rendi | dira | luna
+  agentName:  text('agent_name').notNull(),
+  action:     text('action').notNull(),     // rekam_sesi | sync_op | timer_start | triage_check | dll
+  status:     text('status').notNull(),     // active | idle | issue
+  detail:     text('detail'),
+  metadata:   jsonb('metadata').$type<Record<string, unknown>>().default({}),
+  occurredAt: timestamp('occurred_at').defaultNow().notNull(),
+}, (t) => [
+  index('agent_logs_agent_idx').on(t.agentId, t.occurredAt),
+  index('agent_logs_user_idx').on(t.userId, t.occurredAt),
+])
+
+// ── cases ──────────────────────────────────────────────────────────────────────
+// Insiden/masalah yang terdeteksi oleh agent — dengan tracking resolusi
+export const cases = pgTable('cases', {
+  id:          text('id').primaryKey(),
+  userId:      integer('user_id').references(() => users.id),
+  agentId:     text('agent_id'),            // agent yang deteksi
+  title:       text('title').notNull(),
+  description: text('description'),
+  severity:    text('severity').notNull(),  // low | medium | high | critical
+  status:      text('status').notNull().default('open'), // open | resolved | ignored
+  resolvedAt:  timestamp('resolved_at'),
+  metadata:    jsonb('metadata').$type<Record<string, unknown>>().default({}),
+  detectedAt:  timestamp('detected_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [
+  index('cases_status_idx').on(t.status, t.detectedAt),
+  index('cases_agent_idx').on(t.agentId, t.status),
+])
+
+// ── events ─────────────────────────────────────────────────────────────────────
+// Timestamped audit log — semua kejadian sistem yang penting
+export const events = pgTable('events', {
+  id:          text('id').primaryKey(),
+  userId:      integer('user_id').references(() => users.id),
+  agentId:     text('agent_id'),
+  type:        text('type').notNull(),      // session_recorded | op_synced | timer_stopped | hub_triaged | dll
+  subject:     text('subject').notNull(),
+  detail:      text('detail'),
+  metadata:    jsonb('metadata').$type<Record<string, unknown>>().default({}),
+  occurredAt:  timestamp('occurred_at').defaultNow().notNull(),
+}, (t) => [
+  index('events_type_idx').on(t.type, t.occurredAt),
+  index('events_user_idx').on(t.userId, t.occurredAt),
+  index('events_agent_idx').on(t.agentId, t.occurredAt),
+])

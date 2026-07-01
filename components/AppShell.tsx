@@ -35,6 +35,7 @@ import FeedbackModal from './FeedbackModal'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import { loadSettings, saveSettings, loadAppConfig } from '@/lib/op-config'
 import { useI18n } from '@/lib/i18n'
+import { Menu, Flame, AlertTriangle, Loader2 } from 'lucide-react'
 
 interface Props {
   view: string
@@ -173,7 +174,7 @@ export default function AppShell({
 
   // Dynamic page title
   useEffect(() => {
-    const viewLabel = { sprint: '🏃', month: '📆', skills: '🎯' }[view] ?? ''
+    const viewLabel = { sprint: 'Sprint', month: 'Month', skills: 'Skills' }[view] ?? ''
     const dateLabel = view.charAt(0).toUpperCase() + view.slice(1)
     const name = loadAppConfig ? loadAppConfig().appName : 'Integrity Sprint Log'
     document.title = `${viewLabel} ${dateLabel} · ${name}`
@@ -275,10 +276,10 @@ export default function AppShell({
       })
       const data = await res.json()
       if (data.ok) {
-        showToast(`✓ Pulled — ${data.workPackages} tasks, ${data.openTasks} open`)
+        showToast(`Pulled — ${data.workPackages} tasks, ${data.openTasks} open`)
         router.refresh()
       } else {
-        showToast('⚠ Pull failed — check OP config')
+        showToast('Pull failed — check OP config')
       }
     })
   }
@@ -303,9 +304,9 @@ export default function AppShell({
       })
       const d = await res.json()
       if (d.ok) setWrapupText(d.summary)
-      else setWrapupText('⚠ ' + (d.error ?? t('wrapup.error_generate')))
+      else setWrapupText(d.error ?? t('wrapup.error_generate'))
     } catch {
-      setWrapupText('⚠ ' + t('wrapup.error_connection'))
+      setWrapupText(t('wrapup.error_connection'))
     } finally {
       setWrapupLoading(false)
     }
@@ -385,7 +386,7 @@ export default function AppShell({
         {/* Top bar */}
         <div className="sticky top-0 z-10 flex items-center gap-2 flex-wrap px-4 lg:px-6 py-2.5 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm">
           {/* Mobile hamburger */}
-          <button className="lg:hidden p-1.5 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 mr-1" onClick={() => setMobileNav(true)}>☰</button>
+          <button className="lg:hidden p-1.5 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 mr-1" onClick={() => setMobileNav(true)}><Menu size={16} /></button>
 
 
           {(() => {
@@ -404,7 +405,7 @@ export default function AppShell({
             {/* Streak — only if active */}
             {streak > 1 && (
               <span className="hidden md:flex items-center text-[11px] bg-orange-50 dark:bg-orange-950 text-orange-500 px-2 py-1 rounded-full font-semibold gap-1">
-                🔥 {streak}
+                <Flame size={11} /> {streak}
               </span>
             )}
 
@@ -502,7 +503,7 @@ export default function AppShell({
         {/* Offline / OP error banner */}
         {opStatus === 'error' && (
           <div className="sticky top-0 z-10 flex items-center gap-2 px-4 lg:px-6 py-2 bg-amber-50 dark:bg-amber-950 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-medium">
-            <span>⚠</span>
+            <AlertTriangle size={14} className="flex-shrink-0" />
             <span>OpenProject unreachable — working offline</span>
           </div>
         )}
@@ -582,7 +583,7 @@ export default function AppShell({
             </div>
             {wrapupLoading ? (
               <div className="flex items-center gap-3 py-8 justify-center text-gray-400">
-                <span className="animate-spin text-xl">⏳</span>
+                <Loader2 size={20} className="animate-spin" />
                 <span className="text-sm">{t('wrapup.generating')}</span>
               </div>
             ) : (

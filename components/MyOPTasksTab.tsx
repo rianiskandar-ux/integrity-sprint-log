@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useI18n } from '@/lib/i18n'
+import { Clock, User, CalendarDays, ClipboardList, ChevronDown, ChevronRight, Loader2, Pencil, Paperclip } from 'lucide-react'
 
 interface OPTask {
   id: number
@@ -117,7 +118,7 @@ function TaskRow({
     try {
       const r = await fetch(`/api/op/task-log?taskId=${task.id}`).then(r => r.json())
       setTaskLog(r)
-    } catch { onToast(`❌ ${t('op_tasks.failed_load')}`) }
+    } catch { onToast(`${t('op_tasks.failed_load')}`) }
     setLoadingLog(false)
   }
 
@@ -131,7 +132,7 @@ function TaskRow({
       }).then(r => r.json())
       setSuggest(r)
       setExpanded(true)
-    } catch { onToast('❌ AI suggest failed') }
+    } catch { onToast('AI suggest failed') }
     setSuggesting(false)
   }
 
@@ -158,14 +159,14 @@ function TaskRow({
         }),
       }).then(r => r.json())
       if (r.ok) {
-        onToast(`✅ Logged to ISL — #${task.id}`)
+        onToast(`Logged to ISL — #${task.id}`)
         setLogForm({ bullets: '', mins: '' })
         setShowLogForm(false)
         onSessionLogged()
       } else {
-        onToast('❌ Log failed')
+        onToast('Log failed')
       }
-    } catch { onToast('❌ Log failed') }
+    } catch { onToast('Log failed') }
     setLogging(false)
   }
 
@@ -189,8 +190,8 @@ function TaskRow({
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <p className="text-[13px] text-gray-700 dark:text-gray-200 truncate leading-tight">{task.subject}</p>
           {isActiveTimer && (
-            <span className="flex-shrink-0 text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded-full animate-pulse">
-              ⏱ running
+            <span className="flex items-center gap-0.5 flex-shrink-0 text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded-full animate-pulse">
+              <Clock size={9} /> running
             </span>
           )}
         </div>
@@ -229,8 +230,8 @@ function TaskRow({
         </button>
 
         {/* Expand toggle */}
-        <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0 w-3 text-center">
-          {expanded ? '▾' : '▸'}
+        <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={10} />}
         </span>
       </div>
 
@@ -260,19 +261,19 @@ function TaskRow({
 
           {/* Meta grid */}
           <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-gray-400 dark:text-gray-500">
-            {task.assignee && <div><span className="text-gray-500 dark:text-gray-400">👤</span> {task.assignee}</div>}
-            {task.createdBy && task.createdBy !== task.assignee && <div><span className="text-gray-500 dark:text-gray-400">✍️</span> {task.createdBy}</div>}
-            {task.sprintName && <div><span className="text-gray-500 dark:text-gray-400">🗓</span> {task.sprintName}</div>}
-            {task.type && <div><span className="text-gray-500 dark:text-gray-400">📎</span> {task.type}</div>}
+            {task.assignee && <div className="flex items-center gap-1"><User size={9} className="text-gray-500 dark:text-gray-400" /> {task.assignee}</div>}
+            {task.createdBy && task.createdBy !== task.assignee && <div className="flex items-center gap-1"><Pencil size={9} className="text-gray-500 dark:text-gray-400" /> {task.createdBy}</div>}
+            {task.sprintName && <div className="flex items-center gap-1"><CalendarDays size={9} className="text-gray-500 dark:text-gray-400" /> {task.sprintName}</div>}
+            {task.type && <div className="flex items-center gap-1"><Paperclip size={9} className="text-gray-500 dark:text-gray-400" /> {task.type}</div>}
             {task.status && <div><span className="text-gray-500 dark:text-gray-400">●</span> {task.status}</div>}
-            {task.updatedAt && <div><span className="text-gray-500 dark:text-gray-400">🕐</span> {task.updatedAt.slice(0, 10)}</div>}
+            {task.updatedAt && <div className="flex items-center gap-1"><Clock size={9} className="text-gray-500 dark:text-gray-400" /> {task.updatedAt.slice(0, 10)}</div>}
           </div>
 
           {/* View Log panel */}
           <div className="border-t border-gray-100 dark:border-gray-800 pt-2">
             <button onClick={loadLog}
               className="text-[10px] font-semibold text-teal-500 hover:text-teal-700 transition flex items-center gap-1">
-              {loadingLog ? '⏳ Loading log…' : showLog ? '▾ Sembunyikan log' : '📋 Lihat activity log'}
+              {loadingLog ? <><Loader2 size={9} className="animate-spin" /> Loading log…</> : showLog ? <><ChevronDown size={9} /> Sembunyikan log</> : <><ClipboardList size={9} /> Lihat activity log</>}
             </button>
 
             {showLog && taskLog && (
@@ -333,7 +334,7 @@ function TaskRow({
                             <p className="text-[10px] text-gray-600 dark:text-gray-400 truncate">
                               {e.comment || <span className="italic opacity-50">no comment</span>}
                             </p>
-                            <p className="text-[9px] text-gray-400 mt-0.5">👤 {e.user}</p>
+                            <p className="flex items-center gap-1 text-[9px] text-gray-400 mt-0.5"><User size={8} /> {e.user}</p>
                           </div>
                           <div className="flex flex-col items-end flex-shrink-0 gap-0.5">
                             <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400">
@@ -371,13 +372,13 @@ function TaskRow({
             {!showLogForm ? (
               <button onClick={() => setShowLogForm(true)}
                 className="text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 transition flex items-center gap-1">
-                ✏️ Log activity ke ISL{isActiveTimer ? ' (timer aktif)' : ''}
+                <Pencil size={9} /> Log activity ke ISL{isActiveTimer ? ' (timer aktif)' : ''}
               </button>
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold text-gray-600 dark:text-gray-300">
-                    ✏️ Log ke ISL — <span className="font-mono text-indigo-400">#{task.id}</span>
+                  <p className="flex items-center gap-1 text-[10px] font-bold text-gray-600 dark:text-gray-300">
+                    <Pencil size={9} /> Log ke ISL — <span className="font-mono text-indigo-400">#{task.id}</span>
                   </p>
                   <button onClick={() => setShowLogForm(false)} className="text-[10px] text-gray-300 hover:text-gray-500">✕</button>
                 </div>
@@ -593,8 +594,8 @@ export default function MyOPTasksTab({
 
           {pendingDecisions.length > 0 ? (
             <button onClick={() => setShowPlan(!showPlan)}
-              className="px-2.5 py-1.5 text-[10px] font-bold text-violet-600 border border-violet-300 dark:border-violet-700 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950 transition">
-              📋 {pendingDecisions.length}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold text-violet-600 border border-violet-300 dark:border-violet-700 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950 transition">
+              <ClipboardList size={10} /> {pendingDecisions.length}
             </button>
           ) : (
             <div className="w-8" /> // placeholder to keep layout stable
@@ -609,8 +610,8 @@ export default function MyOPTasksTab({
           <span className="text-[9px] text-amber-500 font-medium">* semua sprint (cache) — pilih sprint untuk data OP real</span>
         )}
         {sprintFilter !== 'all' && (
-          <span className="text-[10px] text-violet-500 font-medium">
-            🗓 {sprintList.find(s => s.id === sprintFilter)?.name ?? `Sprint #${sprintFilter}`}
+          <span className="flex items-center gap-1 text-[10px] text-violet-500 font-medium">
+            <CalendarDays size={9} />{sprintList.find(s => s.id === sprintFilter)?.name ?? `Sprint #${sprintFilter}`}
           </span>
         )}
         {sprintFilter !== 'all' && (
@@ -640,7 +641,7 @@ export default function MyOPTasksTab({
       {showPlan && pendingDecisions.length > 0 && (
         <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-violet-700 dark:text-violet-300">📋 Sprint Plan</p>
+            <p className="flex items-center gap-1 text-xs font-bold text-violet-700 dark:text-violet-300"><ClipboardList size={10} /> Sprint Plan</p>
             <button onClick={() => { setDecisions({}); setShowPlan(false) }}
               className="text-[10px] text-gray-400 hover:text-gray-600">Clear all</button>
           </div>

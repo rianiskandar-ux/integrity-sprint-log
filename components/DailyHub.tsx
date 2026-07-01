@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { SessionLog } from '@/lib/session-store'
 import type { KBEntry } from '@/lib/kb-store'
+import {
+  Bot, Inbox, Brain, ClipboardList, FileText,
+  Sparkles, PartyPopper, Lightbulb, Zap,
+  CircleDot, MapPin, ChevronDown, ChevronUp, ArrowRight, Layers,
+} from 'lucide-react'
 
 interface SprintContext {
   sprint?: { id: number; name: string; startDate: string; endDate: string }
@@ -122,7 +127,7 @@ ${JSON.stringify(context, null, 2)}`,
       <div className="border border-indigo-100 dark:border-indigo-900 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-base">🤖</span>
+            <Bot size={16} className="text-indigo-500" />
             <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Today's Focus</span>
           </div>
           <button
@@ -145,9 +150,9 @@ ${JSON.stringify(context, null, 2)}`,
 
       {/* Quick stats */}
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Hub Sessions" value={pendingCount} color="amber" icon="📥" />
-        <StatCard label="KB Entries" value={kbCount} color="violet" icon="🧠" />
-        <StatCard label="OP Open Tasks" value={data.sprintContext?.openTasks?.length ?? 0} color="blue" icon="📋" />
+        <StatCard label="Hub Sessions" value={pendingCount} color="amber" icon={<Inbox size={20} />} />
+        <StatCard label="KB Entries" value={kbCount} color="violet" icon={<Brain size={20} />} />
+        <StatCard label="OP Open Tasks" value={data.sprintContext?.openTasks?.length ?? 0} color="blue" icon={<ClipboardList size={20} />} />
       </div>
 
       {/* Recent hub sessions preview */}
@@ -156,7 +161,7 @@ ${JSON.stringify(context, null, 2)}`,
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Recent Sessions (not yet triaged)</p>
           {data.hubSessions.slice(0, 3).map(s => (
             <div key={s.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
-              <span className="text-sm mt-0.5">📝</span>
+              <FileText size={14} className="mt-0.5 text-gray-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{s.title}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">{s.date} · {durationLabel(s.actualMins) ?? '?'}</p>
@@ -172,7 +177,7 @@ ${JSON.stringify(context, null, 2)}`,
   )
 }
 
-function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
+function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: React.ReactNode }) {
   const colors: Record<string, string> = {
     amber: 'border-amber-100 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300',
     violet: 'border-violet-100 dark:border-violet-900 bg-violet-50/40 dark:bg-violet-950/20 text-violet-700 dark:text-violet-300',
@@ -180,7 +185,7 @@ function StatCard({ label, value, color, icon }: { label: string; value: number;
   }
   return (
     <div className={`rounded-xl border p-3 text-center ${colors[color] ?? ''}`}>
-      <div className="text-xl">{icon}</div>
+      <div className="flex justify-center">{icon}</div>
       <div className="text-xl font-bold mt-1">{value}</div>
       <div className="text-[10px] mt-0.5 opacity-80">{label}</div>
     </div>
@@ -192,7 +197,7 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
   if (!sessions.length) {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
-        <span className="text-3xl">✨</span>
+        <Sparkles size={28} />
         <p className="text-sm">No sessions need triage</p>
         <p className="text-xs text-center max-w-xs">Sessions appear here live while chats are active, then finalize when closed</p>
       </div>
@@ -213,13 +218,13 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
   return (
     <div className="space-y-4">
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        {liveCount > 0 && <span className="text-emerald-600 font-semibold">🔴 {liveCount} live · </span>}
+        {liveCount > 0 && <span className="text-emerald-600 font-semibold inline-flex items-center gap-1"><CircleDot size={10} className="text-emerald-500" /> {liveCount} live · </span>}
         {sessions.filter(s => s.pushStatus !== 'live').length} pending triage · saved until you decide
       </p>
       {sortedDates.map(date => (
         <div key={date} className="space-y-2">
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-            {date === today ? '📍 Today' : date}
+            {date === today ? <span className="inline-flex items-center gap-1"><MapPin size={10} /> Today</span> : date}
           </p>
           {grouped[date].map(s => (
             <SessionCard key={s.id} session={s} onTriage={onTriage} />
@@ -244,7 +249,10 @@ function SessionCard({ session: s, onTriage }: { session: SessionLog; onTriage: 
         onClick={() => setExpanded(e => !e)}
         className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
       >
-        <span className="text-sm mt-0.5">{isLive ? '🔴' : '📝'}</span>
+        {isLive
+          ? <CircleDot size={14} className="mt-0.5 text-emerald-500 flex-shrink-0 animate-pulse" />
+          : <FileText size={14} className="mt-0.5 text-gray-400 flex-shrink-0" />
+        }
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug truncate">{s.title}</p>
@@ -258,7 +266,7 @@ function SessionCard({ session: s, onTriage }: { session: SessionLog; onTriage: 
             {isLive ? `Started ${timeAgo(s.startedAt)} · still active` : `${s.date} · ${durationLabel(s.actualMins) ?? '?'} · ${timeAgo(s.createdAt)}`}
           </p>
         </div>
-        <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0 mt-1">{expanded ? '▲' : '▼'}</span>
+        {expanded ? <ChevronUp size={12} className="text-gray-300 dark:text-gray-600 flex-shrink-0 mt-1" /> : <ChevronDown size={12} className="text-gray-300 dark:text-gray-600 flex-shrink-0 mt-1" />}
       </button>
 
       {expanded && (
@@ -311,28 +319,63 @@ function TriageTab({ sessions, kbEntries, onTriage, onTriageKB }: {
   onTriage: (id: string, action: string) => void
   onTriageKB: (id: string, action: string) => void
 }) {
+  const [bulkConfirm, setBulkConfirm] = useState<'queue' | 'backlog' | null>(null)
   const all = sessions.length + kbEntries.length
 
   if (!all) {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
-        <span className="text-3xl">🎉</span>
+        <PartyPopper size={28} />
         <p className="text-sm font-medium">All triaged!</p>
       </div>
     )
   }
 
+  const executeBulk = (action: 'queue' | 'backlog') => {
+    sessions.forEach(s => onTriage(s.id, action))
+    setBulkConfirm(null)
+  }
+
   return (
     <div className="space-y-4">
+      {/* Bulk confirm dialog */}
+      {bulkConfirm && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+            {bulkConfirm === 'queue'
+              ? `Push semua ${sessions.length} sesi ke Queue?`
+              : `Pindah semua ${sessions.length} sesi ke Backlog?`}
+          </p>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => executeBulk(bulkConfirm)}
+              className="text-xs px-3 py-1 rounded-lg font-semibold bg-amber-600 text-white hover:bg-amber-700 transition"
+            >
+              Ya, lanjut
+            </button>
+            <button
+              onClick={() => setBulkConfirm(null)}
+              className="text-xs px-3 py-1 rounded-lg font-medium bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 transition"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{all} items need a decision</p>
         <div className="flex gap-2">
-          <button onClick={() => sessions.forEach(s => onTriage(s.id, 'queue'))}
-            className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 transition">
+          <button
+            onClick={() => setBulkConfirm('queue')}
+            className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 transition"
+          >
             All → Queue
           </button>
-          <button onClick={() => sessions.forEach(s => onTriage(s.id, 'backlog'))}
-            className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 transition">
+          <button
+            onClick={() => setBulkConfirm('backlog')}
+            className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 transition"
+          >
             All → Backlog
           </button>
         </div>
@@ -341,7 +384,7 @@ function TriageTab({ sessions, kbEntries, onTriage, onTriageKB }: {
       {sessions.map(s => (
         <div key={s.id} className="border border-amber-100 dark:border-amber-900/50 rounded-xl p-4 bg-amber-50/30 dark:bg-amber-950/10 space-y-2">
           <div className="flex items-start gap-2">
-            <span className="text-sm">📝</span>
+            <FileText size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{s.title}</p>
               <p className="text-[10px] text-gray-400">{s.date} · {durationLabel(s.actualMins) ?? '?'}</p>
@@ -361,13 +404,13 @@ function TriageTab({ sessions, kbEntries, onTriage, onTriageKB }: {
       {kbEntries.map(e => (
         <div key={e.id} className="border border-violet-100 dark:border-violet-900/50 rounded-xl p-4 bg-violet-50/30 dark:bg-violet-950/10 space-y-2">
           <div className="flex items-start gap-2">
-            <span className="text-sm">🧠</span>
+            <Layers size={14} className="text-violet-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{e.title}</p>
               <p className="text-[10px] text-gray-400">{e.date} · KB Entry</p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{e.summary}</p>
               {e.suggestedTask && (
-                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">💡 Suggested task: {e.suggestedTask}</p>
+                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1 flex items-start gap-1"><Lightbulb size={11} className="flex-shrink-0 mt-0.5" /> Suggested task: {e.suggestedTask}</p>
               )}
             </div>
           </div>
@@ -424,7 +467,7 @@ export default function DailyHub() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId, action }),
     })
-    showToast(action === 'queue' ? '✅ Added to Push Queue' : action === 'backlog' ? '📋 Moved to Backlog' : '🗑 Discarded')
+    showToast(action === 'queue' ? 'Added to Push Queue' : action === 'backlog' ? 'Moved to Backlog' : 'Discarded')
     fetchData()
   }
 
@@ -434,14 +477,14 @@ export default function DailyHub() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kbId, action }),
     })
-    showToast(action === 'queue' ? '✅ Added to Push Queue' : action === 'backlog' ? '📋 Moved to Backlog' : '🗑 Discarded')
+    showToast(action === 'queue' ? 'Added to Push Queue' : action === 'backlog' ? 'Moved to Backlog' : 'Discarded')
     fetchData()
   }
 
-  const tabs: Array<{ id: Tab; label: string; icon: string; count?: number }> = [
-    { id: 'today', label: 'Today', icon: '🤖' },
-    { id: 'sessions', label: 'Sessions', icon: '📝', count: data?.hubSessions.length },
-    { id: 'triage', label: 'Triage', icon: '⚡', count: (data?.hubSessions.length ?? 0) + (data?.kbEntries.length ?? 0) },
+  const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode; count?: number }> = [
+    { id: 'today',    label: 'Today',    icon: <Bot size={13} /> },
+    { id: 'sessions', label: 'Sessions', icon: <FileText size={13} />, count: data?.hubSessions.length },
+    { id: 'triage',   label: 'Triage',   icon: <Zap size={13} />, count: (data?.hubSessions.length ?? 0) + (data?.kbEntries.length ?? 0) },
   ]
 
   return (

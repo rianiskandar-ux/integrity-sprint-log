@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Layers, Sparkles, MapPin, CheckCircle2, Send, Package, Loader2, Zap, RefreshCw } from 'lucide-react'
 import SprintRecap, { type RecapTask } from './SprintRecap'
 import OpTaskModal from './OpTaskModal'
 
@@ -142,7 +143,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
       if (r.ok && r.synced) ok++
       else if (r.ok) offline++
     }
-    setToast(`✅ ${ok}/${ids.length} sync OP${offline ? ` · ${offline} lokal (OP offline)` : ''}`); setTimeout(() => setToast(null), 3500)
+    setToast(`${ok}/${ids.length} sync OP${offline ? ` · ${offline} lokal (OP offline)` : ''}`); setTimeout(() => setToast(null), 3500)
     await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
     window.dispatchEvent(new Event('isl:cache-refreshed'))
     loadPlan()
@@ -165,7 +166,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
         if (!r.error) ok++
       } catch { /* skip */ }
     }
-    setToast(`⚡ ${ok}/${targets.length} task diisi estimasi 1h`)
+    setToast(`${ok}/${targets.length} task diisi estimasi 1h`)
     setTimeout(() => setToast(null), 3500)
     loadPlan()
     setFilling(false)
@@ -261,7 +262,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
       if (r.ok) ok++
     }
     setPushing(false)
-    showToast(`✅ ${ok}/${toPush.length} tasks added to Push Queue`)
+    showToast(`${ok}/${toPush.length} tasks added to Push Queue`)
     setSelected(new Set())
     window.dispatchEvent(new Event('isl:cache-refreshed'))
   }
@@ -294,7 +295,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
           {nextRecap.some(t => t.type === 'Task' && t.estimatedHours == null) && (
             <button onClick={fillEmptyEstimates} disabled={filling}
               className="w-full py-1.5 text-[10px] font-semibold text-violet-600 border border-dashed border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/30 transition disabled:opacity-50">
-              {filling ? '⏳ Mengisi…' : `⚡ Isi estimasi kosong (${nextRecap.filter(t => t.type === 'Task' && t.estimatedHours == null).length} Task × 1h) — Feature/Epic dilewati`}
+              {filling ? <Loader2 size={10} className="animate-spin" /> : <><Zap size={10} /> Isi estimasi kosong ({nextRecap.filter(t => t.type === 'Task' && t.estimatedHours == null).length} Task × 1h) — Feature/Epic dilewati</>}
             </button>
           )}
         </div>
@@ -303,19 +304,19 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">🗂 Next Sprint Staging</h3>
+          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-1.5"><Layers size={16} /> Next Sprint Staging</h3>
           <p className="text-xs text-gray-400 mt-0.5">Sortir carry-over + AI suggestions → pilih yang masuk Next Sprint atau Backlog → Push ke Queue</p>
         </div>
         <button onClick={generateAI} disabled={generating}
           className="text-[10px] font-semibold px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition disabled:opacity-50">
-          {generating ? '⏳ Generating…' : '✨ Load AI Suggestions'}
+          {generating ? <Loader2 size={10} className="animate-spin" /> : <><Sparkles size={10} /> Load AI Suggestions</>}
         </button>
       </div>
 
       {/* Sudah di Next Sprint (version OP, real) */}
       <div className="rounded-xl border border-purple-200 dark:border-purple-800/50 bg-purple-50/40 dark:bg-purple-950/20 p-4">
         <p className="text-[11px] font-bold text-purple-700 dark:text-purple-300 mb-2">
-          📌 Sudah di {nextName || 'Next Sprint'} (version OP) — {inNext.length}
+          <span className="flex items-center gap-1"><MapPin size={10} /> Sudah di {nextName || 'Next Sprint'} (version OP) — {inNext.length}</span>
         </p>
         {inNext.length === 0 ? (
           <p className="text-[10px] text-purple-400/70 dark:text-purple-500/60">
@@ -440,7 +441,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
           <div className="border-2 border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 min-h-[160px]">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">
-                ✅ Next Sprint ({nextItems.length})
+                <span className="flex items-center gap-1"><CheckCircle2 size={10} /> Next Sprint ({nextItems.length})</span>
               </p>
               {nextItems.length > 0 && (
                 <label className="flex items-center gap-1 text-[9px] text-gray-400 cursor-pointer">
@@ -466,7 +467,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
                     className="mt-0.5 rounded flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-snug">{s.subject}</p>
-                    <p className="text-[9px] text-gray-400">{s.projectHint} · {Math.round(s.estimatedHours)}h · <span className="text-amber-500">{s.source === 'ai' ? '✨ AI' : '🔄 carry-over'}</span></p>
+                    <p className="text-[9px] text-gray-400">{s.projectHint} · {Math.round(s.estimatedHours)}h · <span className="inline-flex items-center gap-0.5 text-amber-500">{s.source === 'ai' ? <><Sparkles size={8} /> AI</> : <><RefreshCw size={8} /> carry-over</>}</span></p>
                   </div>
                   <div className="flex gap-1 flex-shrink-0">
                     <button onClick={() => moveBucket(s.key, 'backlog')} className="text-[9px] text-gray-300 hover:text-gray-500">↓</button>
@@ -479,7 +480,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
             {selectedNext.length > 0 && (
               <button onClick={pushSelected} disabled={pushing}
                 className="mt-3 w-full py-2 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition disabled:opacity-50">
-                {pushing ? '⏳ Pushing…' : `📤 Add ${selectedNext.length} to Push Queue`}
+                {pushing ? <Loader2 size={10} className="animate-spin" /> : <><Send size={10} /> Add {selectedNext.length} to Push Queue</>}
               </button>
             )}
           </div>
@@ -487,7 +488,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
           {/* Backlog bucket */}
           <div className="border border-gray-200 dark:border-gray-700 rounded-2xl p-4 min-h-[100px]">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3">
-              📦 Backlog ({backlogItems.length})
+              <span className="flex items-center gap-1"><Package size={10} /> Backlog ({backlogItems.length})</span>
             </p>
             {backlogItems.length === 0 && (
               <p className="text-[10px] text-gray-300 dark:text-gray-600 text-center py-4">Kosong</p>

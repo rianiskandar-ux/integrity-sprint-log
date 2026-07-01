@@ -1,7 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import QuickLogModal from './QuickLogModal'
+import {
+  Pencil, ClipboardList, Inbox, Send, Bot, CalendarDays, Archive,
+  MessageCircle, Play, AlertTriangle, CheckCircle2,
+} from 'lucide-react'
 
 const BRAND = '#1d3a5c'
 const RED   = '#cc1a2e'
@@ -28,7 +32,7 @@ function EstAccuracy({ a }: { a: NonNullable<DashData['accuracy']> }) {
   const over = v > 0
   const onPoint = Math.abs(v) <= 10
   const color = onPoint ? '#7c3aed' : over ? '#ea580c' : '#059669'
-  const verdict = onPoint ? 'cukup akurat 👍' : over ? `${v}% lebih lama dari estimasi` : `${Math.abs(v)}% lebih cepat dari estimasi`
+  const verdict = onPoint ? 'cukup akurat' : over ? `${v}% lebih lama dari estimasi` : `${Math.abs(v)}% lebih cepat dari estimasi`
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
@@ -85,10 +89,10 @@ function CapacityBar({ islLoggedMins, islPendingMins, targetMinMins, targetMaxMi
         <span>60h</span>
       </div>
       <div className="flex items-center justify-between mt-1.5">
-        <p className="text-[10px] font-medium" style={{ color }}>
-          {isOver  ? `✅ On target — ${loggedH}h logged`
-          : isUnder ? `⚠️ ${((targetMinMins - islLoggedMins) / 60).toFixed(1)}h more to hit 40h min`
-          :           `✅ In range — ${loggedH}h logged`}
+        <p className="text-[10px] font-medium flex items-center gap-1" style={{ color }}>
+          {isOver  ? <><CheckCircle2 size={10} /> On target — {loggedH}h logged</>
+          : isUnder ? <><AlertTriangle size={10} /> {((targetMinMins - islLoggedMins) / 60).toFixed(1)}h more to hit 40h min</>
+          :           <><CheckCircle2 size={10} /> In range — {loggedH}h logged</>}
         </p>
         {islPendingMins > 0 && (
           <span className="text-[9px] text-gray-400">+{(islPendingMins / 60).toFixed(1)}h pending</span>
@@ -113,7 +117,7 @@ interface Props { onNavigate: (view: string) => void; onReport?: () => void }
 
 // Horizontal stat strip card (like reference top cards)
 function StatStrip({ icon, label, count, sub, gradient, badge, onClick }: {
-  icon: string; label: string; count: number | string; sub: string
+  icon: React.ReactNode; label: string; count: number | string; sub: string
   gradient: string; badge?: string; onClick: () => void
 }) {
   return (
@@ -133,7 +137,7 @@ function StatStrip({ icon, label, count, sub, gradient, badge, onClick }: {
             {badge}
           </span>
         )}
-        <span className="text-2xl ml-auto opacity-70 flex-shrink-0">{icon}</span>
+        <span className="ml-auto opacity-70 flex-shrink-0">{icon}</span>
       </div>
     </button>
   )
@@ -198,15 +202,15 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setQL(true)}
-              className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition hover:opacity-90"
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl text-white transition hover:opacity-90"
               style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}>
-              ✍️ Quick Log
+              <Pencil size={12} /> Quick Log
             </button>
             {onReport && (
               <button onClick={onReport}
-                className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition hover:opacity-90"
+                className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl text-white transition hover:opacity-90"
                 style={{ background: `linear-gradient(135deg, ${BRAND}, #2a5298)` }}>
-                📋 Generate Report
+                <ClipboardList size={12} /> Generate Report
               </button>
             )}
             <button onClick={load}
@@ -219,7 +223,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
         {/* Top 3 stat strips */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <StatStrip
-            icon="📥"
+            icon={<Inbox size={28} className="text-white" />}
             label="Incoming"
             count={incoming.total}
             sub="tasks from OpenProject"
@@ -228,7 +232,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
             onClick={() => onNavigate('incoming')}
           />
           <StatStrip
-            icon="📤"
+            icon={<Send size={28} className="text-white" />}
             label="Push Queue"
             count={queue.count}
             sub="awaiting approval"
@@ -239,7 +243,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
             onClick={() => onNavigate('pushqueue')}
           />
           <StatStrip
-            icon="🤖"
+            icon={<Bot size={28} className="text-white" />}
             label="Auto Log"
             count={autoLog.totalPushed}
             sub="sessions logged to OP"
@@ -256,7 +260,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
             className="group text-left rounded-2xl border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800/80 hover:shadow-md hover:-translate-y-0.5 transition-all p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg bg-violet-50 dark:bg-violet-900/30">🗓</div>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-violet-50 dark:bg-violet-900/30"><CalendarDays size={18} className="text-violet-500" /></div>
                 <div>
                   <p className="text-[9px] font-black uppercase tracking-widest text-violet-500 dark:text-violet-400">Sprint</p>
                   {sprint.current && <p className="text-[10px] text-gray-400 font-medium">{sprint.current.name}</p>}
@@ -294,7 +298,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
           <button onClick={() => onNavigate('backlog')}
             className="group text-left rounded-2xl border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800/80 hover:shadow-md hover:-translate-y-0.5 transition-all p-5">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg bg-orange-50 dark:bg-orange-900/20">🗃</div>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-orange-50 dark:bg-orange-900/20"><Archive size={18} className="text-orange-500" /></div>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-orange-500">Backlog</p>
               </div>
@@ -435,7 +439,7 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
               <div key={s.id} className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold"
                   style={{ background: `linear-gradient(135deg, ${BRAND}, #2a5298)` }}>
-                  🤖
+                  <Bot size={14} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-200 leading-snug truncate">{s.title}</p>
@@ -452,13 +456,13 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
           {queue.count > 0 && (
             <>
               <div className="h-px bg-gray-50 dark:bg-gray-700 my-4" />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2">📤 Push Queue</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1"><Send size={9} /> Push Queue</p>
               {queue.sessions.slice(0, 2).map(s => (
                 <div key={s.id} className="flex items-center gap-2 mb-2 group">
                   <span className="flex-1 text-[10px] text-gray-600 dark:text-gray-300 truncate">{s.title}</span>
                   <button onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: s.id, title: s.title, taskType: 'session' } }))}
                     className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
-                    💬
+                    <MessageCircle size={9} />
                   </button>
                 </div>
               ))}
@@ -474,17 +478,17 @@ export default function ISLDashboard({ onNavigate, onReport }: Props) {
           {incoming.newCount > 0 && (
             <>
               <div className="h-px bg-gray-50 dark:bg-gray-700 my-3" />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2">📥 Incoming</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1"><Inbox size={9} /> Incoming</p>
               {incoming.preview.slice(0, 2).map(t => (
                 <div key={t.id} className="flex items-center gap-2 mb-2 group">
                   <span className="flex-1 text-[10px] text-gray-600 dark:text-gray-300 truncate">#{t.id} {t.subject}</span>
                   <button onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: t.subject, opTaskId: t.id } }))}
                     className="flex-shrink-0 text-[9px] font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-700 px-1.5 py-0.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-950">
-                    ▶
+                    <Play size={9} />
                   </button>
                   <button onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: `incoming-${t.id}`, title: t.subject, taskType: 'incoming', opTaskId: t.id } }))}
                     className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
-                    💬
+                    <MessageCircle size={9} />
                   </button>
                 </div>
               ))}

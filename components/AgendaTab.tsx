@@ -1,6 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import {
+  ClipboardList, Save, Sparkles, Loader2, BookOpen,
+  ChevronRight, CheckCircle2, RefreshCw, Check,
+  Upload, Square, CheckSquare, ExternalLink,
+} from 'lucide-react'
 
 interface AgendaData {
   sprintName: string
@@ -154,7 +159,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
             continue
           }
           // 404 = item deleted by someone else — fall through to POST
-          if (!r.notFound) { showToast(`❌ Meeting #${meetId}: ${r.error ?? 'failed'}`); continue }
+          if (!r.notFound) { showToast(`Meeting #${meetId}: ${r.error ?? 'failed'}`); continue }
         }
 
         // POST new item
@@ -169,9 +174,9 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
           succeeded.push(meetId)
           actions.push('created')
         } else {
-          showToast(`❌ Meeting #${meetId}: ${r.error ?? 'failed'}`)
+          showToast(`Meeting #${meetId}: ${r.error ?? 'failed'}`)
         }
-      } catch { showToast(`❌ Meeting #${meetId}: network error`) }
+      } catch { showToast(`Meeting #${meetId}: network error`) }
     }
 
     setPostDone(prev => [...prev, ...succeeded])
@@ -180,7 +185,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
       const updCount = actions.filter(a => a === 'updated').length
       const newCount = actions.filter(a => a === 'created').length
       const detail = [updCount > 0 && `${updCount} updated`, newCount > 0 && `${newCount} new`].filter(Boolean).join(', ')
-      showToast(`✅ ${names} — ${detail}`)
+      showToast(`${names} — ${detail}`)
     }
     setPosting(false)
   }
@@ -238,7 +243,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sprint: agenda.sprintName, summary: agenda.retrospective }),
       }).then(res => res.json())
-      if (r.summaries) { setSavedSummaries(r.summaries); showToast('💾 Saved to memory') }
+      if (r.summaries) { setSavedSummaries(r.summaries); showToast('Saved to memory') }
       else showToast(`⚠️ ${r.error ?? 'Gagal simpan'}`)
     } catch { showToast('⚠️ Gagal simpan') }
     setSaving(false)
@@ -258,7 +263,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">📋 Sprint Agenda</h3>
+          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-1.5"><ClipboardList size={14} /> Sprint Agenda</h3>
           <p className="text-xs text-gray-400 mt-0.5">Sprint summary — auto-posted to relevant OP meetings</p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -266,12 +271,12 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
             <button onClick={saveSummaryToMemory} disabled={saving}
               title="Simpan summary sprint ini ke memory"
               className="text-[10px] font-semibold px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition disabled:opacity-50">
-              {saving ? '⏳' : '💾 Save to memory'}
+              {saving ? <Loader2 size={11} className="inline animate-spin" /> : <><Save size={11} className="inline" /> Save to memory</>}
             </button>
           )}
           <button onClick={generate} disabled={loading}
             className="text-[10px] font-semibold px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition disabled:opacity-50">
-            {loading ? '⏳ Generating…' : '✨ Generate from AI'}
+            {loading ? <><Loader2 size={11} className="inline animate-spin" /> Generating…</> : <><Sparkles size={11} className="inline" /> Generate from AI</>}
           </button>
         </div>
       </div>
@@ -281,8 +286,8 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
         <div className="rounded-xl border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800/40 overflow-hidden">
           <button onClick={() => setShowSaved(v => !v)}
             className="w-full flex items-center justify-between px-4 py-2 text-[11px] font-bold text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition">
-            <span>📚 Tersimpan di memory ({savedSummaries.length})</span>
-            <span className={`transition-transform ${showSaved ? 'rotate-90' : ''}`}>▶</span>
+            <span className="flex items-center gap-1"><BookOpen size={11} /> Tersimpan di memory ({savedSummaries.length})</span>
+            <ChevronRight size={11} className={`transition-transform ${showSaved ? 'rotate-90' : ''}`} />
           </button>
           {showSaved && (
             <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-72 overflow-y-auto">
@@ -310,7 +315,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
       {agenda.sprintName && (
         <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-100 dark:border-indigo-900">
           <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{agenda.sprintName}</span>
-          {agenda.doneCount > 0 && <span className="text-[11px] text-gray-500">✅ {agenda.doneCount} done · 🔄 {agenda.carriedOver} carry-over</span>}
+          {agenda.doneCount > 0 && <span className="text-[11px] text-gray-500 flex items-center gap-1"><CheckCircle2 size={10} /> {agenda.doneCount} done · <RefreshCw size={10} /> {agenda.carriedOver} carry-over</span>}
         </div>
       )}
 
@@ -324,11 +329,11 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
                 {isStructured ? 'Sprint Report' : 'Retrospective'}
               </label>
               {isStructured && (
-                <span className="text-[9px] text-emerald-500 font-semibold">✨ AI Generated</span>
+                <span className="text-[9px] text-emerald-500 font-semibold flex items-center gap-1"><Sparkles size={9} /> AI Generated</span>
               )}
             </div>
             <textarea value={agenda.retrospective} onChange={e => save({ retrospective: e.target.value })}
-              placeholder="Klik '✨ Generate from AI' atau tulis manual…"
+              placeholder="Klik 'Generate from AI' atau tulis manual…"
               rows={isStructured ? 14 : 5}
               className="w-full text-[12px] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-indigo-300 resize-none leading-relaxed font-mono" />
           </div>
@@ -345,7 +350,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
           <div className="space-y-1.5">
             {agenda.keyWins.map((w, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="text-green-400 text-xs flex-shrink-0">✓</span>
+                <Check size={12} className="text-green-400 flex-shrink-0" />
                 <input value={w} onChange={e => save({ keyWins: agenda.keyWins.map((x, j) => j === i ? e.target.value : x) })}
                   placeholder={`Win ${i + 1}`}
                   className="flex-1 text-[11px] border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300" />
@@ -369,11 +374,11 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={openPostPanel}
           className="text-[11px] font-semibold px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition">
-          📤 Post to OP Meeting
+          <Upload size={12} className="inline mr-1" />Post to OP Meeting
         </button>
-        <button onClick={() => navigator.clipboard.writeText(buildAgendaText()).then(() => showToast('✅ Copied!'))}
+        <button onClick={() => navigator.clipboard.writeText(buildAgendaText()).then(() => showToast('Copied!'))}
           className="text-[11px] font-semibold px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-          📋 Copy Markdown
+          <ClipboardList size={12} className="inline mr-1" />Copy Markdown
         </button>
         <span className="text-[10px] text-gray-400">Auto-saved locally</span>
       </div>
@@ -408,7 +413,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
                   <span className="ml-2 text-[9px] font-bold text-indigo-500">{selectedMeets.size} dipilih</span>
                 )}
               </div>
-              <button onClick={loadMeetings} className="text-[9px] text-indigo-400 hover:text-indigo-600">🔄 Refresh</button>
+              <button onClick={loadMeetings} className="text-[9px] text-indigo-400 hover:text-indigo-600 flex items-center gap-1"><RefreshCw size={9} /> Refresh</button>
             </div>
 
             {meetLoading && <p className="text-[11px] text-gray-400 py-3 text-center">Loading meetings dari OP…</p>}
@@ -421,7 +426,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
             {!meetLoading && matchedMeetings.length > 0 && (
               <div className="mb-3">
                 <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 mb-1.5 flex items-center gap-1">
-                  ✅ Auto-matched — your project
+                  <CheckCircle2 size={9} /> Auto-matched — your project
                 </p>
                 <div className="space-y-1.5">
                   {matchedMeetings.map(m => (
@@ -463,8 +468,8 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
             const newCount    = selectedMeets.size - updateCount
             return (
               <div className="text-[10px] text-gray-500 flex gap-3">
-                {updateCount > 0 && <span>🔄 {updateCount} akan di-update</span>}
-                {newCount    > 0 && <span>✨ {newCount} akan dibuat baru</span>}
+                {updateCount > 0 && <span className="flex items-center gap-1"><RefreshCw size={9} /> {updateCount} akan di-update</span>}
+                {newCount    > 0 && <span className="flex items-center gap-1"><Sparkles size={9} /> {newCount} akan dibuat baru</span>}
               </div>
             )
           })()}
@@ -473,10 +478,10 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
             <button onClick={postToMeetings} disabled={selectedMeets.size === 0 || posting}
               className="px-4 py-1.5 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-40">
               {posting
-                ? '⏳ Posting…'
+                ? <><Loader2 size={11} className="inline animate-spin" /> Posting…</>
                 : selectedMeets.size > 0
-                  ? `📤 Confirm ${selectedMeets.size} meeting →`
-                  : '📤 Pilih meeting dulu'}
+                  ? <><Upload size={11} className="inline" /> Confirm {selectedMeets.size} meeting</>
+                  : <><Upload size={11} className="inline" /> Pilih meeting dulu</>}
             </button>
             <button onClick={() => setShowPost(false)} className="text-[10px] text-gray-400 hover:text-gray-600 px-2">Cancel</button>
           </div>
@@ -509,7 +514,7 @@ function MeetingRow({ m, checked, done, onToggle, opUrl, fmtDate, highlight }: {
       }`}>
       <div className="flex items-center gap-2">
         <span className={`text-[10px] font-bold w-4 flex-shrink-0 ${checked ? (highlight ? 'text-emerald-500' : 'text-indigo-500') : 'text-gray-300'}`}>
-          {done ? '✅' : checked ? '☑' : '☐'}
+          {done ? <CheckCircle2 size={12} /> : checked ? <CheckSquare size={12} /> : <Square size={12} />}
         </span>
         <div className="flex-1 min-w-0">
           <div className="font-semibold truncate">{m.title}</div>
@@ -517,7 +522,7 @@ function MeetingRow({ m, checked, done, onToggle, opUrl, fmtDate, highlight }: {
         </div>
         <a href={`${opUrl}/meetings/${m.id}`} target="_blank" rel="noopener"
           onClick={e => e.stopPropagation()}
-          className="text-[9px] text-indigo-400 hover:underline flex-shrink-0">↗</a>
+          className="text-[9px] text-indigo-400 hover:underline flex-shrink-0"><ExternalLink size={9} /></a>
       </div>
     </button>
   )

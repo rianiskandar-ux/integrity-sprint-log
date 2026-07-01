@@ -154,10 +154,17 @@ async function callClaudeCLI(prompt: string): Promise<string> {
   const { spawn } = await import('child_process')
   const isWin = process.platform === 'win32'
 
+  // Derive the correct home dir for Claude credential lookup.
+  // In Docker the container user is `nextjs` (uid 1001), home = /home/nextjs.
+  // If HOME is unset or still /root, Claude CLI won't find the mounted .claude/ creds → hangs → SIGTERM 143.
+  const home = process.env.HOME && process.env.HOME !== '/root'
+    ? process.env.HOME
+    : isWin ? (process.env.USERPROFILE ?? process.env.HOME ?? '') : '/home/nextjs'
+
   return new Promise<string>((resolve, reject) => {
     const child = spawn(isWin ? 'claude.cmd' : 'claude', ['--print', '--output-format', 'text'], {
-      timeout: 120000,
-      env: { ...process.env },
+      timeout: 300000,  // 5 min — panjang untuk dokumen besar
+      env: { ...process.env, HOME: home },
       shell: isWin,
     })
 
@@ -168,8 +175,14 @@ async function callClaudeCLI(prompt: string): Promise<string> {
     child.stdout.on('data', (d: Buffer) => { output += d.toString('utf8') })
     child.stderr.on('data', (d: Buffer) => { errOut += d.toString('utf8') })
 
-    child.on('close', (code: number | null) => {
-      if (code !== 0) { reject(new Error(errOut || `Claude CLI exited ${code}`)); return }
+    child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      if (code !== 0) {
+        const hint = code === 143 || signal === 'SIGTERM'
+          ? ' (timeout/SIGTERM — pastikan Claude CLI login: jalankan `claude auth login` di container)'
+          : ''
+        reject(new Error((errOut || `Claude CLI exited ${code}`) + hint))
+        return
+      }
       resolve(output.trim())
     })
     child.on('error', (e: NodeJS.ErrnoException) => {

@@ -4,6 +4,11 @@ import { getTimer, startTimer, stopTimer, pauseTimer, resumeTimer } from '@/lib/
 import { updateSession, getSession } from '@/lib/session-store'
 import { OWNER_UID } from '@/lib/auth'
 
+function toISODuration(minutes: number): string {
+  const h = Math.floor(minutes / 60), m = minutes % 60
+  return h > 0 ? `PT${h}H${m > 0 ? m + 'M' : ''}` : `PT${m}M`
+}
+
 export const runtime = 'nodejs'
 
 // Resolve the acting user id from either the browser session cookie OR a local
@@ -57,7 +62,30 @@ export async function POST(req: Request) {
         await updateSession(r.timer.sessionId, { actualMins: totalActual, endedAt: new Date().toISOString() })
       } catch { /* session may not exist anymore */ }
     }
-    return NextResponse.json({ ok: true, elapsedMins: r.elapsedMins, totalActual, suspicious: r.suspicious, timer: r.timer })
+
+    // Auto-push to OP if timer was linked to an OP task
+    let opPushed = false
+    if (r.timer.opTaskId && !r.suspicious && r.elapsedMins > 0) {
+      try {
+        const ctx = await getRequestContext()
+        if (ctx?.opToken && ctx?.opBaseUrl) {
+          const auth = 'Basic ' + Buffer.from(`apikey:${ctx.opToken}`).toString('base64')
+          const res  = await fetch(`${ctx.opBaseUrl}/api/v3/time_entries`, {
+            method: 'POST',
+            headers: { Authorization: auth, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hours:   toISODuration(r.elapsedMins),
+              spentOn: new Date().toISOString().split('T')[0],
+              comment: { format: 'plain', raw: r.timer.taskTitle ?? 'Timer via ISL' },
+              _links:  { workPackage: { href: `/api/v3/work_packages/${r.timer.opTaskId}` } },
+            }),
+          })
+          opPushed = res.ok
+        }
+      } catch { /* non-fatal — OP push failure shouldn't block timer stop */ }
+    }
+
+    return NextResponse.json({ ok: true, elapsedMins: r.elapsedMins, totalActual, suspicious: r.suspicious, timer: r.timer, opPushed })
   }
 
   return NextResponse.json({ error: 'unknown action' }, { status: 400 })

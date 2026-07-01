@@ -5,7 +5,7 @@ import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+export async function GET(req: Request) {
   const ctx = await getRequestContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { opToken: OP_TOKEN, opBaseUrl: OP_BASE, uid, opUserId } = ctx
@@ -15,11 +15,6 @@ export async function GET() {
 
   const sprintList = (cache.sprints ?? [])
   const currentSprint = sprintList.find(s => s.isCurrent)
-  if (!currentSprint) return NextResponse.json({ error: 'No current sprint' }, { status: 404 })
-
-  const nextSprint = sprintList
-    .filter(s => !s.isCurrent && s.startDate > currentSprint.startDate)
-    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0] ?? null
 
   const userId = String(cache.userId ?? opUserId)
 
@@ -54,9 +49,9 @@ export async function GET() {
 
   async function fetchSprintTasks(versionId: number): Promise<WPItem[]> {
     const filters = encodeURIComponent(JSON.stringify([
-      { version:     { operator: '=', values: [String(versionId)] } },
-      { type:        { operator: '!', values: ['5'] } },
-      { assigned_to: { operator: '=', values: [userId] } },
+      { version:  { operator: '=', values: [String(versionId)] } },
+      { type:     { operator: '!', values: ['5'] } },  // exclude Epics; US/Feature shown as read-only
+      { assignee: { operator: '=', values: [userId] } },
     ]))
     try {
       const res = await fetch(`${OP_BASE}/api/v3/work_packages?filters=${filters}&pageSize=200`, { headers: { Authorization: auth } })
@@ -64,6 +59,41 @@ export async function GET() {
     } catch { /* non-fatal */ }
     return []
   }
+
+  // Historical sprint view — fetch by sprintId param
+  const { searchParams } = new URL(req.url)
+  const sprintIdParam = searchParams.get('sprintId')
+
+  if (sprintIdParam) {
+    const targetId = parseInt(sprintIdParam)
+    const targetSprint = sprintList.find(s => s.id === targetId)
+    if (!targetSprint) return NextResponse.json({ error: 'Sprint tidak ditemukan' }, { status: 404 })
+
+    const allTasks  = await fetchSprintTasks(targetId)
+    const carryOver = allTasks.filter(t => t.status !== 'Closed' && t.status !== 'Rejected')
+    const doneTasks = allTasks.filter(t => t.status === 'Closed' || t.status === 'Rejected')
+
+    return NextResponse.json({
+      currentSprint:  targetSprint,
+      nextSprint:     null,
+      carryOver,
+      doneTasks,
+      nextTasks:      [],
+      isHistorical:   !targetSprint.isCurrent,
+      aiConfigured:   false,
+      aiName:         null,
+      aiSummary:      null,
+      aiSuggestedTasks: [],
+      suggestedNum:   0,
+    })
+  }
+
+  // Active sprint (default)
+  if (!currentSprint) return NextResponse.json({ error: 'No current sprint' }, { status: 404 })
+
+  const nextSprint = sprintList
+    .filter(s => !s.isCurrent && s.startDate > currentSprint.startDate)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0] ?? null
 
   const allCurrent = await fetchSprintTasks(currentSprint.id)
   const carryOver  = allCurrent.filter(t => t.status !== 'Closed' && t.status !== 'Rejected')
@@ -74,10 +104,11 @@ export async function GET() {
 
   return NextResponse.json({
     currentSprint, nextSprint, carryOver, doneTasks, nextTasks,
-    aiConfigured: !!getLLMConfig(),
-    aiName: null,
-    aiSummary: null,
+    isHistorical:   false,
+    aiConfigured:   !!getLLMConfig(),
+    aiName:         null,
+    aiSummary:      null,
     aiSuggestedTasks: [],
-    suggestedNum: currentNum + 1,
+    suggestedNum:   currentNum + 1,
   })
 }

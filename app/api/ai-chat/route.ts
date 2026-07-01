@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { callLLM } from '@/lib/llm'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300  // 5 min — dokumen panjang via Claude CLI
 
 const PROVIDERS = {
   tokenrouter: {

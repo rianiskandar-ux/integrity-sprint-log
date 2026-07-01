@@ -11,7 +11,7 @@ function durationToMinutes(d: string | number): number {
   const m = s.match(/^(\d+)\s*m/)
   if (m) return parseInt(m[1])
   const n = parseFloat(s)
-  if (!isNaN(n)) return Math.round(n)
+  if (!isNaN(n)) return Math.round(n * 60)  // bare number treated as hours
   return 0
 }
 

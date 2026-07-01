@@ -3,11 +3,16 @@ FROM node:20-alpine AS base
 FROM base AS deps
 WORKDIR /app
 COPY package*.json ./
+# @homebridge/node-pty-prebuilt-multiarch bundles musl/Alpine prebuilts — no compilation needed.
 RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+# CACHE_BUST: pass --build-arg CACHE_BUST=$(date +%s) to force source re-copy.
+# The RUN echo creates a real layer dependency so BuildKit busts COPY . . too.
+ARG CACHE_BUST=0
+RUN echo "cache-bust: $CACHE_BUST"
 COPY . .
 RUN npm run build
 
@@ -26,16 +31,20 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Claude Code CLI (untuk LLM provider 'claude-cli').
-# Alpine/musl: butuh libc6-compat + ripgrep sistem (jangan pakai ripgrep bawaan glibc).
-RUN apk add --no-cache libc6-compat ripgrep git \
-    && npm install -g @anthropic-ai/claude-code \
+# Claude Code CLI — pure Node.js, no glibc deps needed with USE_BUILTIN_RIPGREP=0.
+RUN npm install -g @anthropic-ai/claude-code \
     && mkdir -p /home/nextjs/.claude \
     && chown -R nextjs:nodejs /home/nextjs
 ENV HOME=/home/nextjs
 ENV USE_BUILTIN_RIPGREP=0
 
+# ws + node-pty prebuilt from deps stage — copy directly, no compilation.
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/ws ./node_modules/ws
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/@homebridge ./node_modules/@homebridge
+
+COPY --chown=nextjs:nodejs server-wrapper.js ./server-wrapper.js
+
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
-CMD ["node", "server.js"]
+CMD ["node", "server-wrapper.js"]

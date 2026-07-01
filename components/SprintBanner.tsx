@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { CachedWorkPackage } from '@/lib/op-cache'
-
+import { MessageCircle, Inbox, CheckCircle2, ArrowRight } from 'lucide-react'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 
 interface Props {
@@ -48,14 +48,14 @@ function TaskRow({ t, opUrl, myUserId, onChat }: {
           <button
             onClick={e => { e.stopPropagation(); onChat({ id: `banner-${t.id}`, title: t.subject, taskType: 'incoming', opTaskId: t.id, sprintName: t.sprintName ?? null, status: t.status }) }}
             className="text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
-            💬
+            <MessageCircle size={10} />
           </button>
         </div>
       ) : (
         <button
           onClick={e => { e.stopPropagation(); onChat({ id: `banner-${t.id}`, title: t.subject, taskType: 'session', opTaskId: t.id, sprintName: t.sprintName ?? null, status: t.status }) }}
           className="flex-shrink-0 text-[9px] font-semibold text-indigo-500 border border-indigo-200 dark:border-indigo-700 px-1.5 py-0.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950">
-          💬
+          <MessageCircle size={10} />
         </button>
       )}
       <span className="flex-shrink-0 text-[10px] text-gray-400">{t.status}</span>
@@ -124,13 +124,13 @@ const [tasks, setTasks]         = useState<CachedWorkPackage[]>([])
     : isWarning ? 'text-amber-700 dark:text-amber-300'
     : 'text-blue-700 dark:text-blue-300'
 
-  const icon = isUrgent ? '🔴' : isWarning ? '🟡' : '🔵'
+  const dotCls = isUrgent ? 'bg-red-500' : isWarning ? 'bg-amber-400' : 'bg-blue-400'
 
   return (
     <div className={`border-b ${bgClass}`}>
       {/* Compact single-line header */}
       <div className="flex items-center gap-2 px-4 lg:px-6 py-1.5 flex-wrap">
-        <span className="text-xs flex-shrink-0">{icon}</span>
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotCls}`} />
 
         {daysLeft !== null && (
           <span className={`text-xs font-bold ${textClass} flex-shrink-0`}>
@@ -153,16 +153,16 @@ const [tasks, setTasks]         = useState<CachedWorkPackage[]>([])
         {/* Sprint suggestion — only show when critical */}
         {daysLeft !== null && daysLeft <= 3 && actionable.length > 0 && (
           <span className="text-[10px] text-gray-400 flex-shrink-0 hidden sm:inline">
-            {quickTasks.length > 0 && `✅ ${quickTasks.length} this sprint`}
+            {quickTasks.length > 0 && `${quickTasks.length} this sprint`}
             {quickTasks.length > 0 && heavyTasks.length > 0 && ' · '}
-            {heavyTasks.length > 0 && `➡️ ${heavyTasks.length} move to next`}
+            {heavyTasks.length > 0 && `${heavyTasks.length} move to next`}
           </span>
         )}
 
         {/* Incoming badge */}
         {incomingCount > 0 && (
-          <span className="flex-shrink-0 text-[10px] font-semibold bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full">
-            📥 {incomingCount} incoming
+          <span className="flex-shrink-0 text-[10px] font-semibold bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+            <Inbox size={10} /> {incomingCount} incoming
           </span>
         )}
 
@@ -181,8 +181,8 @@ const [tasks, setTasks]         = useState<CachedWorkPackage[]>([])
         <div className="px-4 lg:px-6 pb-2">
           <div className="max-h-52 overflow-y-auto rounded-lg bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 px-3 py-1">
             {daysLeft !== null && daysLeft <= 3 && quickTasks.length > 0 && (
-              <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide pt-1.5 pb-0.5">
-                ✅ Sprint ini
+              <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide pt-1.5 pb-0.5 flex items-center gap-1">
+                <CheckCircle2 size={10} /> Sprint ini
               </p>
             )}
             {(daysLeft === null || daysLeft > 3 ? actionable : quickTasks).map(t =>
@@ -190,8 +190,8 @@ const [tasks, setTasks]         = useState<CachedWorkPackage[]>([])
             )}
             {daysLeft !== null && daysLeft <= 3 && heavyTasks.length > 0 && (
               <>
-                <p className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wide pt-2 pb-0.5">
-                  ➡️ Next sprint
+                <p className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wide pt-2 pb-0.5 flex items-center gap-1">
+                  <ArrowRight size={10} /> Next sprint
                 </p>
                 {heavyTasks.map(t => <TaskRow key={t.id} t={t} opUrl={opUrl} myUserId={myUserId} onChat={setChatTask} />)}
               </>

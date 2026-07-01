@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react'
 import { format, startOfWeek, parseISO } from 'date-fns'
 import { loadAppConfig } from '@/lib/op-config'
 import { useI18n } from '@/lib/i18n'
+import {
+  Activity, CalendarDays, Target, LayoutDashboard,
+  MessageSquarePlus, Brain, Inbox, Send,
+  ClipboardList, Bot, BookOpen, Archive,
+  Settings, Terminal, MessageCircle,
+  ChevronLeft, ChevronRight, ChevronDown,
+} from 'lucide-react'
 
 const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
 const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
@@ -72,7 +79,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
   function NavItem({
     id, icon, label, shortcut, color, badge, indent = 0,
   }: {
-    id: string; icon: string; label: string; shortcut: string
+    id: string; icon: React.ReactNode; label: string; shortcut: string
     color?: string; badge?: number; indent?: number
   }) {
     const active = view === id
@@ -87,7 +94,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
             ? `${color ?? 'text-white'} border-current bg-white/15`
             : 'text-blue-100/70 border-transparent hover:bg-white/10 hover:text-white'
           }`}>
-        <span className={`text-sm leading-none flex-shrink-0 relative ${active && color ? color : ''}`}>
+        <span className={`flex-shrink-0 relative ${active && color ? color : ''}`}>
           {icon}
           {!open && badge && badge > 0 ? (
             <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-400 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
@@ -140,7 +147,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
         )}
         <button onClick={onToggle}
           className="p-1 rounded text-blue-200/50 hover:text-white hover:bg-white/10 transition ml-auto">
-          {open ? '◀' : '▶'}
+          {open ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
         </button>
       </div>
 
@@ -148,9 +155,9 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
 
         {/* ── SPRINT group ── */}
         <GroupHeader label="Sprint" active={['sprint', 'month', 'skills'].includes(view)} />
-        <NavItem id="sprint" icon="🏃" label={t('nav.sprint')}  shortcut="S" />
-        <NavItem id="month"  icon="📆" label={t('nav.month')}   shortcut="M" indent={1} />
-        <NavItem id="skills" icon="🎯" label={t('nav.skills')}  shortcut="L" indent={1} />
+        <NavItem id="sprint" icon={<Activity size={14} />}     label={t('nav.sprint')}  shortcut="S" />
+        <NavItem id="month"  icon={<CalendarDays size={14} />} label={t('nav.month')}   shortcut="M" indent={1} />
+        <NavItem id="skills" icon={<Target size={14} />}       label={t('nav.skills')}  shortcut="L" indent={1} />
 
         {/* ── DASHBOARD group ── */}
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} className="mt-1">
@@ -169,7 +176,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
               }`}>
             {open ? (
               <>
-                <span className="text-base leading-none flex-shrink-0">🏠</span>
+                <span className="flex-shrink-0"><LayoutDashboard size={14} /></span>
                 <span className={`text-xs font-semibold uppercase tracking-wide flex-1 text-left ${
                   view === 'isldash' ? 'text-white' : isISLActive ? 'text-violet-300' : ''
                 }`}>Dashboard</span>
@@ -178,15 +185,15 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
                 }`}>H</kbd>
               </>
             ) : (
-              <span className="text-base leading-none mx-auto">🏠</span>
+              <span className="mx-auto"><LayoutDashboard size={14} /></span>
             )}
           </button>
 
           {/* Sub-items */}
-          <NavItem id="chats"     icon="💬" label="Create new"         shortcut="C" color="text-sky-400"      indent={1} />
-          <NavItem id="dailyhub"  icon="🧠" label={t('nav.dailyhub')}  shortcut="H" color="text-indigo-400"  indent={1} />
-          <NavItem id="incoming"  icon="📥" label={t('nav.incoming')}  shortcut="I" color="text-blue-400"    indent={1} badge={incomingCount} />
-          <NavItem id="pushqueue" icon="📤" label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"   indent={1} badge={queueCount} />
+          <NavItem id="chats"     icon={<MessageSquarePlus size={14} />} label="Create new"         shortcut="C" color="text-sky-400"     indent={1} />
+          <NavItem id="dailyhub"  icon={<Brain size={14} />}            label={t('nav.dailyhub')}  shortcut="H" color="text-indigo-400" indent={1} />
+          <NavItem id="incoming"  icon={<Inbox size={14} />}            label={t('nav.incoming')}  shortcut="I" color="text-blue-400"   indent={1} badge={incomingCount} />
+          <NavItem id="pushqueue" icon={<Send size={14} />}             label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"  indent={1} badge={queueCount} />
 
           {/* Log expandable group */}
           <div>
@@ -206,13 +213,13 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
                   ? 'text-emerald-400 border-emerald-400 bg-white/15'
                   : 'text-blue-100/70 border-transparent hover:bg-white/10 hover:text-white'
                 }`}>
-              <span className={`text-sm leading-none flex-shrink-0 ${isLogActive ? 'text-emerald-400' : ''}`}>📋</span>
+              <span className={`flex-shrink-0 ${isLogActive ? 'text-emerald-400' : ''}`}><ClipboardList size={14} /></span>
               {open && (
                 <>
                   <span className={`flex-1 text-left text-[11px] font-semibold uppercase tracking-wide ${isLogActive ? 'text-emerald-400' : ''}`}>
                     Log
                   </span>
-                  <span className={`text-[9px] transition-transform ${logExpanded ? 'rotate-90' : ''} ${isLogActive ? 'text-emerald-400/60' : 'text-white/20'}`}>▶</span>
+                  <ChevronRight size={10} className={`transition-transform ${logExpanded ? 'rotate-90' : ''} ${isLogActive ? 'text-emerald-400/60' : 'text-white/20'}`} />
                   <kbd className={`text-[9px] px-1 rounded border ml-1 ${
                     isLogActive ? 'border-emerald-400/40 text-emerald-400/60' : 'border-white/10 text-white/20'
                   }`}>A</kbd>
@@ -223,9 +230,9 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
             {/* Log sub-items */}
             {(logExpanded || !open) && (
               <>
-                <NavItem id="autolog"  icon="🤖" label="Auto Log"  shortcut="A" color="text-emerald-400" indent={2} />
-                <NavItem id="dailylog" icon="📓" label={t('nav.dailylog')} shortcut="G" color="text-violet-400" indent={2} />
-                <NavItem id="backlog"  icon="🗃" label={t('nav.backlog')}  shortcut="B" color="text-orange-400" indent={2} />
+                <NavItem id="autolog"  icon={<Bot size={14} />}      label="Auto Log"          shortcut="A" color="text-emerald-400" indent={2} />
+                <NavItem id="dailylog" icon={<BookOpen size={14} />} label={t('nav.dailylog')} shortcut="G" color="text-violet-400"  indent={2} />
+                <NavItem id="backlog"  icon={<Archive size={14} />}  label={t('nav.backlog')}  shortcut="B" color="text-orange-400"  indent={2} />
               </>
             )}
           </div>
@@ -243,7 +250,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
                     onClick={() => setOpenWeeks(p => ({ ...p, [wk]: !p[wk] }))}
                     className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-blue-200/40 hover:bg-white/10 hover:text-blue-200/70 transition">
                     <span>{label}</span>
-                    <span className={`transition-transform duration-150 ${isOpen ? '' : '-rotate-90'}`}>▾</span>
+                    <ChevronDown size={12} className={`transition-transform duration-150 ${isOpen ? '' : '-rotate-90'}`} />
                   </button>
                   {isOpen && weeks[wk].map(d => {
                     const isToday    = d === today
@@ -276,7 +283,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           title="Settings"
           className="flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
         >
-          <span className="text-sm">⚙️</span>
+          <Settings size={14} />
           {open && <span className="text-[10px]">Settings</span>}
         </a>
         <button
@@ -284,7 +291,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           title="Terminal"
           className="w-full flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
         >
-          <span className="text-sm">⬛</span>
+          <Terminal size={14} />
           {open && <span className="text-[10px]">Terminal</span>}
         </button>
         {onFeedback && (
@@ -293,7 +300,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
             title="Give Feedback"
             className="w-full flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
           >
-            <span className="text-sm">💬</span>
+            <MessageCircle size={14} />
             {open && <span className="text-[10px]">Feedback</span>}
           </button>
         )}

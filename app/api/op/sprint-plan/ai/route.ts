@@ -5,6 +5,7 @@ import { loadUserConfig } from '@/lib/user-config'
 import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
+export const maxDuration = 180
 
 export async function GET() {
   // Fall back to the local Claude CLI (always available) when no global LLM is set,
@@ -157,7 +158,7 @@ ${projectNames} · ${displayName}
 [1-2 SHORT sentences, to the point: what got done + overall state (blocked or smooth). No filler, no jargon, no the-team. Keep it tight — this is a quick read.]
 
 ✅ COMPLETED
-[each done task, one line: ✓ subject]
+[prose, NOT a list — group related tasks by theme and describe what was achieved in natural sentences. 2-4 sentences max. Example: "Shipped all three Contact us form updates (ABMS, Brand Protection, Due Diligence). Launcher delivered end-to-end — scaffold, crash fix, production build, keep-alive, and smoke test." Do NOT bullet or number individual tasks.]
 
 ➡️ CARRYING OVER → Sprint #${suggestedNum}
 [each carry-over, one line: → subject (status)]

@@ -6,6 +6,7 @@ import type { Project } from '@/lib/projects'
 import { tagSessionToProject, getProjectById } from '@/lib/projects'
 import SessionDetailModal from './SessionDetailModal'
 import { useI18n } from '@/lib/i18n'
+import { Inbox, Sun, Leaf, CheckCircle2, Loader2, Upload } from 'lucide-react'
 
 function SessionCard({ session: s, proj, date, onDetail }: {
   session: Session
@@ -74,7 +75,7 @@ function SessionCard({ session: s, proj, date, onDetail }: {
                 : 'border-violet-300 dark:border-violet-700 text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950'
             } disabled:opacity-50`}
             title="Kirim ke Push Queue">
-            {queued ? '✅ In Queue' : queuing ? '⏳' : '📤 → Queue'}
+            {queued ? <><CheckCircle2 size={9} className="inline" /> In Queue</> : queuing ? <Loader2 size={9} className="inline animate-spin" /> : <><Upload size={9} className="inline" /> Queue</>}
           </button>
         )}
       </div>
@@ -106,7 +107,7 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
   if (!dayData) {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
-        <span className="text-3xl">📭</span>
+        <Inbox size={32} />
         <p className="text-sm">{t('daily.no_data')}</p>
       </div>
     )
@@ -118,7 +119,7 @@ export default function DailyView({ dayData, projects, isToday, onAddSession }: 
   if (empty) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
-        <span className="text-4xl">{isToday ? '☀️' : '🌿'}</span>
+        {isToday ? <Sun size={36} className="text-amber-400" /> : <Leaf size={36} className="text-emerald-400" />}
         <div className="text-center">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
             {isToday ? t('daily.no_activity_today') : t('daily.no_activity_date')}

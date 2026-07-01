@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import type { CachedWorkPackage } from '@/lib/op-cache'
 import { useI18n } from '@/lib/i18n'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
+import { Inbox, CalendarDays, CheckCircle2, Send, MessageCircle, Pencil, Info, RefreshCw, Play, PauseCircle } from 'lucide-react'
 
 const ISL_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   new:         { label: 'New',         color: 'text-gray-500',   dot: 'bg-gray-400' },
@@ -62,13 +63,13 @@ export default function IncomingTasksPanel() {
     const ok = r.results?.[0]?.ok
     if (ok) {
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, sprintId: nextSprint.id, sprintName: nextSprint.name } : t))
-      showToast(`✅ #${task.id} → ${nextSprint.name}, sync OP…`)
+      showToast(`#${task.id} → ${nextSprint.name}, sync OP…`)
       // Rebuild cache dari OP biar Next Sprint page lihat perubahan version
       await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
-      showToast(`✅ #${task.id} dipindah ke ${nextSprint.name} (OP)`)
+      showToast(`#${task.id} dipindah ke ${nextSprint.name} (OP)`)
       window.dispatchEvent(new Event('isl:cache-refreshed'))
     } else {
-      showToast(`❌ Gagal pindah: ${r.results?.[0]?.error ?? 'unknown'}`)
+      showToast(`Gagal pindah: ${r.results?.[0]?.error ?? 'unknown'}`)
     }
     setUpdatingId(null)
   }
@@ -112,11 +113,11 @@ export default function IncomingTasksPanel() {
       setTasks(prev => prev.map(t =>
         t.id === task.id ? { ...t, islStatus, status: ISL_STATUS_CONFIG[islStatus]?.label ?? t.status } : t
       ))
-      showToast(r.synced ? `✅ Status → OP #${task.id}` : `✅ Status disimpan (OP offline)`)
+      showToast(r.synced ? `Status → OP #${task.id}` : `Status disimpan (OP offline)`)
       // Notify SprintBanner + other components to refresh
       window.dispatchEvent(new Event('isl:cache-refreshed'))
     } else {
-      showToast(`❌ ${t('incoming.failed_update')}: ${r.error ?? 'unknown'}`)
+      showToast(`${t('incoming.failed_update')}: ${r.error ?? 'unknown'}`)
     }
     setUpdatingId(null)
   }
@@ -159,7 +160,7 @@ export default function IncomingTasksPanel() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">📥 Incoming Tickets</h2>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Inbox size={16} /> Incoming Tickets</h2>
           <p className="text-xs text-gray-400 mt-0.5">Tasks assigned to you by others in OP — auto-synced</p>
         </div>
         {tasks.length > 0 && (
@@ -171,8 +172,8 @@ export default function IncomingTasksPanel() {
       </div>
 
       {/* Sync notice */}
-      <div className="text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2">
-        ℹ️ Incoming Tickets = tasks <strong>assigned to you</strong> in OP but <strong>created by someone else</strong>. Status changes here sync directly to OP.
+      <div className="text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2 flex items-start gap-1.5">
+        <Info size={11} className="flex-shrink-0 mt-0.5" /> <span>Incoming Tickets = tasks <strong>assigned to you</strong> in OP but <strong>created by someone else</strong>. Status changes here sync directly to OP.</span>
       </div>
 
       {/* Filter */}
@@ -196,7 +197,7 @@ export default function IncomingTasksPanel() {
       {/* Empty state */}
       {tasks.length === 0 ? (
         <div className="text-center text-gray-400 text-sm py-12">
-          <div className="text-3xl mb-3">📭</div>
+          <div className="flex justify-center mb-3"><Inbox size={40} className="text-gray-300 dark:text-gray-600" /></div>
           <p>{t('incoming.empty')}</p>
           <p className="text-xs mt-1 text-gray-300 dark:text-gray-600">
             {t('incoming.empty_hint')}
@@ -235,18 +236,18 @@ export default function IncomingTasksPanel() {
                         <span className={statusCfg.color}>{task.status || statusCfg.label}</span>
                       </span>
                       {task.sprintName && (
-                        <span className="text-[10px] text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded">
-                          🏃 {task.sprintName}
+                        <span className="flex items-center gap-0.5 text-[10px] text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded">
+                          <CalendarDays size={9} />{task.sprintName}
                         </span>
                       )}
                       {isPushed && (
-                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full">
-                          ✅ Sudah di OP
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full">
+                          <CheckCircle2 size={9} /> Sudah di OP
                         </span>
                       )}
                       {isQueued && (
-                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full">
-                          📤 Di Push Queue
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full">
+                          <Send size={9} /> Di Push Queue
                         </span>
                       )}
                     </div>
@@ -262,10 +263,10 @@ export default function IncomingTasksPanel() {
 
                     {/* Row 3: who sent + when */}
                     <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400 flex-wrap">
-                      <span>✏️ Dibuat: <strong className="text-gray-600 dark:text-gray-300">{task.createdBy ?? '—'}</strong></span>
-                      <span>📅 {formatDate(task.createdAt)}</span>
+                      <span className="flex items-center gap-1"><Pencil size={9} /> Dibuat: <strong className="text-gray-600 dark:text-gray-300">{task.createdBy ?? '—'}</strong></span>
+                      <span className="flex items-center gap-1"><CalendarDays size={9} />{formatDate(task.createdAt)}</span>
                       {task.updatedAt && task.updatedAt !== task.createdAt && (
-                        <span>🔄 Update: {formatDate(task.updatedAt)}</span>
+                        <span className="flex items-center gap-1"><RefreshCw size={9} /> Update: {formatDate(task.updatedAt)}</span>
                       )}
                     </div>
                   </div>
@@ -274,12 +275,12 @@ export default function IncomingTasksPanel() {
                   <div className="flex-shrink-0 flex flex-col gap-1.5 min-w-[88px]">
                     {isPushed ? (
                       <div className="flex flex-col gap-1 items-center text-center px-2 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50">
-                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">✅ Sudah di OP</span>
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"><CheckCircle2 size={9} /> Sudah di OP</span>
                         <span className="text-[9px] text-emerald-600/70 dark:text-emerald-400/60 leading-tight">Sudah dipush, tidak perlu aksi lagi</span>
                       </div>
                     ) : isQueued ? (
                       <div className="flex flex-col gap-1 items-center text-center px-2 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
-                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300">📤 Sudah di Queue</span>
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300"><Send size={9} /> Sudah di Queue</span>
                         <span className="text-[9px] text-amber-600/70 dark:text-amber-400/60 leading-tight">Selesaikan di Push Queue</span>
                       </div>
                     ) : (
@@ -293,13 +294,13 @@ export default function IncomingTasksPanel() {
                         sprintName: task.sprintName ?? null,
                         status: task.status,
                       })}
-                      className="px-2 py-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition">
-                      💬 Diskusi
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition">
+                      <MessageCircle size={10} /> Diskusi
                     </button>
                     <button
                       onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: task.subject, opTaskId: task.id } }))}
-                      className="px-2 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
-                      ▶ Mulai Kerja
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
+                      <Play size={10} /> Mulai Kerja
                     </button>
                     {nextSprint && (
                       task.sprintId === nextSprint.id ? (
@@ -320,24 +321,24 @@ export default function IncomingTasksPanel() {
                       <button
                         onClick={() => updateStatus(task, 'in_progress')}
                         disabled={updatingId === task.id}
-                        className="px-2 py-1 text-[10px] font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 disabled:opacity-50 transition">
-                        ▶ Mulai
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 disabled:opacity-50 transition">
+                        <Play size={10} /> Mulai
                       </button>
                     )}
                     {task.islStatus === 'in_progress' && (
                       <button
                         onClick={() => updateStatus(task, 'on_hold')}
                         disabled={updatingId === task.id}
-                        className="px-2 py-1 text-[10px] font-semibold text-amber-600 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 disabled:opacity-50 transition">
-                        ⏸ Hold
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-600 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 disabled:opacity-50 transition">
+                        <PauseCircle size={10} /> Hold
                       </button>
                     )}
                     {task.islStatus === 'on_hold' && (
                       <button
                         onClick={() => updateStatus(task, 'in_progress')}
                         disabled={updatingId === task.id}
-                        className="px-2 py-1 text-[10px] font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 disabled:opacity-50 transition">
-                        ▶ Lanjut
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 disabled:opacity-50 transition">
+                        <Play size={10} /> Lanjut
                       </button>
                     )}
                     </>
@@ -376,7 +377,7 @@ export default function IncomingTasksPanel() {
               }),
             }).then(r => r.json()).catch(() => ({ ok: false }))
             setChatTask(null)
-            showToast(r.ok ? `✅ Added to Push Queue` : `❌ Failed: ${r.error ?? 'error'}`)
+            showToast(r.ok ? `Added to Push Queue` : `Failed: ${r.error ?? 'error'}`)
           } : undefined}
         />
       )}

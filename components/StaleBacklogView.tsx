@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { CalendarDays, User, Pencil, Clock, Loader2, Sparkles, Archive, ClipboardList, Info, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface StaleTask {
   id: number
@@ -53,9 +54,9 @@ const ISL_DOT: Record<string, string> = {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  Epic: '🟣',
-  'User Story': '🔵',
-  Task: '⬜',
+  Epic: 'E',
+  'User Story': 'US',
+  Task: 'T',
 }
 
 function TaskCard({
@@ -81,7 +82,7 @@ function TaskCard({
       }).then(r => r.json())
       setSuggest(r)
       if (!expanded) setExpanded(true)
-    } catch { onToast('❌ AI suggest failed') }
+    } catch { onToast('AI suggest failed') }
     setSuggesting(false)
   }
 
@@ -93,8 +94,8 @@ function TaskCard({
       decision ? 'border-violet-200 dark:border-violet-800' : 'border-gray-200 dark:border-gray-700'
     }`}>
       <div className="flex items-start gap-3 px-4 py-3">
-        <button onClick={() => setExpanded(!expanded)} className="flex-shrink-0 mt-0.5 text-gray-300 hover:text-gray-500 transition text-xs">
-          {expanded ? '▼' : '▶'}
+        <button onClick={() => setExpanded(!expanded)} className="flex-shrink-0 mt-0.5 text-gray-300 hover:text-gray-500 transition">
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
 
         <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-1.5 ${dot}`} />
@@ -113,16 +114,16 @@ function TaskCard({
               </span>
             )}
             {task.versionName && (
-              <span className="text-[10px] text-violet-500 bg-violet-50 dark:bg-violet-950 px-1.5 py-0.5 rounded">
-                🗓 {task.versionName}
+              <span className="flex items-center gap-0.5 text-[10px] text-violet-500 bg-violet-50 dark:bg-violet-950 px-1.5 py-0.5 rounded">
+                <CalendarDays size={9} />{task.versionName}
               </span>
             )}
           </div>
           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mt-0.5 leading-snug">{task.subject}</p>
           <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400 flex-wrap">
-            {task.assignee && <span>👤 {task.assignee}</span>}
-            {task.createdBy && task.createdBy !== task.assignee && <span>✍️ {task.createdBy}</span>}
-            {task.updatedAt && <span>🕐 {task.updatedAt.slice(0, 10)}</span>}
+            {task.assignee && <span className="flex items-center gap-1"><User size={9} /> {task.assignee}</span>}
+            {task.createdBy && task.createdBy !== task.assignee && <span className="flex items-center gap-1"><Pencil size={9} /> {task.createdBy}</span>}
+            {task.updatedAt && <span className="flex items-center gap-1"><Clock size={9} /> {task.updatedAt.slice(0, 10)}</span>}
           </div>
         </div>
 
@@ -131,7 +132,7 @@ function TaskCard({
             onClick={doSuggest}
             disabled={suggesting}
             className="px-2 py-1 text-[10px] font-semibold text-purple-600 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950 transition disabled:opacity-50">
-            {suggesting ? '⏳' : '✨ AI'}
+            {suggesting ? <Loader2 size={10} className="animate-spin" /> : <><Sparkles size={10} /> AI</>}
           </button>
 
           <select
@@ -154,7 +155,7 @@ function TaskCard({
           {suggest && (
             <div className={`rounded-lg border px-3 py-2.5 ${RECOMMEND_STYLE[suggest.recommendation]}`}>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide">✨ AI Suggestion</span>
+                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide"><Sparkles size={9} /> AI Suggestion</span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${RECOMMEND_STYLE[suggest.recommendation]}`}>
                   {RECOMMEND_LABEL[suggest.recommendation]}
                 </span>
@@ -169,8 +170,8 @@ function TaskCard({
               </ul>
               <p className="text-[10px] italic opacity-70">{suggest.reasoning}</p>
               {decision && decision !== suggest.recommendation && (
-                <p className="text-[10px] mt-1.5 font-semibold opacity-80">
-                  ℹ️ Your decision differs from AI suggestion — that's fine, you decide.
+                <p className="flex items-center gap-1 text-[10px] mt-1.5 font-semibold opacity-80">
+                  <Info size={9} /> Your decision differs from AI suggestion — that's fine, you decide.
                 </p>
               )}
               <button
@@ -286,13 +287,13 @@ export default function StaleBacklogView({ onToast }: { onToast?: (msg: string) 
       {/* Header + plan button */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">🗃️ Old Tasks</h2>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Archive size={16} /> Old Tasks</h2>
           <p className="text-xs text-gray-400 mt-0.5">Past-sprint items — review &amp; plan what to do next</p>
         </div>
         {pendingDecisions.length > 0 && (
           <button onClick={() => setShowPlan(!showPlan)}
             className="px-3 py-1.5 text-[10px] font-bold text-violet-600 border border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950 transition flex-shrink-0">
-            📋 Plan ({pendingDecisions.length})
+            <ClipboardList size={10} className="mr-1" /> Plan ({pendingDecisions.length})
           </button>
         )}
       </div>
@@ -317,7 +318,7 @@ export default function StaleBacklogView({ onToast }: { onToast?: (msg: string) 
       {showPlan && pendingDecisions.length > 0 && (
         <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-violet-700 dark:text-violet-300">📋 Sprint Plan — Pending Decisions</p>
+            <p className="flex items-center gap-1 text-xs font-bold text-violet-700 dark:text-violet-300"><ClipboardList size={10} /> Sprint Plan — Pending Decisions</p>
             <button onClick={() => { setDecisions({}); setShowPlan(false) }}
               className="text-[10px] text-gray-400 hover:text-gray-600 transition">Clear all</button>
           </div>
@@ -344,7 +345,7 @@ export default function StaleBacklogView({ onToast }: { onToast?: (msg: string) 
           ))}
           {nextSprint && (
             <p className="text-[10px] text-violet-500 mt-2">
-              ℹ️ "Next Sprint" = <strong>{nextSprint.name}</strong> (starts {nextSprint.startDate})
+              <Info size={9} className="inline mr-1" />"Next Sprint" = <strong>{nextSprint.name}</strong> (starts {nextSprint.startDate})
             </p>
           )}
         </div>
@@ -372,7 +373,7 @@ export default function StaleBacklogView({ onToast }: { onToast?: (msg: string) 
       {/* Task list */}
       {filtered.length === 0 ? (
         <div className="text-center text-gray-400 text-sm py-12">
-          <div className="text-3xl mb-3">🗃️</div>
+          <div className="flex justify-center mb-3"><Archive size={40} className="text-gray-300 dark:text-gray-600" /></div>
           <p>No old tasks found.</p>
           <p className="text-xs mt-1 text-gray-300 dark:text-gray-600">Sync OP cache to load data.</p>
         </div>

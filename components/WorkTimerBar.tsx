@@ -77,10 +77,11 @@ export default function WorkTimerBar() {
           setTimeout(() => setToast(null), 9000)
         } else if (r.elapsedMins) {
           const accumulated = r.totalActual != null && r.totalActual !== r.elapsedMins
+          const opMsg = r.opPushed ? ` ✅ → dicatat ke OP #${r.timer?.opTaskId}` : (r.timer?.opTaskId ? ' ⚠️ OP push gagal' : '')
           setToast(accumulated
-            ? `⏱ +${r.elapsedMins} menit → total ${r.totalActual} menit actual.`
-            : `⏱ ${r.elapsedMins} menit tercatat${r.timer?.sessionId ? ' sebagai actual' : ''}.`)
-          setTimeout(() => setToast(null), 5000)
+            ? `⏱ +${r.elapsedMins} menit → total ${r.totalActual} menit actual.${opMsg}`
+            : `⏱ ${r.elapsedMins} menit tercatat${r.timer?.sessionId ? ' sebagai actual' : ''}.${opMsg}`)
+          setTimeout(() => setToast(null), 7000)
         }
         window.dispatchEvent(new CustomEvent('isl:timer-stopped', { detail: r }))
       } else {

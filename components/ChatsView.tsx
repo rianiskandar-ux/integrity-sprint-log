@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { MessageCircle, Plus, Sparkles, Lightbulb, Bot, AlertTriangle } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -45,8 +46,8 @@ function relTime(iso: string): string {
 
 function tagFor(c: ChatSummary): { label: string; cls: string } | null {
   if (c.opTaskId) return { label: `→ OP #${c.opTaskId}`, cls: 'bg-indigo-100 text-indigo-700' }
-  if (c.taskType === 'plan') return { label: '📋 Plan', cls: 'bg-amber-100 text-amber-700' }
-  if (c.taskType === 'idea' || c.taskType === 'general') return { label: '💡 Idea', cls: 'bg-emerald-100 text-emerald-700' }
+  if (c.taskType === 'plan') return { label: 'Plan', cls: 'bg-amber-100 text-amber-700' }
+  if (c.taskType === 'idea' || c.taskType === 'general') return { label: 'Idea', cls: 'bg-emerald-100 text-emerald-700' }
   return null
 }
 
@@ -171,7 +172,7 @@ export default function ChatsView() {
         if (friendly.includes('credit balance is too low')) friendly = 'API credit habis. Top up di console.anthropic.com.'
         else if (friendly.includes('invalid_api_key')) friendly = 'API key tidak valid. Cek Settings.'
         else if (friendly.length > 160) friendly = friendly.slice(0, 160) + '…'
-        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: `⚠️ ${friendly}` } : m))
+        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: `[Error] ${friendly}` } : m))
         return
       }
       const reader = res.body!.getReader()
@@ -185,7 +186,7 @@ export default function ChatsView() {
       }
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
-      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: '⚠️ Connection error.' } : m))
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: '[Error] Connection error.' } : m))
     } finally {
       setStreaming(false)
       abortRef.current = null
@@ -262,7 +263,7 @@ ${transcript}` }] }),
       }),
     }).then(r => r.json()).catch(() => null)
     if (res?.ok) {
-      flash(`✓ ${sel.length} poin masuk Daily Hub — pilah lagi di sana`)
+      flash(`${sel.length} poin masuk Daily Hub — pilah lagi di sana`)
       window.dispatchEvent(new CustomEvent('isl:session-updated'))
       setCandidates(null)
       loadList()
@@ -275,10 +276,10 @@ ${transcript}` }] }),
       {/* ── Left: conversation list ── */}
       <div className="w-64 flex-shrink-0 flex flex-col" style={{ background: '#1d3a5c' }}>
         <div className="p-3 border-b border-white/10">
-          <h2 className="text-xs font-bold text-white mb-2.5 flex items-center gap-1.5">💬 Chats</h2>
+          <h2 className="text-xs font-bold text-white mb-2.5 flex items-center gap-1.5"><MessageCircle size={12} /> Chats</h2>
           <button onClick={newChat}
             className="w-full px-3 py-2 rounded-lg bg-white/12 hover:bg-white/20 border border-white/15 text-white text-[11px] font-semibold flex items-center gap-1.5 transition">
-            ✦ Create new
+            <Plus size={12} /> Create new
           </button>
         </div>
         <div className="flex-1 overflow-y-auto py-1.5">
@@ -314,15 +315,15 @@ ${transcript}` }] }),
       <div className="flex-1 flex flex-col min-w-0">
         {!activeId ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
-            <div className="text-4xl">💡</div>
+            <div className="flex justify-center"><Lightbulb size={40} className="text-gray-300 dark:text-gray-600" /></div>
             <p className="text-sm font-bold text-gray-700 dark:text-gray-200">Mulai ide atau planning baru</p>
             <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
               Diskusi bebas dengan AI. History tersimpan per percakapan, dan bisa langsung jadi task OP kapanpun.
             </p>
             <button onClick={newChat}
-              className="mt-1 px-4 py-2 rounded-lg text-white text-xs font-semibold"
+              className="mt-1 flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-xs font-semibold"
               style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}>
-              ✦ Create new
+              <Plus size={12} /> Create new
             </button>
           </div>
         ) : (
@@ -330,7 +331,7 @@ ${transcript}` }] }),
             {/* header */}
             <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}>💡</div>
+                style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}><Lightbulb size={14} /></div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-bold text-gray-800 dark:text-gray-100 truncate">{activeTitle || 'New conversation'}</p>
                 <p className="text-[10px] text-gray-400">
@@ -341,7 +342,7 @@ ${transcript}` }] }),
                 <button onClick={extractPoints} disabled={extracting || !messages.length}
                   title="AI ekstrak poin penting → centang mana yang beneran task → kirim ke Daily Hub. Brainstorm yang nggak relevan nggak ikut."
                   className="px-3 py-1.5 rounded-md text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition">
-                  {extracting ? 'Mengekstrak…' : '✦ Ekstrak poin → task'}
+                  <span className="flex items-center gap-1">{extracting ? 'Mengekstrak…' : <><Sparkles size={10} /> Ekstrak poin → task</>}</span>
                 </button>
               </div>
             </div>
@@ -373,7 +374,7 @@ ${transcript}` }] }),
                   <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5 ${
                     msg.role === 'user' ? 'bg-indigo-100 text-indigo-600' : 'text-white'
                   }`} style={msg.role === 'assistant' ? { background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' } : {}}>
-                    {msg.role === 'user' ? 'R' : '✦'}
+                    {msg.role === 'user' ? 'R' : <Bot size={12} />}
                   </div>
                   <div className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
                     msg.role === 'user'

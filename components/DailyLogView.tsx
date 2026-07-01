@@ -1,6 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import {
+  BookOpen, MapPin, CalendarDays, Clock, CheckCircle2, FileText,
+  ChevronDown, ChevronRight, ClipboardList, Wrench, Loader2, Upload,
+  Inbox, RefreshCw,
+} from 'lucide-react'
 
 interface DailyLogNote { text: string; sessionId: string | null }
 interface Section { worked: string[]; tasks: string[]; notes: DailyLogNote[] }
@@ -84,7 +89,7 @@ function NoteBlock({ text, sessionId }: { text: string; sessionId: string | null
                 : 'border-violet-200 dark:border-violet-800 text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950'
             } disabled:opacity-50`}
             title="Kirim ke Push Queue untuk di-push ke OP">
-            {queued ? '✅ In Queue' : queuing ? '⏳…' : '📤 → Queue'}
+            {queued ? <span className="flex items-center gap-1"><CheckCircle2 size={9} /> In Queue</span> : queuing ? <Loader2 size={9} className="animate-spin" /> : <span className="flex items-center gap-1"><Upload size={9} /> Queue</span>}
           </button>
         )}
       </div>
@@ -114,7 +119,7 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition"
       >
-        <span className="text-sm flex-shrink-0">{isToday ? '📍' : '📅'}</span>
+        <span className="flex-shrink-0 text-violet-500">{isToday ? <MapPin size={14} /> : <CalendarDays size={14} className="text-gray-400" />}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs font-bold ${isToday ? 'text-violet-700 dark:text-violet-300' : 'text-gray-700 dark:text-gray-200'}`}>
@@ -123,24 +128,24 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
             {isToday && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-300">TODAY</span>}
           </div>
           {entry.generated && (
-            <p className="text-[10px] text-gray-400 mt-0.5">⏱ {entry.generated}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1"><Clock size={9} />{entry.generated}</p>
           )}
         </div>
         {/* Summary pills */}
         <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
           {sections.worked.length > 0 && (
-            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
-              ✅ {sections.worked.filter(l => l.startsWith('- ') || l.startsWith('**')).length || sections.worked.length} task
+            <span className="flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
+              <CheckCircle2 size={8} />{sections.worked.filter(l => l.startsWith('- ') || l.startsWith('**')).length || sections.worked.length} task
             </span>
           )}
           {sections.notes.length > 0 && (
-            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-500">
-              📝 {sections.notes.length} note
+            <span className="flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-500">
+              <FileText size={8} />{sections.notes.length} note
             </span>
           )}
           {empty && <span className="text-[9px] text-gray-300 dark:text-gray-600">kosong</span>}
         </div>
-        <span className="text-gray-300 dark:text-gray-600 text-xs flex-shrink-0">{expanded ? '▼' : '▶'}</span>
+        <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
       </button>
 
       {/* Body */}
@@ -149,7 +154,7 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
           {/* Worked today */}
           {sections.worked.length > 0 && (
             <div>
-              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">✅ Dikerjakan</p>
+              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2 flex items-center gap-1"><CheckCircle2 size={10} /> Dikerjakan</p>
               <ul className="space-y-0.5 list-none">
                 {sections.worked.map((l, i) => <Line key={i} text={l} />)}
               </ul>
@@ -159,7 +164,7 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
           {/* Open tasks */}
           {sections.tasks.length > 0 && (
             <div>
-              <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">📋 Open Tasks</p>
+              <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2 flex items-center gap-1"><ClipboardList size={10} /> Open Tasks</p>
               <ul className="space-y-0.5 list-none">
                 {sections.tasks.map((l, i) => <Line key={i} text={l} />)}
               </ul>
@@ -169,7 +174,7 @@ function EntryCard({ entry, expanded, onToggle }: { entry: Entry; expanded: bool
           {/* Technical notes */}
           {sections.notes.length > 0 && (
             <div>
-              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide mb-2">🛠 Technical Notes</p>
+              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide mb-2 flex items-center gap-1"><Wrench size={10} /> Technical Notes</p>
               <div className="space-y-2">
                 {sections.notes.map((note, i) => (
                   <NoteBlock key={i} text={noteText(note)} sessionId={noteSession(note)} />
@@ -257,7 +262,7 @@ export default function DailyLogView() {
   if (error) return (
     <div className="flex flex-col items-center justify-center h-48 gap-3">
       <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
-      <button onClick={load} className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg transition">↻ Coba lagi</button>
+      <button onClick={load} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg transition"><RefreshCw size={11} /> Coba lagi</button>
     </div>
   )
 
@@ -266,20 +271,20 @@ export default function DailyLogView() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">📓 Daily Log</h2>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><BookOpen size={16} /> Daily Log</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             Auto-generated wrap-up harian · {total} hari tercatat
           </p>
         </div>
         <button onClick={load}
-          className="text-[10px] text-gray-400 hover:text-gray-600 transition border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 rounded-lg flex-shrink-0">
-          ↻ Refresh
+          className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 transition border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 rounded-lg flex-shrink-0">
+          <RefreshCw size={10} /> Refresh
         </button>
       </div>
 
       {entries.length === 0 ? (
         <div className="text-center text-gray-400 py-16 space-y-2">
-          <p className="text-2xl">📭</p>
+          <div className="flex justify-center"><Inbox size={40} className="text-gray-300 dark:text-gray-600" /></div>
           <p className="text-sm">No daily log yet.</p>
           <p className="text-xs text-gray-300 dark:text-gray-600">
             Logs are created automatically via the Stop hook when you finish a work session.
@@ -291,8 +296,8 @@ export default function DailyLogView() {
             <div key={weekStart} className="space-y-2">
               {/* Week header */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-                  📅 {weekLabel(weekStart)}
+                <span className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                  <CalendarDays size={10} />{weekLabel(weekStart)}
                 </span>
                 <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
                 <span className="text-[9px] text-gray-300 dark:text-gray-600">

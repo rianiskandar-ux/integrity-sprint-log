@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { Bot, X, MessageCircle, Play, ClipboardList, Inbox, Send, ChevronRight } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -178,8 +179,8 @@ export default function ChatBubble() {
           onClick={() => setOpen(o => !o)}
           className="relative w-12 h-12 rounded-full shadow-xl flex items-center justify-center text-white text-xl transition hover:scale-110 active:scale-95"
           style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}
-          title={`ISL Assistant — AI ${ready === null ? 'checking…' : ready ? 'Ready ✅' : 'Pilih Claude CLI'}`}>
-          {open ? '✕' : '✦'}
+          title={`ISL Assistant — AI ${ready === null ? 'checking…' : ready ? 'Ready' : 'Pilih Claude CLI'}`}>
+          {open ? <X size={16} /> : <MessageCircle size={18} />}
           {/* AI status dot */}
           <span className={`absolute top-0.5 right-0.5 w-3 h-3 rounded-full border-2 border-white ${
             ready === null  ? 'bg-yellow-400 animate-pulse' :
@@ -197,7 +198,7 @@ export default function ChatBubble() {
         {/* Panel header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0"
           style={{ background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' }}>
-          <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white text-sm font-bold">✦</div>
+          <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white"><Bot size={14} /></div>
           <div className="flex-1">
             <p className="text-xs font-bold text-white leading-none">ISL Assistant</p>
             <p className="text-[9px] text-blue-200/70">
@@ -232,13 +233,13 @@ export default function ChatBubble() {
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 pb-2">
               <div className="text-center">
-                <div className="text-3xl mb-2">✦</div>
+                <div className="mb-2 flex justify-center"><Bot size={28} className="text-gray-400" /></div>
                 <p className="text-xs font-bold text-gray-700 dark:text-gray-200">ISL Assistant</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">Ask about tasks, sprint, or anything</p>
               </div>
               {ready === false && (
                 <div className="w-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2 space-y-1.5">
-                  <p className="text-[10px] font-bold text-red-700 dark:text-red-300">❌ Provider ini butuh API key</p>
+                  <p className="text-[10px] font-bold text-red-700 dark:text-red-300">Provider ini butuh API key</p>
                   <p className="text-[9px] text-red-600 dark:text-red-400">Pilih <strong>Claude CLI (gratis)</strong> di dropdown Model di atas — tidak perlu API key.</p>
                 </div>
               )}
@@ -255,32 +256,32 @@ export default function ChatBubble() {
                       <button
                         onClick={() => setShowWorkspace(v => !v)}
                         className="w-full flex items-center justify-between px-1 pb-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300 transition">
-                        <span>📋 Task Workspace ({taskShortcuts.length})</span>
-                        <span className={`transition-transform ${showWorkspace ? 'rotate-90' : ''}`}>▶</span>
+                        <span className="flex items-center gap-1"><ClipboardList size={9} /> Task Workspace ({taskShortcuts.length})</span>
+                        <ChevronRight size={9} className={`transition-transform ${showWorkspace ? 'rotate-90' : ''}`} />
                       </button>
                       {showWorkspace && taskShortcuts.map(s => (
                         <div key={s.id} className="mt-1 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2">
                           <div className="flex items-center gap-1.5 mb-1.5">
-                            <span className="text-[9px]">{s.type === 'queue' ? '📤' : '📥'}</span>
+                            <span className="text-gray-400">{s.type === 'queue' ? <Send size={9} /> : <Inbox size={9} />}</span>
                             <span className="text-[10px] font-medium text-gray-700 dark:text-gray-300 truncate flex-1">{s.label}</span>
                           </div>
                           {s.type === 'queue' ? (
                             <button
                               onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: s.id, title: s.label, taskType: 'session', opTaskId: s.taskId } }))}
                               className="w-full text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-700 rounded-lg px-2 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition text-center">
-                              💬 Lanjut Chat
+                              <span className="flex items-center gap-1 justify-center"><MessageCircle size={10} /> Lanjut Chat</span>
                             </button>
                           ) : (
                             <div className="flex gap-1.5">
                               <button
                                 onClick={() => window.dispatchEvent(new CustomEvent('isl:start-session', { detail: { title: s.label, opTaskId: s.taskId } }))}
                                 className="flex-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 dark:border-emerald-700 rounded-lg px-2 py-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition text-center">
-                                ▶ Mulai
+                                <span className="flex items-center gap-1 justify-center"><Play size={10} /> Mulai</span>
                               </button>
                               <button
                                 onClick={() => window.dispatchEvent(new CustomEvent('isl:open-task-chat', { detail: { id: s.id, title: s.label, taskType: 'incoming', opTaskId: s.taskId } }))}
                                 className="flex-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-700 rounded-lg px-2 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition text-center">
-                                💬 Diskusi
+                                <span className="flex items-center gap-1 justify-center"><MessageCircle size={10} /> Diskusi</span>
                               </button>
                             </div>
                           )}
@@ -299,7 +300,7 @@ export default function ChatBubble() {
                     ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300'
                     : 'text-white'
                 }`} style={msg.role === 'assistant' ? { background: 'linear-gradient(135deg, #1d3a5c, #2a5298)' } : {}}>
-                  {msg.role === 'user' ? 'U' : '✦'}
+                  {msg.role === 'user' ? 'U' : <Bot size={9} />}
                 </div>
                 <div className={`max-w-[82%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${
                   msg.role === 'user'

@@ -11,7 +11,9 @@ export async function GET(req: Request) {
     const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
     const ctx  = await getRequestContext()
 
-    const hubSessions = (await getAllSessions(ctx?.uid)).filter(s => s.pushStatus === 'hub' || s.pushStatus === 'live')
+    const hubSessions = (await getAllSessions(ctx?.uid)).filter(s =>
+      (s.pushStatus === 'hub' || s.pushStatus === 'live') && s.taskStatus !== 'backlog'
+    )
     const kbEntries = (await getAllKBEntries(ctx?.uid)).filter(e => e.triageStatus === 'hub')
 
     // Load sprint context for AI suggest

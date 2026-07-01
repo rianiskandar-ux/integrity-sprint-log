@@ -5,6 +5,11 @@ import { useI18n } from '@/lib/i18n'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import SprintRecap, { type RecapTask } from './SprintRecap'
 import OpTaskModal from './OpTaskModal'
+import {
+  CalendarDays, RefreshCw, Loader2, Sparkles, Bot, Lightbulb,
+  MessageCircle, Folder, Clock, Send, ClipboardList, Lock, Pencil,
+  BarChart2, Target, CheckCircle2, X, Zap,
+} from 'lucide-react'
 
 interface TaskItem {
   id: number
@@ -19,6 +24,14 @@ interface TaskItem {
 }
 
 interface SprintInfo {
+  id: number
+  name: string
+  startDate: string
+  endDate: string
+  isCurrent: boolean
+}
+
+interface SprintMeta {
   id: number
   name: string
   startDate: string
@@ -48,6 +61,7 @@ interface PlanData {
   carryOver: TaskItem[]
   doneTasks: TaskItem[]
   nextTasks: TaskItem[]
+  isHistorical: boolean
   aiName: AiName | null
   aiSummary: string | null
   aiSuggestedTasks: AiSuggestItem[]
@@ -61,8 +75,24 @@ const STATUS_COLOR: Record<string, string> = {
   'closed':      'text-emerald-500',
 }
 
-const TYPE_ICON: Record<string, string> = {
-  'Task': '⬜', 'User Story': '🔵', 'Bug': '🔴', 'Feature': '🟢', 'Epic': '🟣',
+const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+  'Task':       { label: 'Task',    cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' },
+  'Bug':        { label: 'Bug',     cls: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300' },
+  'User Story': { label: 'Story',   cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300' },
+  'Feature':    { label: 'Feature', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' },
+  'Epic':       { label: 'Epic',    cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300' },
+}
+
+function TypeBadge({ type }: { type: string }) {
+  const b = TYPE_BADGE[type]
+  if (!b) return <span className="inline-flex items-center justify-center px-1.5 h-4 text-[9px] font-bold rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 flex-shrink-0">{type}</span>
+  return <span className={`inline-flex items-center justify-center px-1.5 h-4 text-[9px] font-bold rounded ${b.cls} flex-shrink-0`}>{b.label}</span>
+}
+
+// Tasks/Bugs are interactive (selectable, clickable, editable).
+// User Stories, Features, etc. are shown as read-only context rows.
+function isInteractive(t: { type: string }): boolean {
+  return t.type === 'Task' || t.type === 'Bug'
 }
 
 type Tab = 'active' | 'new' | 'done'
@@ -76,8 +106,7 @@ function fmtH(h: number | null): string {
 
 function statusKey(s: string) { return s.toLowerCase() }
 
-
-export default function SprintPlanView() {
+export default function SprintPlanView({ initialSprintId }: { initialSprintId?: number | null } = {}) {
   const { t } = useI18n()
   const [data, setData]               = useState<PlanData | null>(null)
   const [loading, setLoading]         = useState(true)
@@ -101,31 +130,45 @@ export default function SprintPlanView() {
   const [toast, setToast]             = useState<string | null>(null)
   const [chatTask, setChatTask]       = useState<TaskChatContext | null>(null)
   const [opTask, setOpTask]           = useState<RecapTask | null>(null)
+  const [allSprints, setAllSprints]   = useState<SprintMeta[]>([])
+  const [selectedSprintId, setSelectedSprintId] = useState<number | null>(initialSprintId ?? null)
+
+  // Sync when parent navigates to a different ISL sprint (initialSprintId changes)
+  useEffect(() => {
+    setSelectedSprintId(initialSprintId ?? null)
+  }, [initialSprintId])
 
   useEffect(() => {
-    load()
-  }, [])
+    load(selectedSprintId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSprintId])
 
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 3500)
   }
 
-  async function load() {
+  async function load(sprintId?: number | null) {
     setLoading(true); setError(null); setSelected(new Set()); setPushResults(null)
     try {
+      const qs = sprintId ? `?sprintId=${sprintId}` : ''
       const [r, cacheR] = await Promise.all([
-        fetch('/api/op/sprint-plan').then(r => r.json()),
+        fetch(`/api/op/sprint-plan${qs}`).then(r => r.json()),
         fetch('/api/op/cache').then(r => r.json()).catch(() => ({})),
       ])
       if (r.error) throw new Error(r.error)
       setData(r)
       setCustomTheme('')
       if (cacheR._opUrl) setOpUrl(cacheR._opUrl)
+      if (cacheR.sprints?.length) {
+        const sorted = [...cacheR.sprints].sort((a: SprintMeta, b: SprintMeta) =>
+          b.startDate.localeCompare(a.startDate)
+        )
+        setAllSprints(sorted)
+      }
     } catch (e) { setError(String(e)) }
     setLoading(false)
-    // Load AI analysis in background after page renders
-    loadAI()
+    if (!sprintId) loadAI()
   }
 
   async function loadAI() {
@@ -171,12 +214,8 @@ export default function SprintPlanView() {
       const r = await fetch('/api/op/sprint-move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // defaultEstMins: never let a Task land in the next sprint with an empty
-        // estimate. Route fills it ONLY for type Task with no existing estimate
-        // (Feature/Epic/US untouched).
         body: JSON.stringify({ taskIds, targetSprintId: data.nextSprint.id, edits: editMap, defaultEstMins: 60 }),
       }).then(r => r.json())
-      // Route returns { error } (no results) on 401/400 — guard before .filter to avoid a crash.
       if (!Array.isArray(r.results)) { showToast(`❌ ${r.error ?? 'Gagal pindah'}`); setPushing(false); return }
       setPushResults(r.results)
       const ok   = r.results.filter((x: { ok: boolean }) => x.ok).length
@@ -191,7 +230,6 @@ export default function SprintPlanView() {
     setPushing(false)
   }
 
-  // Batch status change from the recap (New / In Progress / Hold / Close) → syncs to OP.
   async function batchStatus(ids: number[], islStatus: string) {
     let ok = 0, offline = 0
     for (const id of ids) {
@@ -208,9 +246,6 @@ export default function SprintPlanView() {
     load()
   }
 
-  // Fill empty estimates for TASK-type active-sprint tasks (Feature/Epic/US skipped).
-  // Same safety net as the Next Sprint tab. Rebuilds cache so the recap AND the task
-  // table below both reflect the new estimates.
   async function fillEmptyEstimates() {
     if (!data || filling) return
     const targets = [...data.carryOver, ...data.doneTasks].filter(t => t.type === 'Task' && t.estimatedHours == null)
@@ -227,15 +262,13 @@ export default function SprintPlanView() {
     showToast(`⚡ ${ok}/${targets.length} task diisi estimasi 1h`)
     await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
     window.dispatchEvent(new Event('isl:cache-refreshed'))
-    await load()  // re-fetch sprint-plan → recap + task table both update
+    await load()
     setFilling(false)
   }
 
-  // Send selected tasks to Push Queue as pending ISL sessions
   async function sendToPushQueue() {
     if (selected.size === 0 || !data) return
     setSendingToQueue(true)
-    // Dedup: skip tasks that already have a pending (queue) or pushed (OP) session.
     const existing = await fetch('/api/isl/sessions').then(r => r.json()).then(d => {
       const s = new Set<number>()
       for (const sess of (d.sessions ?? []) as { opTaskId?: number | null; pushStatus?: string }[]) {
@@ -270,7 +303,7 @@ export default function SprintPlanView() {
         if (r.ok) ok++; else failed.push(task.id)
       } catch { failed.push(task.id) }
     }
-    showToast(`📤 ${ok}/${tasks.length} ke Push Queue${skipped ? ` · ${skipped} sudah ada (dilewati)` : ''}${failed.length ? ` · ❌ ${failed.length} gagal` : ''}`)
+    showToast(`${ok}/${tasks.length} ke Push Queue${skipped ? ` · ${skipped} sudah ada (dilewati)` : ''}${failed.length ? ` · ${failed.length} gagal` : ''}`)
     setSendingToQueue(false)
     setSelected(new Set())
     window.dispatchEvent(new Event('isl:session-updated'))
@@ -298,7 +331,7 @@ export default function SprintPlanView() {
         if (r.ok) ok++; else fail++
       } catch { fail++ }
     }
-    showToast(`📤 ${ok}/${items.length} AI suggest ke Push Queue${fail ? ` · ❌ ${fail} gagal` : ''}`)
+    showToast(`${ok}/${items.length} AI suggest ke Push Queue${fail ? ` · ${fail} gagal` : ''}`)
     setSendingSuggests(false)
     setSelectedSuggests(new Set())
     window.dispatchEvent(new Event('isl:session-updated'))
@@ -309,11 +342,11 @@ export default function SprintPlanView() {
   if (!data)   return null
 
   const { currentSprint, nextSprint, carryOver, doneTasks, aiName, aiSummary, aiSuggestedTasks, suggestedNum } = data
+  const isReadOnly = !!(data.isHistorical)
 
   const allTasks = [...carryOver, ...doneTasks]
   const projects = Array.from(new Set(allTasks.map(t => t.project).filter(Boolean))).sort()
 
-  // Case-insensitive status buckets
   const byStatus = {
     inProgress: carryOver.filter(t => statusKey(t.status) === 'in progress').length,
     onHold:     carryOver.filter(t => statusKey(t.status) === 'on hold').length,
@@ -334,7 +367,7 @@ export default function SprintPlanView() {
   const filtered = tabTasks[tab].filter(t => projectFilter === 'all' || t.project === projectFilter)
 
   const sprintName = `Sprint #${suggestedNum}${customTheme ? `: ${customTheme}` : ''}`
-  const isSelectable = tab !== 'done'
+  const isSelectable = tab !== 'done' && !isReadOnly
   const allChecked   = filtered.length > 0 && filtered.every(t => selected.has(t.id))
 
   function toggleAll() {
@@ -346,17 +379,14 @@ export default function SprintPlanView() {
   }
 
   function toggleOne(id: number) {
-    setPushResults(null)  // a fresh selection shouldn't show a prior move's results
+    setPushResults(null)
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
 
-  // Work summary for sprint
-  const totalEst   = allTasks.reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
-  const totalSpent = allTasks.reduce((a, t) => a + (t.spentHours ?? 0), 0)
-  const openEst    = carryOver.reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
+  const totalEst   = allTasks.filter(isInteractive).reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
+  const totalSpent = allTasks.filter(isInteractive).reduce((a, t) => a + (t.spentHours ?? 0), 0)
+  const openEst    = carryOver.filter(isInteractive).reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
 
-  // Capacity health: based on open estimated hours for next sprint
-  // < 40h = under capacity (blue), 40-50h = good (green), 50-60h = warning (yellow), > 60h = over (red)
   const capacityColor = openEst < 40
     ? { bar: 'bg-blue-400', text: 'text-blue-600 dark:text-blue-400', label: 'Under capacity', bg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' }
     : openEst <= 50
@@ -365,17 +395,16 @@ export default function SprintPlanView() {
     ? { bar: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400', label: 'Near limit', bg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' }
     : { bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400', label: 'Over capacity!', bg: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800' }
 
-  // Sprint velocity gap: days elapsed % vs tasks done %
   const sprintStart = new Date(currentSprint.startDate).getTime()
   const sprintEnd   = new Date(currentSprint.endDate).getTime()
   const now         = Date.now()
   const sprintElapsedPct = sprintEnd > sprintStart
     ? Math.min(100, Math.round((now - sprintStart) / (sprintEnd - sprintStart) * 100))
     : 0
-  const taskDonePct = allTasks.length > 0 ? Math.round(byStatus.done / allTasks.length * 100) : 0
-  const velocityGap = sprintElapsedPct - taskDonePct  // positive = behind schedule
+  const interactiveTasks = allTasks.filter(isInteractive)
+  const taskDonePct = interactiveTasks.length > 0 ? Math.round(doneTasks.filter(isInteractive).length / interactiveTasks.length * 100) : 0
+  const velocityGap = sprintElapsedPct - taskDonePct
 
-  // Sprint move rules per task: < 50% done → can move; ≥ 70% done → must finish
   function getMoveRule(t: TaskItem): 'must-finish' | 'can-move' | 'ok' {
     if (t.percentDone >= 70) return 'must-finish'
     if (t.percentDone < 50)  return 'can-move'
@@ -393,17 +422,39 @@ export default function SprintPlanView() {
 
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">🗓 Sprint Plan</h2>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><CalendarDays size={16} /> Sprint Plan</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             {currentSprint.name} — all tasks assigned to you across projects
           </p>
         </div>
-        <button onClick={load}
-          className="text-[10px] text-gray-400 hover:text-gray-600 transition border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 rounded-lg flex-shrink-0">
-          ↻ Refresh
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {allSprints.length > 1 && (
+            <select
+              value={selectedSprintId ?? ''}
+              onChange={e => setSelectedSprintId(e.target.value ? parseInt(e.target.value) : null)}
+              className="text-[10px] text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-400 max-w-[180px]">
+              {allSprints.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.isCurrent ? ' ✓ aktif' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <button onClick={() => load(selectedSprintId)}
+            className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 transition border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 rounded-lg">
+            <RefreshCw size={10} /> Refresh
+          </button>
+        </div>
       </div>
+
+      {/* Historical read-only banner */}
+      {isReadOnly && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-[11px]">
+          <Clock size={12} className="flex-shrink-0" />
+          <span><strong>Sprint lama — view only.</strong> Data dari OP. Semua aksi ISL dinonaktifkan. Klik <span className="font-mono text-[10px]">#ID</span> task untuk buka di OP.</span>
+        </div>
+      )}
 
       {/* Sprint summary bar */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 space-y-3">
@@ -412,7 +463,6 @@ export default function SprintPlanView() {
           <span className="text-[10px] text-gray-400">ends {currentSprint.endDate}</span>
         </div>
 
-        {/* Status pills */}
         <div className="flex items-center gap-2 flex-wrap">
           {byStatus.inProgress > 0 && (
             <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 flex items-center gap-1">
@@ -438,15 +488,11 @@ export default function SprintPlanView() {
             <span className="w-1 h-1 rounded-full bg-emerald-500 inline-block" />{byStatus.done} Done
           </span>
           <div className="flex-1 min-w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1 overflow-hidden ml-1">
-            <div className="h-full bg-emerald-500 rounded-full transition-all"
-              style={{ width: `${allTasks.length > 0 ? Math.round(byStatus.done / allTasks.length * 100) : 0}%` }} />
+            <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${taskDonePct}%` }} />
           </div>
-          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-            {allTasks.length > 0 ? Math.round(byStatus.done / allTasks.length * 100) : 0}%
-          </span>
+          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">{taskDonePct}%</span>
         </div>
 
-        {/* Work hours summary */}
         <div className="flex gap-4 pt-1 border-t border-gray-100 dark:border-gray-800 flex-wrap">
           <div className="text-center">
             <p className="text-[9px] text-gray-400 uppercase tracking-wide">Total Est.</p>
@@ -462,9 +508,8 @@ export default function SprintPlanView() {
           </div>
           <div className="text-center">
             <p className="text-[9px] text-gray-400 uppercase tracking-wide">Tasks</p>
-            <p className="text-xs font-bold text-gray-700 dark:text-gray-200">{allTasks.length}</p>
+            <p className="text-xs font-bold text-gray-700 dark:text-gray-200">{allTasks.filter(isInteractive).length}</p>
           </div>
-          {/* Capacity bar */}
           <div className="flex-1 min-w-32">
             <div className="flex items-center justify-between mb-1">
               <p className="text-[9px] text-gray-400 uppercase tracking-wide">Capacity (open est.)</p>
@@ -478,10 +523,9 @@ export default function SprintPlanView() {
           </div>
         </div>
 
-        {/* Velocity gap warning */}
         {sprintElapsedPct > 20 && velocityGap > 20 && (
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-            <span className="text-amber-500">⚡</span>
+            <Zap size={12} className="text-amber-500 flex-shrink-0" />
             <p className="text-[10px] text-amber-600 dark:text-amber-400">
               Sprint {sprintElapsedPct}% lewat tapi baru {taskDonePct}% selesai — gap {velocityGap}%.
               {velocityGap > 40 ? ' Perlu akselerasi atau geser task ke sprint berikutnya.' : ' Monitor progress lebih ketat.'}
@@ -490,39 +534,43 @@ export default function SprintPlanView() {
         )}
       </div>
 
-      {/* Recap menyeluruh sprint aktif — prominent di atas, sama seperti tab Next Sprint */}
+      {/* Recap */}
       <div className="space-y-1.5">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recap menyeluruh — sprint aktif</p>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+          {isReadOnly ? `Recap — ${currentSprint.name}` : 'Recap menyeluruh — sprint aktif'}
+        </p>
         <SprintRecap
-          title={`${currentSprint.name} · aktif`}
-          subtitle="Semua task sprint ini (new · in progress · hold · done) — klik untuk lihat/edit di OP"
+          title={`${currentSprint.name}${isReadOnly ? ' · selesai' : ' · aktif'}`}
+          subtitle={isReadOnly
+            ? 'Data historis dari OP — view only'
+            : 'Semua task sprint ini (new · in progress · hold · done) — klik untuk lihat/edit di OP'}
           tasks={[...carryOver, ...doneTasks] as RecapTask[]}
           opUrl={opUrl}
-          onTaskClick={(tk) => setOpTask(tk)}
-          onBatchStatus={batchStatus}
+          onTaskClick={isReadOnly ? undefined : (tk) => setOpTask(tk)}
+          onBatchStatus={isReadOnly ? undefined : batchStatus}
         />
-        {[...carryOver, ...doneTasks].some(t => t.type === 'Task' && t.estimatedHours == null) && (
+        {!isReadOnly && [...carryOver, ...doneTasks].some(t => t.type === 'Task' && t.estimatedHours == null) && (
           <button onClick={fillEmptyEstimates} disabled={filling}
             className="w-full py-1.5 text-[10px] font-semibold text-violet-600 border border-dashed border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/30 transition disabled:opacity-50">
-            {filling ? '⏳ Mengisi…' : `⚡ Isi estimasi kosong (${[...carryOver, ...doneTasks].filter(t => t.type === 'Task' && t.estimatedHours == null).length} Task × 1h) — Feature/Epic dilewati`}
+            {filling ? <><Loader2 size={9} className="inline animate-spin mr-1" /> Mengisi…</> : <><Zap size={9} className="inline mr-1" />Isi estimasi kosong ({[...carryOver, ...doneTasks].filter(t => t.type === 'Task' && t.estimatedHours == null).length} Task × 1h) — Feature/Epic dilewati</>}
           </button>
         )}
       </div>
 
-      {/* Next sprint name card */}
-      <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-3">
+      {/* Next sprint name card — hidden for historical sprints */}
+      {!isReadOnly && <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wide">✨ Next Sprint — Draft</p>
+          <p className="flex items-center gap-1 text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wide"><Sparkles size={9} /> Next Sprint — Draft</p>
           <button onClick={reloadAI} disabled={reloading || aiLoading}
             className="text-[10px] text-violet-500 hover:text-violet-700 transition disabled:opacity-40">
-            {reloading || aiLoading ? '⏳ generating…' : '↻ Suggest lagi'}
+            {reloading || aiLoading ? <><Loader2 size={9} className="inline animate-spin mr-1" /> generating…</> : <><RefreshCw size={9} className="inline mr-1" /> Suggest lagi</>}
           </button>
         </div>
 
         <div className="space-y-1.5">
           <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{sprintName}</p>
           {aiName?.goal && (
-            <p className="text-xs text-violet-600 dark:text-violet-400 italic">🎯 {aiName.goal}</p>
+            <p className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 italic"><Target size={9} /> {aiName.goal}</p>
           )}
         </div>
 
@@ -563,46 +611,41 @@ export default function SprintPlanView() {
             {t('sprintplan.no_next')}
           </p>
         )}
-      </div>
+      </div>}
 
-      {/* AI loading placeholder */}
       {aiLoading && !aiSummary && aiSuggestedTasks.length === 0 && (
         <div className="border border-indigo-100 dark:border-indigo-900 rounded-xl px-4 py-3 flex items-center gap-2 text-[11px] text-indigo-400">
-          <span className="animate-spin">⏳</span> AI sedang analisa sprint…
+          <Loader2 size={12} className="animate-spin" /> AI sedang analisa sprint…
         </div>
       )}
 
-      {/* AI Sprint Plan for next sprint */}
       {(aiSummary || aiSuggestedTasks.length > 0) && (
         <div className="border border-indigo-200 dark:border-indigo-800 rounded-xl overflow-hidden">
-          {/* Header */}
           <div className="bg-indigo-50 dark:bg-indigo-950/40 px-4 py-3 flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">
-                🤖 AI Plan — Sprint #{suggestedNum}
+              <p className="flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">
+                <Bot size={10} /> AI Plan — Sprint #{suggestedNum}
               </p>
               <p className="text-[9px] text-indigo-400 mt-0.5">Berdasarkan data sprint {currentSprint.name}</p>
             </div>
             <button onClick={reloadAI} disabled={reloading || aiLoading}
               className="text-[10px] text-indigo-400 hover:text-indigo-600 transition disabled:opacity-40">
-              {reloading || aiLoading ? '⏳' : '↻ Refresh'}
+              {reloading || aiLoading ? <Loader2 size={10} className="animate-spin" /> : <><RefreshCw size={10} className="inline" /> Refresh</>}
             </button>
           </div>
 
-          {/* Retrospective summary */}
           {aiSummary && (
             <div className="px-4 py-3 border-b border-indigo-100 dark:border-indigo-900">
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">📊 Retrospektif</p>
+              <p className="flex items-center gap-1 text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5"><BarChart2 size={10} /> Retrospektif</p>
               <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{aiSummary}</p>
             </div>
           )}
 
-          {/* Suggested tasks */}
           {aiSuggestedTasks.length > 0 && (
             <div className="px-4 py-3 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                  💡 Task Disarankan untuk Sprint #{suggestedNum}
+                <p className="flex items-center gap-1 text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                  <Lightbulb size={10} /> Task Disarankan untuk Sprint #{suggestedNum}
                 </p>
                 <label className="flex items-center gap-1.5 text-[10px] text-gray-400 cursor-pointer">
                   <input type="checkbox"
@@ -643,20 +686,18 @@ export default function SprintPlanView() {
                           className="mt-0.5 w-3.5 h-3.5 rounded accent-indigo-600 flex-shrink-0 pointer-events-none" />
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-start gap-2 flex-wrap">
-                            <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-100 leading-snug flex-1">
-                              {item.subject}
-                            </p>
+                            <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-100 leading-snug flex-1">{item.subject}</p>
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${priorityBadge}`}>
                               {item.priority.toUpperCase()}
                             </span>
                           </div>
-                          <p className="text-[10px] text-indigo-600 dark:text-indigo-400 italic leading-relaxed">
-                            💬 {item.reason}
+                          <p className="flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 italic leading-relaxed">
+                            <MessageCircle size={9} className="flex-shrink-0" /> {item.reason}
                           </p>
                           <div className="flex items-center gap-3">
-                            <span className="text-[9px] text-gray-400">{TYPE_ICON[item.type] ?? '⬜'} {item.type}</span>
-                            <span className="text-[9px] text-gray-400">📁 {item.projectHint}</span>
-                            <span className="text-[9px] font-mono text-blue-500">⏱ {item.estimatedHours}h</span>
+                            <span className="text-[9px] text-gray-400">{item.type}</span>
+                            <span className="flex items-center gap-0.5 text-[9px] text-gray-400"><Folder size={9} /> {item.projectHint}</span>
+                            <span className="flex items-center gap-0.5 text-[9px] font-mono text-blue-500"><Clock size={9} /> {item.estimatedHours}h</span>
                           </div>
                         </div>
                       </div>
@@ -670,11 +711,9 @@ export default function SprintPlanView() {
                   <span className="text-[10px] text-indigo-500 flex-1">
                     {selectedSuggests.size} task akan dikirim ke Push Queue sebagai draft pending
                   </span>
-                  <button
-                    onClick={sendSuggestsToQueue}
-                    disabled={sendingSuggests}
+                  <button onClick={sendSuggestsToQueue} disabled={sendingSuggests}
                     className="px-3 py-1.5 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-40">
-                    {sendingSuggests ? '⏳…' : `📤 Kirim ke Push Queue`}
+                    {sendingSuggests ? <><Loader2 size={9} className="animate-spin inline mr-1" /> Mengirim…</> : <><Send size={9} className="inline mr-1" /> Kirim ke Push Queue</>}
                   </button>
                 </div>
               )}
@@ -686,26 +725,23 @@ export default function SprintPlanView() {
       {/* Task section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">📋 Tasks {currentSprint.name}</h3>
+          <h3 className="flex items-center gap-1.5 text-sm font-bold text-gray-800 dark:text-gray-100"><ClipboardList size={14} /> Tasks {currentSprint.name}</h3>
           {projects.length > 1 && (
             <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}
               className="text-[10px] text-gray-500 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none">
               <option value="all">All projects ({allTasks.length})</option>
               {projects.map(p => (
-                <option key={p} value={p}>
-                  {p} ({allTasks.filter(t => t.project === p).length})
-                </option>
+                <option key={p} value={p}>{p} ({allTasks.filter(t => t.project === p).length})</option>
               ))}
             </select>
           )}
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-0 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden text-[10px] font-semibold w-fit">
           {([
-            ['active', `🔵 Active  ${byStatus.inProgress + byStatus.onHold + byStatus.other}`],
-            ['new',    `⬜ New  ${byStatus.new}`],
-            ['done',   `✅ Done  ${byStatus.done}`],
+            ['active', `Active  ${byStatus.inProgress + byStatus.onHold + byStatus.other}`],
+            ['new',    `New  ${byStatus.new}`],
+            ['done',   `Done  ${byStatus.done}`],
           ] as const).map(([t, label]) => (
             <button key={t} onClick={() => { setTab(t); setSelected(new Set()) }}
               className={`px-3 py-1.5 transition ${
@@ -718,7 +754,6 @@ export default function SprintPlanView() {
           ))}
         </div>
 
-        {/* Selection toolbar */}
         {isSelectable && filtered.length > 0 && (
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-[10px] text-gray-500 cursor-pointer select-none">
@@ -734,7 +769,6 @@ export default function SprintPlanView() {
           </div>
         )}
 
-        {/* Task table */}
         {filtered.length === 0 ? (
           <div className="text-center text-gray-400 text-sm py-10">
             <p>{t('sprintplan.no_tasks')}</p>
@@ -742,7 +776,6 @@ export default function SprintPlanView() {
           </div>
         ) : (
           <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
-            {/* Table header */}
             <div className="hidden sm:grid grid-cols-[auto_1fr_80px_60px_60px_60px] gap-3 px-4 py-1.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
               {isSelectable && <div />}
               <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wide col-span-1">Subject</div>
@@ -753,32 +786,37 @@ export default function SprintPlanView() {
             </div>
 
             {filtered.map(task => {
+              const interactive  = isInteractive(task)
               const isChecked    = selected.has(task.id)
               const isEditing    = editingId === task.id
               const editedSubject = edits[task.id] ?? task.subject
               const sk           = statusKey(task.status)
               const statusCls    = STATUS_COLOR[sk] ?? 'text-gray-400'
-              const moveRule     = isSelectable ? getMoveRule(task) : null
+              const moveRule     = isSelectable && interactive ? getMoveRule(task) : null
 
               return (
                 <div key={task.id}
                   className={`border-b border-gray-50 dark:border-gray-800 last:border-0 transition-colors ${
-                    isChecked ? 'bg-violet-50/60 dark:bg-violet-950/20' : 'hover:bg-gray-50/40 dark:hover:bg-gray-800/20'
+                    !interactive
+                      ? 'opacity-40 cursor-default'
+                      : isChecked ? 'bg-violet-50/60 dark:bg-violet-950/20' : 'hover:bg-gray-50/40 dark:hover:bg-gray-800/20'
                   }`}>
                   <div className="flex items-start gap-2.5 px-4 py-2.5">
-                    {isSelectable && (
+                    {isSelectable && interactive && (
                       <input type="checkbox" checked={isChecked} onChange={() => toggleOne(task.id)}
                         className="mt-0.5 w-3.5 h-3.5 rounded accent-violet-600 flex-shrink-0 cursor-pointer" />
                     )}
+                    {isSelectable && !interactive && (
+                      <span className="mt-0.5 w-3.5 h-3.5 flex-shrink-0" />
+                    )}
 
-                    <span className="text-[11px] flex-shrink-0 mt-0.5">{TYPE_ICON[task.type] ?? '⬜'}</span>
+                    <TypeBadge type={task.type} />
 
                     <a href={`${opUrl}/work_packages/${task.id}`} target="_blank" rel="noopener"
                       className="font-mono text-[11px] font-bold text-indigo-400 hover:text-indigo-600 flex-shrink-0 w-12 mt-0.5">
                       #{task.id}
                     </a>
 
-                    {/* Subject */}
                     <div className="flex-1 min-w-0">
                       {isEditing ? (
                         <input autoFocus
@@ -790,24 +828,23 @@ export default function SprintPlanView() {
                         />
                       ) : (
                         <div className="flex items-center gap-1 group/subject">
-                          <p className={`text-[12px] text-gray-700 dark:text-gray-200 leading-snug ${isSelectable ? 'cursor-pointer' : ''} ${edits[task.id] ? 'text-violet-700 dark:text-violet-300' : ''}`}
-                            onClick={() => isSelectable && toggleOne(task.id)}>
+                          <p className={`text-[12px] text-gray-700 dark:text-gray-200 leading-snug ${isSelectable && interactive ? 'cursor-pointer' : ''} ${edits[task.id] ? 'text-violet-700 dark:text-violet-300' : ''}`}
+                            onClick={() => isSelectable && interactive && toggleOne(task.id)}>
                             {editedSubject}
                             {edits[task.id] && <span className="ml-1 text-[9px] text-violet-400">edited</span>}
                           </p>
-                          {isSelectable && (
+                          {isSelectable && interactive && (
                             <button onClick={() => setEditingId(task.id)}
-                              className="opacity-0 group-hover/subject:opacity-100 transition text-[9px] text-gray-300 hover:text-gray-500 flex-shrink-0">✏️</button>
+                              className="opacity-0 group-hover/subject:opacity-100 transition text-[9px] text-gray-300 hover:text-gray-500 flex-shrink-0"><Pencil size={9} /></button>
                           )}
                         </div>
                       )}
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[9px] text-gray-400">{task.project}</span>
                         <span className={`text-[9px] font-semibold ${statusCls}`}>{task.status}</span>
-                        {/* Sprint move rule badge */}
                         {moveRule === 'must-finish' && (
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950 text-red-600 border border-red-200 dark:border-red-800">
-                            🔒 Wajib selesai
+                          <span className="flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950 text-red-600 border border-red-200 dark:border-red-800">
+                            <Lock size={7} /> Wajib selesai
                           </span>
                         )}
                         {moveRule === 'can-move' && (
@@ -815,7 +852,6 @@ export default function SprintPlanView() {
                             ➡ Bisa geser
                           </span>
                         )}
-                        {/* Progress bar inline */}
                         {task.percentDone > 0 && (
                           <div className="flex items-center gap-1">
                             <div className="w-12 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -827,21 +863,21 @@ export default function SprintPlanView() {
                       </div>
                     </div>
 
-                    {/* Chat button */}
-                    <button
-                      onClick={() => setChatTask({
-                        id: `sprint-task-${task.id}`,
-                        title: task.subject,
-                        taskType: 'incoming',
-                        opTaskId: task.id,
-                        sprintName: currentSprint.name,
-                        status: task.status,
-                      })}
-                      className="flex-shrink-0 mt-0.5 text-[10px] font-semibold px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-blue-600 hover:border-blue-300 dark:hover:text-blue-400 dark:hover:border-blue-700 transition">
-                      💬
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        onClick={() => setChatTask({
+                          id: `sprint-task-${task.id}`,
+                          title: task.subject,
+                          taskType: 'incoming',
+                          opTaskId: task.id,
+                          sprintName: currentSprint.name,
+                          status: task.status,
+                        })}
+                        className="flex-shrink-0 mt-0.5 text-[10px] font-semibold px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-blue-600 hover:border-blue-300 dark:hover:text-blue-400 dark:hover:border-blue-700 transition">
+                        <MessageCircle size={10} />
+                      </button>
+                    )}
 
-                    {/* Work columns */}
                     <div className="hidden sm:flex items-start gap-3 flex-shrink-0 text-right">
                       <div className="w-16">
                         <p className="text-[10px] font-mono text-gray-600 dark:text-gray-300">{fmtH(task.estimatedHours)}</p>
@@ -861,18 +897,13 @@ export default function SprintPlanView() {
           </div>
         )}
 
-        {/* Action panel for selected */}
         {isSelectable && selected.size > 0 && (
           <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-violet-700 dark:text-violet-300">
-                {selected.size} task dipilih
-              </p>
-              <button onClick={() => setSelected(new Set())}
-                className="text-[10px] text-gray-400 hover:text-gray-600">Clear</button>
+              <p className="text-xs font-bold text-violet-700 dark:text-violet-300">{selected.size} task dipilih</p>
+              <button onClick={() => setSelected(new Set())} className="text-[10px] text-gray-400 hover:text-gray-600">Clear</button>
             </div>
 
-            {/* Preview list */}
             <div className="space-y-1 max-h-36 overflow-y-auto">
               {Array.from(selected).map(id => {
                 const task = allTasks.find(t => t.id === id)
@@ -890,26 +921,18 @@ export default function SprintPlanView() {
             </div>
 
             <div className="flex items-center gap-2 pt-2 border-t border-violet-200 dark:border-violet-800 flex-wrap">
-              {/* Send to Push Queue */}
-              <button
-                onClick={sendToPushQueue}
-                disabled={sendingToQueue}
+              <button onClick={sendToPushQueue} disabled={sendingToQueue}
                 className="px-3 py-1.5 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-40">
-                {sendingToQueue ? '⏳…' : `📤 Kirim ke Push Queue (${selected.size})`}
+                {sendingToQueue ? <Loader2 size={10} className="animate-spin" /> : <><Send size={10} /> Kirim ke Push Queue ({selected.size})</>}
               </button>
 
-              {/* Move to next sprint */}
               {nextSprint ? (
-                <button
-                  onClick={doPush}
-                  disabled={pushing}
+                <button onClick={doPush} disabled={pushing}
                   className="px-3 py-1.5 text-[11px] font-bold bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition disabled:opacity-40">
-                  {pushing ? '⏳ Pushing…' : `🗓 Pindah ke ${nextSprint.name} →`}
+                  {pushing ? <Loader2 size={10} className="animate-spin" /> : <><CalendarDays size={10} /> Pindah ke {nextSprint.name} →</>}
                 </button>
               ) : (
-                <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                  {t('sprintplan.no_next_badge')}
-                </span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400">{t('sprintplan.no_next_badge')}</span>
               )}
             </div>
 
@@ -918,7 +941,7 @@ export default function SprintPlanView() {
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Hasil push:</p>
                 {pushResults.map(r => (
                   <div key={r.id} className={`text-[10px] flex items-center gap-1.5 ${r.ok ? 'text-emerald-600' : 'text-red-500'}`}>
-                    <span>{r.ok ? '✅' : '❌'}</span>
+                    {r.ok ? <CheckCircle2 size={10} /> : <X size={10} />}
                     <span className="font-mono font-bold">#{r.id}</span>
                     {r.error && <span className="opacity-70">{r.error}</span>}
                   </div>
@@ -928,27 +951,26 @@ export default function SprintPlanView() {
           </div>
         )}
 
-        {/* Copy carry-over list */}
         {carryOver.length > 0 && (
           <button
             onClick={() => {
               const lines = [
-                `📋 ${sprintName} — Carry-over Plan`,
+                `${sprintName} — Carry-over Plan`,
                 `From: ${currentSprint.name}`,
                 `Open: ${carryOver.length} · Done: ${doneTasks.length}`,
                 `Est remaining: ${fmtH(openEst)} · Spent this sprint: ${fmtH(totalSpent)}`,
                 '',
-                '🔵 Active:',
+                'Active:',
                 ...tabTasks.active.map(t => `- #${t.id} ${t.subject} [${t.status}] (${fmtH(t.estimatedHours)})`),
                 '',
-                '⬜ New:',
+                'New:',
                 ...tabTasks.new.map(t => `- #${t.id} ${t.subject} (${fmtH(t.estimatedHours)})`),
               ]
               navigator.clipboard.writeText(lines.join('\n'))
-              showToast('📋 Copied!')
+              showToast('Copied!')
             }}
             className="w-full py-2 text-[10px] font-semibold text-gray-400 border border-dashed border-gray-200 dark:border-gray-700 rounded-lg hover:border-gray-400 hover:text-gray-600 transition">
-            📋 Copy carry-over list ke clipboard
+            <ClipboardList size={10} /> Copy carry-over list ke clipboard
           </button>
         )}
       </div>

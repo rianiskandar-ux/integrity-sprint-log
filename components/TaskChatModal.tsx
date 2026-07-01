@@ -244,7 +244,7 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
       }).then(res => res.json())
       if (r.error) throw new Error(r.error)
       const tid = r.taskId ?? task.opTaskId
-      setPushResult(`✅ Pushed ke OP #${tid}`)
+      setPushResult(`Pushed ke OP #${tid}`)
       onPushed?.(task.id, tid)
     } catch (e) {
       setPushResult(`⚠️ Gagal push: ${String(e).slice(0, 140)}`)
@@ -253,7 +253,7 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
     }
   }
 
-  const typeLabel = task.taskType === 'incoming' ? '📥 Incoming' : task.taskType === 'session' ? '📤 Push Queue' : '✨ New'
+  const typeLabel = task.taskType === 'incoming' ? 'Incoming' : task.taskType === 'session' ? 'Push Queue' : 'New'
 
   return (
     <div
@@ -329,7 +329,7 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
         {/* Push result banner */}
         {pushResult && (
           <div className={`px-3 py-1.5 text-[11px] border-b flex items-center justify-between gap-2 ${
-            pushResult.startsWith('✅')
+            pushResult.startsWith('Pushed')
               ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900'
               : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-100 dark:border-amber-900'
           }`}>

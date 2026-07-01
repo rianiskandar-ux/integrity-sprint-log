@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react'
 import MyOPTasksTab from './MyOPTasksTab'
 import QuickLogModal from './QuickLogModal'
 import ActivityTimeline, { ActivitySegment, bulletsToSegments, segmentsToBullets } from './ActivityTimeline'
+import {
+  Bot, FolderOpen, Pin, Pencil, Save, ClipboardList, Zap,
+  CheckCircle2, PauseCircle, XCircle, CornerDownLeft, BadgePlus,
+  Link, AlertTriangle, Calendar, User, Sparkles, Building2,
+  Circle, Check, ExternalLink, Loader2, RefreshCw, X,
+  Play, Landmark, ChevronDown, ChevronRight, Clock, CalendarDays, Folder,
+} from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Session {
@@ -77,11 +84,11 @@ function formatDate(iso: string) {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  in_progress: '🔵 In Progress',
-  done:        '✅ Done',
-  on_hold:     '⏸ On Hold',
-  abandoned:   '🚫 Abandoned',
-  backlog:     '📋 Backlog',
+  in_progress: 'In Progress',
+  done:        'Done',
+  on_hold:     'On Hold',
+  abandoned:   'Abandoned',
+  backlog:     'Backlog',
 }
 const STATUS_COLOR: Record<string, string> = {
   in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
@@ -137,7 +144,7 @@ function EditSessionModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
           <div>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">✏️ Edit Session</h3>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5"><Pencil size={14} /> Edit Session</h3>
             {session.opTaskId && (
               <p className="text-[10px] text-indigo-400 mt-0.5">OP Task #{session.opTaskId}</p>
             )}
@@ -194,11 +201,11 @@ function EditSessionModal({
                 onChange={e => setTaskStatus(e.target.value)}
                 className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-violet-400"
               >
-                <option value="in_progress">🔵 In Progress</option>
-                <option value="done">✅ Done</option>
-                <option value="on_hold">⏸ On Hold</option>
-                <option value="abandoned">🚫 Abandoned</option>
-                <option value="backlog">📋 Backlog</option>
+                <option value="in_progress">In Progress</option>
+                <option value="done">Done</option>
+                <option value="on_hold">On Hold</option>
+                <option value="abandoned">Abandoned</option>
+                <option value="backlog">Backlog</option>
               </select>
             </div>
           </div>
@@ -238,7 +245,7 @@ function EditSessionModal({
           </button>
           <button onClick={handleSave} disabled={saving}
             className="px-4 py-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg transition">
-            {saving ? 'Saving…' : '💾 Save Changes'}
+            {saving ? 'Saving…' : <><Save size={12} className="inline mr-1" />Save Changes</>}
           </button>
         </div>
       </div>
@@ -292,12 +299,12 @@ function SessionDetailPopup({
             </span>
             {/* Origin badge — most prominent label */}
             {(() => { const o = getOriginBadge(session); return o ? <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.cls}`}>{o.label}</span> : null })()}
-            {isUndone && <span className="text-[10px] font-semibold text-red-400 bg-red-50 dark:bg-red-950 px-2 py-0.5 rounded-full">↩ Backlog</span>}
+            {isUndone && <span className="text-[10px] font-semibold text-red-400 bg-red-50 dark:bg-red-950 px-2 py-0.5 rounded-full flex items-center gap-1"><CornerDownLeft size={9} /> Backlog</span>}
             {session.needsValidation && !session.hasExplicitCmd && (
-              <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full">⚠️ Needs validation</span>
+              <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full flex items-center gap-1"><AlertTriangle size={9} /> Needs validation</span>
             )}
             {session.isNewTask === true && (
-              <span className="text-[10px] text-violet-500 bg-violet-50 dark:bg-violet-950 px-2 py-0.5 rounded-full">🆕 New task created</span>
+              <span className="text-[10px] text-violet-500 bg-violet-50 dark:bg-violet-950 px-2 py-0.5 rounded-full flex items-center gap-1"><BadgePlus size={9} /> New task created</span>
             )}
           </div>
 
@@ -319,7 +326,7 @@ function SessionDetailPopup({
           {/* Related old task */}
           {session.relatedOldTaskId && !isUndone && (
             <div className="flex items-start gap-2 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800 rounded-lg px-3 py-2">
-              <span className="text-orange-500 flex-shrink-0">🔗</span>
+              <Link size={12} className="text-orange-500 flex-shrink-0" />
               <p className="text-[11px] text-orange-700 dark:text-orange-300">
                 Related to old task{' '}
                 <a href={`${opUrl}/work_packages/${session.relatedOldTaskId}`} target="_blank" rel="noopener"
@@ -332,7 +339,7 @@ function SessionDetailPopup({
           {/* OP sync warning */}
           {outOfSync && (
             <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg px-3 py-2">
-              <span className="text-orange-500">⚡</span>
+              <Zap size={12} className="text-orange-500" />
               <p className="text-[11px] text-orange-700 dark:text-orange-300 flex-1">
                 OP status is <strong>{opStatus}</strong> but ISL says <strong>{status}</strong>
               </p>
@@ -385,48 +392,48 @@ function SessionDetailPopup({
           <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
             {session.needsValidation && !session.hasExplicitCmd && onConfirm && (
               <button onClick={() => { onConfirm(session.id); onClose() }}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition">
-                ✓ Confirm
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition">
+                <Check size={12} /> Confirm
               </button>
             )}
             {onEdit && (
               <button onClick={() => { onEdit(session); onClose() }}
-                className="px-3 py-1.5 text-xs font-semibold text-violet-600 border border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950 transition">
-                ✏️ Edit
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-violet-600 border border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950 transition">
+                <Pencil size={12} /> Edit
               </button>
             )}
             {session.opTaskId && (status === 'in_progress' || status === 'on_hold') && (
               <button
                 onClick={() => { navigator.clipboard.writeText(`!ticket:${session.opTaskId}`); onClose() }}
-                className="px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition">
-                ▶ Copy !ticket
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition">
+                <Play size={12} /> Copy !ticket
               </button>
             )}
             {status !== 'done' && (
               <button onClick={() => { onStatusChange(session.id, 'done'); onClose() }}
-                className="px-3 py-1.5 text-xs font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
-                ✅ Mark Done
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-600 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 transition">
+                <CheckCircle2 size={12} /> Mark Done
               </button>
             )}
             {status !== 'on_hold' && (
               <button onClick={() => { onStatusChange(session.id, 'on_hold'); onClose() }}
-                className="px-3 py-1.5 text-xs font-semibold text-amber-600 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 transition">
-                ⏸ Hold
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-amber-600 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 transition">
+                <PauseCircle size={12} /> Hold
               </button>
             )}
             {status === 'on_hold' && (
               <button onClick={() => { onStatusChange(session.id, 'in_progress'); onClose() }}
-                className="px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 transition">
-                ▶ Resume
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 transition">
+                <Play size={12} /> Resume
               </button>
             )}
             <button onClick={() => { onImprove(session); onClose() }}
-              className="px-3 py-1.5 text-xs font-semibold text-purple-600 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950 transition">
-              ✨ Improve
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-600 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950 transition">
+              <Sparkles size={12} /> Improve
             </button>
             <button onClick={() => { onUndo(session); onClose() }}
-              className="ml-auto px-3 py-1.5 text-xs font-semibold text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-              ↩ Backlog
+              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+              <CornerDownLeft size={12} /> Backlog
             </button>
           </div>
         )}
@@ -437,12 +444,12 @@ function SessionDetailPopup({
 
 // ── Origin badge helper ────────────────────────────────────────────────────────
 function getOriginBadge(s: Session): { label: string; cls: string } | null {
-  if (s.source === 'sprint-plan') return { label: '📋 Sprint Plan', cls: 'text-violet-500 bg-violet-50 dark:bg-violet-950' }
-  if (s.source === 'ai-suggest')  return { label: '💡 AI Suggest',  cls: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-950' }
-  if (s.autoPushed)               return { label: '⚡ ISL Auto',    cls: 'text-amber-600 bg-amber-50 dark:bg-amber-950' }
-  if (s.needsValidation && !s.hasExplicitCmd) return { label: '🤖 ISL Generated', cls: 'text-blue-500 bg-blue-50 dark:bg-blue-950' }
-  if (s.hasExplicitCmd)           return { label: '✅ ISL Confirmed', cls: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950' }
-  if (s.opTaskId && s.isNewTask === false) return { label: '🔵 OP Activity', cls: 'text-sky-600 bg-sky-50 dark:bg-sky-950' }
+  if (s.source === 'sprint-plan') return { label: 'Sprint Plan',   cls: 'text-violet-500 bg-violet-50 dark:bg-violet-950' }
+  if (s.source === 'ai-suggest')  return { label: 'AI Suggest',    cls: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-950' }
+  if (s.autoPushed)               return { label: 'ISL Auto',      cls: 'text-amber-600 bg-amber-50 dark:bg-amber-950' }
+  if (s.needsValidation && !s.hasExplicitCmd) return { label: 'ISL Generated', cls: 'text-blue-500 bg-blue-50 dark:bg-blue-950' }
+  if (s.hasExplicitCmd)           return { label: 'ISL Confirmed', cls: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950' }
+  if (s.opTaskId && s.isNewTask === false) return { label: 'OP Activity', cls: 'text-sky-600 bg-sky-50 dark:bg-sky-950' }
   return null
 }
 
@@ -463,14 +470,14 @@ function SessionRow({ session, opUrl, onClick }: { session: Session; opUrl: stri
             {STATUS_BADGE[status] ?? status}
           </span>
           {session.needsValidation && !session.hasExplicitCmd && (
-            <span className="text-[10px] text-amber-500">⚠️</span>
+            <AlertTriangle size={10} className="text-amber-500 flex-shrink-0" />
           )}
-          {ps === 'discarded' && <span className="text-[10px] text-red-400">↩</span>}
+          {ps === 'discarded' && <CornerDownLeft size={10} className="text-red-400 flex-shrink-0" />}
           <span className="text-xs text-gray-600 dark:text-gray-300 truncate">{session.title}</span>
         </div>
         <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400 flex-wrap">
-          <span>⏱ {formatDur(session.actualMins ?? session.estimatedMins)}</span>
-          <span>📅 {formatDate(session.startedAt)}</span>
+          <span className="flex items-center gap-0.5"><Clock size={9} />{formatDur(session.actualMins ?? session.estimatedMins)}</span>
+          <span className="flex items-center gap-0.5"><CalendarDays size={9} />{formatDate(session.startedAt)}</span>
           {session.isNewTask && <span className="text-violet-400">new task</span>}
           {origin && (
             <span className={`px-1.5 py-0.5 rounded-full font-semibold ${origin.cls}`}>{origin.label}</span>
@@ -507,7 +514,7 @@ function TaskGroup({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition text-left group"
       >
-        <span className="text-gray-400 text-[10px] flex-shrink-0">{open ? '▼' : '▶'}</span>
+        <span className="text-gray-400 flex-shrink-0">{open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}</span>
         <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-0.5 ${
           islStatus === 'done'      ? 'bg-emerald-500' :
           islStatus === 'on_hold'   ? 'bg-amber-400' :
@@ -523,7 +530,7 @@ function TaskGroup({
             </a>
           )}
           <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate">{taskName}</span>
-          {hasWarning && <span className="text-amber-500 text-[10px] flex-shrink-0">⚠️</span>}
+          {hasWarning && <AlertTriangle size={10} className="text-amber-500 flex-shrink-0" />}
           {islStatus === 'in_progress' && sessions.some(s => pushStatus(s) === 'pushed') && (
             <button
               onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('isl:navigate', { detail: 'sprint-plan' })) }}
@@ -536,17 +543,17 @@ function TaskGroup({
             <button
               onClick={e => { e.stopPropagation(); onSyncStatus(sessions[0].opTaskId!, islStatus) }}
               title={`OP status: ${opStatus} · ISL: ${islStatus} — click to sync`}
-              className="text-[10px] text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-1.5 py-0.5 rounded font-semibold hover:bg-orange-100 transition flex-shrink-0">
-              ⚡ sync
+              className="flex items-center gap-0.5 text-[10px] text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-1.5 py-0.5 rounded font-semibold hover:bg-orange-100 transition flex-shrink-0">
+              <Zap size={10} /> sync
             </button>
           )}
           {opStatus && !outOfSync && (
-            <span title={`OP: ${opStatus}`} className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0">✓OP</span>
+            <span title={`OP: ${opStatus}`} className="flex items-center gap-0.5 text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0"><Check size={9} />OP</span>
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 text-[10px] text-gray-400">
           <span>{sessions.length} session{sessions.length > 1 ? 's' : ''}</span>
-          <span>⏱ {formatDur(totalMins)}</span>
+          <span className="flex items-center gap-0.5"><Clock size={9} />{formatDur(totalMins)}</span>
         </div>
       </button>
       {open && (
@@ -582,8 +589,8 @@ function StoryGroup({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition text-left"
       >
-        <span className="text-gray-400 text-[10px] flex-shrink-0">{open ? '▼' : '▶'}</span>
-        <span className="text-indigo-500 text-sm flex-shrink-0">📋</span>
+        <span className="text-gray-400 flex-shrink-0">{open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}</span>
+        <ClipboardList size={14} className="text-indigo-500 flex-shrink-0" />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           {storyId && (
             <a href={`${opUrl}/work_packages/${storyId}`} target="_blank" rel="noopener"
@@ -599,7 +606,7 @@ function StoryGroup({
           <span>·</span>
           <span>{totalSessions} sessions</span>
           <span>·</span>
-          <span>⏱ {formatDur(totalMins)}</span>
+          <span className="flex items-center gap-0.5"><Clock size={9} />{formatDur(totalMins)}</span>
         </div>
       </button>
       {open && (
@@ -647,8 +654,8 @@ function EpicGroup({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition text-left"
       >
-        <span className="text-gray-400 text-xs flex-shrink-0">{open ? '▼' : '▶'}</span>
-        <span className="text-orange-500 text-base flex-shrink-0">🏛️</span>
+        <span className="text-gray-400 flex-shrink-0">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+        <Landmark size={14} className="text-orange-500 flex-shrink-0" />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           {epicId && (
             <a href={`${opUrl}/work_packages/${epicId}`} target="_blank" rel="noopener"
@@ -664,7 +671,7 @@ function EpicGroup({
           <span>·</span>
           <span>{totalSessions} sessions</span>
           <span>·</span>
-          <span className="font-semibold text-gray-600 dark:text-gray-300">⏱ {formatDur(totalMins)}</span>
+          <span className="font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-0.5"><Clock size={10} />{formatDur(totalMins)}</span>
         </div>
       </button>
       {open && (
@@ -887,7 +894,7 @@ export default function AutoLogView() {
       body: JSON.stringify({ taskStatus }),
     }).then(r => r.json()).catch(() => ({ error: 'Network error' }))
 
-    if (!r.ok) { showToast(`❌ ${r.error ?? 'Update failed'}`); return }
+    if (!r.ok) { showToast(`Error: ${r.error ?? 'Update failed'}`); return }
     setSessions(prev => prev.map(s => s.id === id ? { ...s, taskStatus } : s))
 
     const session = sessions.find(s => s.id === id)
@@ -896,9 +903,9 @@ export default function AutoLogView() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wpId: session.opTaskId, islStatus: taskStatus }),
       }).then(r => r.json()).catch(() => ({ ok: false }))
-      showToast(opR.synced ? `✅ Status updated → OP #${session.opTaskId}` : '✅ Status saved (OP offline)')
+      showToast(opR.synced ? `Status updated → OP #${session.opTaskId}` : 'Status saved (OP offline)')
     } else {
-      showToast('✅ Status updated')
+      showToast('Status updated')
     }
   }
 
@@ -908,7 +915,7 @@ export default function AutoLogView() {
       body: JSON.stringify({ hasExplicitCmd: true }),
     }).catch(() => {})
     setSessions(prev => prev.map(s => s.id === id ? { ...s, hasExplicitCmd: true } : s))
-    showToast('✅ Session confirmed')
+    showToast('Session confirmed')
   }
 
   async function doUndo(session: Session) {
@@ -916,15 +923,15 @@ export default function AutoLogView() {
     const r = await fetch(`/api/isl/sessions/${session.id}`, { method: 'DELETE' }).then(r => r.json()).catch(() => ({ error: 'Network error' }))
     if (r.ok) {
       setSessions(prev => prev.map(s => s.id === session.id ? { ...s, pushStatus: 'discarded', undoneAt: new Date().toISOString() } : s))
-      showToast(`✅ Moved to backlog — task #${session.opTaskId} → [REVIEW]`)
+      showToast(`Moved to backlog — task #${session.opTaskId} → [REVIEW]`)
     } else {
-      showToast(`❌ ${r.error ?? 'Failed'}`)
+      showToast(`Error: ${r.error ?? 'Failed'}`)
     }
   }
 
   async function doImprove(session: Session) {
     setImprovingId(session.id)
-    showToast('⏳ Improving with AI…')
+    showToast('Improving with AI…')
     try {
       const r = await fetch('/api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -939,9 +946,9 @@ export default function AutoLogView() {
           body: JSON.stringify({ title: r.title ?? session.title, bullets: r.bullets ?? session.bullets }),
         })
         setSessions(prev => prev.map(s => s.id === session.id ? { ...s, title: r.title ?? s.title, bullets: r.bullets ?? s.bullets } : s))
-        showToast('✨ Summary improved by AI')
+        showToast('Summary improved by AI')
       }
-    } catch { showToast('❌ Improve failed') }
+    } catch { showToast('Improve failed') }
     setImprovingId(null)
   }
 
@@ -950,13 +957,13 @@ export default function AutoLogView() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ wpId: taskId, islStatus }),
     }).then(r => r.json()).catch(() => ({ ok: false }))
-    showToast(r.synced ? `✅ OP #${taskId} synced → ${islStatus}` : `❌ Sync failed for #${taskId}`)
+    showToast(r.synced ? `OP #${taskId} synced → ${islStatus}` : `Sync failed for #${taskId}`)
     if (r.synced) load()
   }
 
   function doEditSaved(id: string, updated: Partial<Session>) {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s))
-    showToast('✅ Session updated')
+    showToast('Session updated')
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1000,14 +1007,14 @@ export default function AutoLogView() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">🤖 Auto Log</h2>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Bot size={16} /> Auto Log</h2>
           <p className="text-xs text-gray-400 mt-0.5">Sessions from Claude Code — synced to OpenProject</p>
         </div>
         {mainTab === 'sessions' && (
           <button onClick={() => setQuickLogOpen(true)}
-            className="px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition flex-shrink-0 hover:opacity-90"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition flex-shrink-0 hover:opacity-90"
             style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}>
-            ✍️ Quick Log
+            <Pencil size={12} /> Quick Log
           </button>
         )}
       </div>
@@ -1015,17 +1022,17 @@ export default function AutoLogView() {
       {/* Main sub-nav */}
       <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
         {([
-          ['sessions',  '🤖 Sessions',   sessions.length],
-          ['my-tasks',  '📂 My OP Tasks', (cache.myOpenTasks?.length ?? 0) + (cache.myClosedTasks?.length ?? 0)],
-          ['untracked', '📌 Untracked',   (cache.myOpenTasks ?? []).filter(t => !sessions.some(s => s.opTaskId === t.id) && t.islStatus !== 'done' && t.islStatus !== 'rejected').length],
-        ] as const).map(([t, label, count]) => (
-          <button key={t} onClick={() => setMainTab(t)}
-            className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition -mb-px ${
-              mainTab === t
+          { id: 'sessions'  as const, icon: <Bot size={12} />,    label: 'Sessions',    count: sessions.length },
+          { id: 'my-tasks'  as const, icon: <Folder size={12} />, label: 'My OP Tasks', count: (cache.myOpenTasks?.length ?? 0) + (cache.myClosedTasks?.length ?? 0) },
+          { id: 'untracked' as const, icon: <Pin size={12} />,    label: 'Untracked',   count: (cache.myOpenTasks ?? []).filter(t => !sessions.some(s => s.opTaskId === t.id) && t.islStatus !== 'done' && t.islStatus !== 'rejected').length },
+        ]).map(({ id, icon, label, count }) => (
+          <button key={id} onClick={() => setMainTab(id)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition -mb-px ${
+              mainTab === id
                 ? 'border-violet-500 text-violet-600 dark:text-violet-400'
                 : 'border-transparent text-gray-400 hover:text-gray-600'
             }`}>
-            {label} <span className="text-[10px] opacity-60 ml-0.5">({count})</span>
+            {icon}{label} <span className="text-[10px] opacity-60 ml-0.5">({count})</span>
           </button>
         ))}
       </div>
@@ -1057,7 +1064,7 @@ export default function AutoLogView() {
         <div className="space-y-3">
           {!sprintStats && !loading && (
             <div className="flex items-center gap-2 px-4 py-2.5 border border-amber-100 dark:border-amber-900 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 text-[10px] text-amber-600 dark:text-amber-400">
-              <span>⚠️</span>
+              <AlertTriangle size={12} className="flex-shrink-0" />
               <span>Tidak ada sprint berjalan — sprint stats tidak tersedia.</span>
             </div>
           )}
@@ -1067,7 +1074,7 @@ export default function AutoLogView() {
               <div className="border border-gray-100 dark:border-gray-800 rounded-xl px-4 py-2.5 space-y-1.5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400">🗓 {sprintStats.sprint.name}</span>
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400"><CalendarDays size={10} />{sprintStats.sprint.name}</span>
                     <span className="text-[10px] text-gray-400">ends {sprintStats.sprint.endDate}</span>
                   </div>
                   <div className="flex items-center gap-2 text-[10px]">
@@ -1087,7 +1094,7 @@ export default function AutoLogView() {
             )
           })()}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-gray-400 flex-shrink-0">🗓 Sprint:</span>
+            <span className="flex items-center gap-1 text-[11px] text-gray-400 flex-shrink-0"><CalendarDays size={11} />Sprint:</span>
             <div className="flex gap-1 flex-wrap">
               <button onClick={() => setSprintFilter(null)}
                 className={`px-2.5 py-1 text-[10px] font-semibold rounded-full transition ${sprintFilter === null ? 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 hover:bg-gray-200'}`}>
@@ -1118,7 +1125,7 @@ export default function AutoLogView() {
       {/* Sprint filter — first so user knows context before seeing counts */}
       {availableSprints.length > 0 && (
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-400 flex-shrink-0">🗓 Sprint:</span>
+          <span className="flex items-center gap-1 text-[11px] text-gray-400 flex-shrink-0"><CalendarDays size={9} /> Sprint:</span>
           <div className="flex gap-1 flex-wrap">
             <button
               onClick={() => setSprintFilter(null)}
@@ -1150,15 +1157,15 @@ export default function AutoLogView() {
       {/* Stats bar */}
       <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs text-gray-500 dark:text-gray-400">
         <span><span className="font-bold text-gray-800 dark:text-gray-100">{filtered.length}</span> sessions</span>
-        <span><span className="font-bold text-gray-800 dark:text-gray-100">⏱ {formatDur(totalMins)}</span> <span className="text-gray-400">actual to OP</span></span>
+        <span className="flex items-center gap-1"><span className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-0.5"><Clock size={10} />{formatDur(totalMins)}</span> <span className="text-gray-400">actual to OP</span></span>
         {pendingVal > 0 && (
           <button
             onClick={() => { setFilter('all'); showToast(`Showing ${pendingVal} sessions needing validation`) }}
-            className="text-amber-600 dark:text-amber-400 font-semibold hover:underline">
-            ⚠️ {pendingVal} need validation
+            className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold hover:underline">
+            <AlertTriangle size={10} /> {pendingVal} need validation
           </button>
         )}
-        <button onClick={() => load()} className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition" title="Refresh">↻ Refresh</button>
+        <button onClick={() => load()} className="ml-auto flex items-center gap-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition" title="Refresh"><RefreshCw size={12} /> Refresh</button>
       </div>
 
       {/* Filter tabs */}
@@ -1179,7 +1186,7 @@ export default function AutoLogView() {
       {/* Epic → Story → Task → Session tree */}
       {epicList.length === 0 ? (
         <div className="text-center text-gray-400 text-sm py-16">
-          <div className="text-4xl mb-3">🤖</div>
+          <div className="mb-3 flex justify-center"><Bot size={40} className="text-gray-300 dark:text-gray-600" /></div>
           <p className="font-medium">No sessions yet.</p>
           <p className="text-xs mt-1 text-gray-300 dark:text-gray-600">Every completed Claude Code session will appear here.</p>
         </div>
@@ -1246,8 +1253,8 @@ function ActiveInOP({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition text-left"
       >
-        <span className="text-gray-400 text-xs flex-shrink-0">{open ? '▼' : '▶'}</span>
-        <span className="text-amber-500 text-base flex-shrink-0">📌</span>
+        <span className="text-gray-400 flex-shrink-0">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+        <Pin size={14} className="text-amber-500 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Active in OP</span>
           <span className="text-[11px] text-gray-400 ml-2">tasks open in OP without ISL session</span>
@@ -1288,12 +1295,12 @@ function ActiveInOP({
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400">
                   {t.islStatus && <span className="capitalize">{t.islStatus.replace('_', ' ')}</span>}
-                  {t.sprintName && <><span>·</span><span>🗓 {t.sprintName}</span></>}
-                  {t.assignee && <><span>·</span><span>👤 {t.assignee}</span></>}
+                  {t.sprintName && <><span>·</span><span className="flex items-center gap-0.5"><CalendarDays size={9} />{t.sprintName}</span></>}
+                  {t.assignee && <><span>·</span><span className="flex items-center gap-0.5"><User size={9} />{t.assignee}</span></>}
                 </div>
               </div>
               <button
-                onClick={() => { navigator.clipboard.writeText(`!ticket:${t.id}`); onToast(`📋 Copied !ticket:${t.id}`) }}
+                onClick={() => { navigator.clipboard.writeText(`!ticket:${t.id}`); onToast(`Copied !ticket:${t.id}`) }}
                 className="px-2.5 py-1 text-[10px] font-semibold text-indigo-600 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition flex-shrink-0">
                 !ticket
               </button>

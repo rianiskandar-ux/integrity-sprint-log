@@ -8,6 +8,7 @@ import type { CalendarEvent } from '@/app/api/calendar/events/route'
 import { useI18n } from '@/lib/i18n'
 import SprintPlanView from './SprintPlanView'
 import NextSprintTab from './NextSprintTab'
+import { BarChart2, FileText, CalendarRange, LayoutList, ClipboardList, Sparkles, CalendarDays } from 'lucide-react'
 import AgendaTab from './AgendaTab'
 
 interface Props {
@@ -225,7 +226,7 @@ function OverviewTab({ data, loading }: { data: OverviewData | null; loading: bo
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition">
               {aiLoading
                 ? <><span className="w-3 h-3 border border-t-transparent border-white rounded-full animate-spin" /> Generating…</>
-                : '✨ Generate'}
+                : <><Sparkles size={10} /> Generate</>}
             </button>
           )}
           {aiDone && (
@@ -325,7 +326,7 @@ function OpAgendaBanner({ reviewEvent, agendaOpen, setAgendaOpen, t }: {
     <div className={`mb-5 rounded-xl border p-4 ${isToday ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800' : isTomorrow ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' : 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800'}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-2.5">
-          <span className="text-lg">{isToday ? '🔴' : isTomorrow ? '🟡' : '📅'}</span>
+          <span className={`w-4 h-4 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center ${isToday ? 'bg-red-500' : isTomorrow ? 'bg-amber-400' : ''}`}>{!isToday && !isTomorrow && <CalendarDays size={16} className="text-blue-500" />}</span>
           <div>
             <p className={`text-xs font-bold ${isToday ? 'text-red-700 dark:text-red-300' : isTomorrow ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'}`}>
               {isToday ? t('sprint.review_today') : isTomorrow ? t('sprint.review_tomorrow') : `Sprint Review ${daysUntil} ${t('sprint.review_days')}`}
@@ -372,7 +373,7 @@ function OpAgendaBanner({ reviewEvent, agendaOpen, setAgendaOpen, t }: {
             onClick={() => navigator.clipboard.writeText(copyText)}
             className="mt-3 px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
           >
-            📋 Copy Sprint Plan Agenda
+            <ClipboardList size={12} className="inline mr-1" /> Copy Sprint Plan Agenda
           </button>
         </div>
       )}
@@ -414,7 +415,7 @@ function AgendaBanner({ reviewEvent, projects, projectSprints, currentSprintNo, 
     <div className={`mb-5 rounded-xl border p-4 ${isToday ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800' : isTomorrow ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' : 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800'}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-2.5">
-          <span className="text-lg">{isToday ? '🔴' : isTomorrow ? '🟡' : '📅'}</span>
+          <span className={`w-4 h-4 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center ${isToday ? 'bg-red-500' : isTomorrow ? 'bg-amber-400' : ''}`}>{!isToday && !isTomorrow && <CalendarDays size={16} className="text-blue-500" />}</span>
           <div>
             <p className={`text-xs font-bold ${isToday ? 'text-red-700 dark:text-red-300' : isTomorrow ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'}`}>
               {isToday ? t('sprint.review_today') : isTomorrow ? t('sprint.review_tomorrow') : `Sprint Review ${daysUntil} ${t('sprint.review_days')}`}
@@ -726,9 +727,10 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
 
   const sprintNos = Object.keys(sprintMeta).map(Number).sort((a, b) => b - a)
 
-  // Build ISL sprint → OP sprint name map using date overlap
+  // Build ISL sprint → OP sprint name/id map using date overlap
   // Use opSprintList (loaded on mount) so labels resolve immediately, not after per-sprint overview
   const opSprintByIsl: Record<number, string> = {}
+  const opSprintIdByIsl: Record<number, number> = {}
   const sourceList = opSprintList.length ? opSprintList : (overviewData?.allSprints ?? []) as OpSprint[]
   for (const sno of sprintNos) {
     const meta = sprintMeta[sno]
@@ -736,15 +738,15 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
     const sd = new Date(meta.start).toISOString().split('T')[0]
     const ed = new Date(meta.end).toISOString().split('T')[0]
     const match = sourceList.find(s => s.startDate <= ed && s.endDate >= sd)
-    if (match) opSprintByIsl[sno] = match.name
+    if (match) { opSprintByIsl[sno] = match.name; opSprintIdByIsl[sno] = match.id }
   }
 
-  const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'overview',     label: 'Overview',     icon: '📊' },
-    { id: 'worklog',      label: 'Work Log',      icon: '📝' },
-    { id: 'plan',         label: 'Sprint Plan',   icon: '🗓' },
-    { id: 'next-sprint',  label: 'Next Sprint',   icon: '🗂' },
-    { id: 'agenda',       label: 'Agenda',        icon: '📋' },
+  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'overview',     label: 'Overview',     icon: <BarChart2 size={13} /> },
+    { id: 'worklog',      label: 'Work Log',      icon: <FileText size={13} /> },
+    { id: 'plan',         label: 'Sprint Plan',   icon: <CalendarRange size={13} /> },
+    { id: 'next-sprint',  label: 'Next Sprint',   icon: <LayoutList size={13} /> },
+    { id: 'agenda',       label: 'Agenda',        icon: <ClipboardList size={13} /> },
   ]
 
   return (
@@ -788,7 +790,7 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <span>{icon}</span>
+            {icon}
             {label}
           </button>
         ))}
@@ -814,23 +816,25 @@ export default function SprintView({ projectSprints, sprintMeta, currentSprintNo
       )}
       {tab === 'next-sprint' && (
         viewSprintNo !== currentSprintNo
-          ? <PastSprintNotice label="Next Sprint" currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`} />
+          ? <PastSprintNotice
+              label="Next Sprint"
+              currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`}
+            />
           : <NextSprintTab currentSprintNo={currentSprintNo} />
       )}
       {tab === 'agenda' && (
         viewSprintNo !== currentSprintNo
-          ? <PastSprintNotice label="Agenda" currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`} />
+          ? <PastSprintNotice
+              label="Agenda"
+              currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`}
+            />
           : <AgendaTab currentSprintNo={currentSprintNo} />
       )}
       {tab === 'plan' && (
-        viewSprintNo !== currentSprintNo
-          ? <PastSprintNotice label="Sprint Plan" currentSprintName={opSprintByIsl[currentSprintNo] ?? `Sprint #${currentSprintNo}`} note="Sprint Plan selalu menampilkan sprint aktif dari OP — data sprint lama tidak tersedia di sini." />
-          : (
-            <div>
-              <OpAgendaBanner reviewEvent={reviewEvent} agendaOpen={agendaOpen} setAgendaOpen={setAgendaOpen} t={t} />
-              <SprintPlanView />
-            </div>
-          )
+        <div>
+          <OpAgendaBanner reviewEvent={reviewEvent} agendaOpen={agendaOpen} setAgendaOpen={setAgendaOpen} t={t} />
+          <SprintPlanView initialSprintId={opSprintIdByIsl[viewSprintNo] ?? null} />
+        </div>
       )}
     </div>
   )
