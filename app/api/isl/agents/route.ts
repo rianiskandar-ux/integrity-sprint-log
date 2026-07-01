@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sessions, agentLogs, cases, events } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 import { getTimer } from '@/lib/work-timer'
 import { OWNER_UID } from '@/lib/auth'
 import { readFileSync, existsSync } from 'fs'
@@ -233,6 +233,47 @@ export async function GET() {
       id: 'luna', name: 'Luna', role: 'Hub Curator',
       description: 'Kelola antrian sesi di Daily Hub untuk triage',
       status: 'issue', statusText: 'Error', detail: 'Tidak bisa query hub', lastActive: null,
+    })
+  }
+
+  // ── Kafi — Field Agent (external bridge) ─────────────────────────────────
+  try {
+    const todayKafiSessions = await db.select()
+      .from(sessions)
+      .where(and(eq(sessions.date, today), eq(sessions.source, 'kafi')))
+      .orderBy(desc(sessions.createdAt))
+      .limit(1)
+
+    const lastKafi   = todayKafiSessions[0] ?? null
+    const lastMinsK  = lastKafi?.createdAt ? minutesAgo(lastKafi.createdAt.toISOString()) : null
+    const countKafi  = await db.select()
+      .from(sessions)
+      .where(and(eq(sessions.date, today), eq(sessions.source, 'kafi')))
+      .then(r => r.length)
+
+    let status: AgentStatus = 'idle'
+    let statusText = 'Standby'
+    let detail = 'Belum ada capture hari ini'
+
+    if (countKafi > 0 && lastMinsK !== null && lastMinsK < 60) {
+      status = 'active'; statusText = 'Aktif'
+      detail = `${countKafi} capture hari ini · ${fmtAgo(lastMinsK)}`
+    } else if (countKafi > 0) {
+      status = 'idle'; statusText = 'Idle'
+      detail = `${countKafi} capture hari ini · ${lastMinsK ? fmtAgo(lastMinsK) : '—'}`
+    }
+
+    agents.push({
+      id: 'kafi', name: 'Kafi', role: 'Field Agent',
+      description: 'Capture aktivitas Claude Code luar ISL → kirim ke Arka via Hub',
+      status, statusText, detail,
+      lastActive: lastKafi?.createdAt?.toISOString() ?? null,
+    })
+  } catch {
+    agents.push({
+      id: 'kafi', name: 'Kafi', role: 'Field Agent',
+      description: 'Capture aktivitas Claude Code luar ISL → kirim ke Arka via Hub',
+      status: 'idle', statusText: 'Standby', detail: 'Belum ada data capture', lastActive: null,
     })
   }
 
