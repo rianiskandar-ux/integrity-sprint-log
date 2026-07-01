@@ -56,7 +56,9 @@ server.err
 startup.log
 
 # Personal task/memory data (per-user)
+# Note: app/api/isl/task-memory/ is source code — kept (negated below)
 task-memory/
+!app/api/isl/task-memory/
 memory/
 
 # Personal bat scripts with hardcoded paths/tokens

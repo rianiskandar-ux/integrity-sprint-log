@@ -253,6 +253,14 @@ function resolveTaskHierarchy(taskId) {
 }
 
 function appendTaskMemory(taskId, title, bullets, date, actualMins, sessionId) {
+  // POST to ISL task_memory API (Postgres) — primary storage
+  fetch(`${ISL_URL}/api/isl/task-memory`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ opTaskId: taskId, title, bullets, date, actualMins, sessionId }),
+  }).catch(() => {})
+
+  // Keep MD file as secondary (read by Claude Code memory system)
   try {
     const hier    = resolveTaskHierarchy(taskId)
     const dir     = join(MEMORY_DIR,

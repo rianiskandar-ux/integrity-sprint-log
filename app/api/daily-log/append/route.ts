@@ -3,6 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import { getRequestContext } from '@/lib/request-auth'
 import { isOwnerUid } from '@/lib/auth'
+import { db } from '@/lib/db'
+import { dailyLogs } from '@/lib/db/schema'
+import { randomUUID } from 'crypto'
 
 const SPRINT_DIR = process.env.SPRINT_OUTPUT_DIR
   ?? path.join(process.env.CACHE_DATA_DIR ?? process.cwd(), 'daily-sprints')
@@ -60,14 +63,25 @@ export async function POST(req: Request) {
     const { title, bullets = [], date, time } = body
     if (!title?.trim()) return NextResponse.json({ error: 'title required' }, { status: 400 })
 
-    // Only the owner writes the shared markdown. Team members are DB-backed; skip
-    // the file write so their notes never pollute the owner's daily-sprints files.
     const ctx = await getRequestContext()
-    if (!isOwnerUid(ctx?.uid)) {
-      return NextResponse.json({ ok: true, skipped: 'non-owner (DB-backed)' })
-    }
-
     const today = date ?? new Date().toISOString().slice(0, 10)
+
+    // Always write to Postgres (all users)
+    const cleanBulletsForDB = (bullets ?? []).filter(b => b.trim())
+      .map(b => b.replace(/^\[\d+m\]\s*/, '').trim())
+    await db.insert(dailyLogs).values({
+      id:        `${today}-${randomUUID().slice(0, 8)}`,
+      userId:    ctx?.uid ?? null,
+      date:      today,
+      title:     title.trim(),
+      bullets:   cleanBulletsForDB,
+      sessionId: body.sessionId ?? null,
+    }).catch(() => {}) // non-fatal — file write is the fallback
+
+    // Only the owner writes the shared markdown file (backward compat for Daily Log view)
+    if (!isOwnerUid(ctx?.uid)) {
+      return NextResponse.json({ ok: true, db: true, skipped: 'non-owner (DB-backed)' })
+    }
     const timestamp = time ?? timeWIB()
     const filePath = path.join(SPRINT_DIR, `${today}.md`)
 

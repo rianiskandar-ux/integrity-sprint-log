@@ -167,6 +167,39 @@ export const cases = pgTable('cases', {
   index('cases_agent_idx').on(t.agentId, t.status),
 ])
 
+// ── daily_logs ─────────────────────────────────────────────────────────────────
+// Daily work log entries — replaces daily-sprints/*.md file storage
+export const dailyLogs = pgTable('daily_logs', {
+  id:        text('id').primaryKey(),          // <date>-<sessionId-slice>
+  userId:    integer('user_id').references(() => users.id),
+  date:      text('date').notNull(),           // YYYY-MM-DD
+  title:     text('title').notNull(),
+  bullets:   jsonb('bullets').$type<string[]>().notNull().default([]),
+  sessionId: text('session_id'),               // ISL session reference
+  opTaskId:  integer('op_task_id'),
+  loggedAt:  timestamp('logged_at').defaultNow().notNull(),
+}, (t) => [
+  index('daily_logs_user_date_idx').on(t.userId, t.date),
+  index('daily_logs_date_idx').on(t.date),
+])
+
+// ── task_memory ────────────────────────────────────────────────────────────────
+// Per-task work history from hooks — replaces memory/Epic-*/Story-*/Task-*.md
+export const taskMemory = pgTable('task_memory', {
+  id:         text('id').primaryKey(),         // <sessionId>-<taskId>
+  userId:     integer('user_id').references(() => users.id),
+  opTaskId:   integer('op_task_id').notNull(),
+  sessionId:  text('session_id'),
+  date:       text('date').notNull(),
+  title:      text('title').notNull(),
+  bullets:    jsonb('bullets').$type<string[]>().notNull().default([]),
+  actualMins: integer('actual_mins'),
+  loggedAt:   timestamp('logged_at').defaultNow().notNull(),
+}, (t) => [
+  index('task_memory_task_idx').on(t.opTaskId, t.date),
+  index('task_memory_user_idx').on(t.userId, t.date),
+])
+
 // ── events ─────────────────────────────────────────────────────────────────────
 // Timestamped audit log — semua kejadian sistem yang penting
 export const events = pgTable('events', {
