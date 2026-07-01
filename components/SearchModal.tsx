@@ -25,6 +25,22 @@ interface OPResult {
   description?: string
 }
 
+interface DBResult {
+  type: 'kb' | 'task_memory' | 'daily_log'
+  id: string
+  title: string
+  snippet: string
+  date: string
+  meta?: Record<string, unknown>
+}
+
+const DB_TYPE_LABEL: Record<string, string> = { kb: 'KB', task_memory: 'Task', daily_log: 'Daily' }
+const DB_TYPE_COLOR: Record<string, string> = {
+  kb:          'bg-purple-100 text-purple-700',
+  task_memory: 'bg-green-100 text-green-700',
+  daily_log:   'bg-orange-100 text-orange-700',
+}
+
 export default function SearchModal({ allTopics, onClose, onNavigate }: Props) {
   const { t } = useI18n()
   const [query, setQuery] = useState('')
@@ -32,6 +48,7 @@ export default function SearchModal({ allTopics, onClose, onNavigate }: Props) {
   const [opLoading, setOpLoading] = useState(false)
   const [opUrl, setOpUrl] = useState<string>('https://tokek.integrity-asia.com')
   const [selectedTask, setSelectedTask] = useState<OPResult | null>(null)
+  const [dbResults, setDbResults] = useState<DBResult[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -48,21 +65,26 @@ export default function SearchModal({ allTopics, onClose, onNavigate }: Props) {
 
   // OP live search (debounced 400ms)
   useEffect(() => {
-    if (query.trim().length < 2) { setOpResults([]); return }
+    if (query.trim().length < 2) { setOpResults([]); setDbResults([]); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       setOpLoading(true)
       try {
-        const res = await fetch(`/api/op/search?q=${encodeURIComponent(query.trim())}`)
-        const d = await res.json()
-        setOpResults(d.results ?? [])
-      } catch { setOpResults([]) }
+        // Run OP search + ISL DB history search in parallel
+        const [opRes, dbRes] = await Promise.allSettled([
+          fetch(`/api/op/search?q=${encodeURIComponent(query.trim())}`).then(r => r.json()),
+          // Only kb/task_memory/daily_log — sessions already covered by local markdown results
+          fetch(`/api/isl/search?q=${encodeURIComponent(query.trim())}&types=kb,task_memory,daily_log&limit=6`).then(r => r.json()),
+        ])
+        setOpResults(opRes.status === 'fulfilled' ? (opRes.value.results ?? []) : [])
+        setDbResults(dbRes.status === 'fulfilled' ? (dbRes.value.results ?? []) : [])
+      } catch { setOpResults([]); setDbResults([]) }
       finally { setOpLoading(false) }
     }, 400)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [query])
 
-  const hasResults = localResults.length > 0 || opResults.length > 0
+  const hasResults = localResults.length > 0 || opResults.length > 0 || dbResults.length > 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
@@ -197,6 +219,29 @@ export default function SearchModal({ allTopics, onClose, onNavigate }: Props) {
                   </button>
                 )
               })}
+            </>
+          )}
+
+          {/* ISL DB History — KB, task memory, daily logs */}
+          {dbResults.length > 0 && (
+            <>
+              <div className="px-4 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+                ISL History · {dbResults.length} entries
+              </div>
+              {dbResults.map((r) => (
+                <div key={r.id} className="flex items-start gap-3 px-4 py-2.5 border-b border-gray-50 dark:border-gray-800 last:border-0">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 mt-0.5 ${DB_TYPE_COLOR[r.type] ?? 'bg-gray-100 text-gray-500'}`}>
+                    {DB_TYPE_LABEL[r.type] ?? r.type}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                      {r.meta?.opTaskId != null ? `#${r.meta.opTaskId as number} ` : ''}{r.title}
+                    </p>
+                    {r.snippet && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{r.snippet}</p>}
+                  </div>
+                  <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">{r.date}</span>
+                </div>
+              ))}
             </>
           )}
         </div>
