@@ -44,18 +44,23 @@ export async function POST(req: Request) {
 
   const totalSpentMin = currentSpentMin + spentMin
   const autoPct       = estimatedMin > 0 ? Math.min(100, Math.round((totalSpentMin / estimatedMin) * 100)) : percentDone
-  const effectivePct  = percentDone ?? autoPct
+
+  // Detect current status from OP (fallback when statusId not sent = status unchanged)
+  const currentStatusHref = (wp._links?.status?.href as string) ?? ''
+  const currentStatusId   = parseInt(currentStatusHref.split('/').pop() ?? '0') || 0
+  const effectiveStatusId = statusId ?? currentStatusId
   // OP constraint: remainingTime must be 0 when status is Closed/Rejected or task is 100% done.
-  const isDoneStatus  = [12, 14].includes(statusId)  // 12=Closed, 14=Rejected
-  const remainingMin  = isDoneStatus || effectivePct === 100 ? 0 : Math.max(0, estimatedMin - totalSpentMin)
+  const isDoneStatus  = [12, 14].includes(effectiveStatusId)  // 12=Closed, 14=Rejected
+  const effectivePct  = isDoneStatus ? 100 : (percentDone ?? autoPct)
+  const remainingMin  = isDoneStatus || effectivePct >= 100 ? 0 : Math.max(0, estimatedMin - totalSpentMin)
 
   // Feature/Epic estimates are managed in OP, not from ISL — never write an estimate to them.
   const wpType = (wp._links?.type?.title ?? '') as string
   const estimateAllowed = !/^(feature|epic)$/i.test(wpType)
 
   const body: Record<string, unknown> = { lockVersion: wp.lockVersion }
-  if (statusId)            body._links        = { status: { href: `/api/v3/statuses/${statusId}` } }
-  if (percentDone !== undefined) body.percentageDone = percentDone ?? autoPct
+  if (statusId)                               body._links        = { status: { href: `/api/v3/statuses/${statusId}` } }
+  if (isDoneStatus || percentDone !== undefined) body.percentageDone = effectivePct
   if (typeof estimatedMins === 'number' && estimatedMins > 0 && estimateAllowed) body.estimatedTime = toISODuration(estimatedMins)
   if (estimatedMin > 0)    body.remainingTime = toISODuration(remainingMin)
 
@@ -72,11 +77,11 @@ export async function POST(req: Request) {
         method: 'PATCH', headers, body: JSON.stringify(body),
       })
       if (!patchRes.ok) return NextResponse.json({ error: await patchRes.text() }, { status: patchRes.status })
-      return NextResponse.json({ ok: true, percentDone: autoPct, remainingMin, pctSkipped: true })
+      return NextResponse.json({ ok: true, percentDone: effectivePct, remainingMin, pctSkipped: true })
     }
     return NextResponse.json({ error: errText }, { status: patchRes.status })
   }
 
   if (!patchRes.ok) return NextResponse.json({ error: await patchRes.text() }, { status: patchRes.status })
-  return NextResponse.json({ ok: true, percentDone: autoPct, remainingMin })
+  return NextResponse.json({ ok: true, percentDone: effectivePct, remainingMin })
 }

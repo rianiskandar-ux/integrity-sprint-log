@@ -96,6 +96,11 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
 
   useEffect(() => { load() }, [load])
 
+  // Closed/Rejected always 100% done
+  useEffect(() => {
+    if (statusId === 12 || statusId === 14) setPct(100)
+  }, [statusId])
+
   const loadEntries = useCallback(() => {
     setLoadingEntries(true)
     fetch(`/api/op/time-entries?wpId=${wpId}`)
