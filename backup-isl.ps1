@@ -36,7 +36,22 @@ try {
     Log "data dir OK: $DataTgz ($([math]::Round((Get-Item $DataTgz).Length / 1KB)) KB)"
     Log "data dir OK: $DataZip"
 
-    # 3. Rotasi - hapus backup lebih tua dari 30 hari
+    # 3. Offsite copy ke Google Drive (sync otomatis ke cloud oleh Drive for Desktop).
+    #    Best-effort: kalau Drive tidak mounted, backup lokal tetap sukses.
+    $DriveDir = "G:\My Drive\ISL-Backups"
+    try {
+        New-Item -ItemType Directory -Force $DriveDir | Out-Null
+        Copy-Item $SqlFile  $DriveDir -Force
+        Copy-Item $DataTgz $DriveDir -Force
+        Get-ChildItem $DriveDir -File | Where-Object {
+            $_.Name -match '^isl-(db|data)_' -and $_.LastWriteTime -lt (Get-Date).AddDays(-30)
+        } | Remove-Item -Force
+        Log "offsite OK: $DriveDir"
+    } catch {
+        Log "offsite SKIP: $($_.Exception.Message)"
+    }
+
+    # 4. Rotasi - hapus backup lebih tua dari 30 hari
     $removed = 0
     Get-ChildItem $BackupRoot -File | Where-Object {
         $_.Name -match '^isl-(db|data)_' -and $_.Extension -in '.sql','.tgz','.zip' -and $_.LastWriteTime -lt (Get-Date).AddDays(-30)
