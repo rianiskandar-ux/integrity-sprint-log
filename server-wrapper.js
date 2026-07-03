@@ -10,6 +10,31 @@ const pty = require('@homebridge/node-pty-prebuilt-multiarch')
 
 const ALLOWED_ORIGINS = new Set(['localhost', '127.0.0.1', '::1', 'daily-sprint.test'])
 
+// ── Claude CLI self-heal ─────────────────────────────────────────────
+// Corporate network blokir npm saat docker build, jadi binary sering hilang
+// setelah rebuild. Install sekali ke /opt/claude-cli (named volume, survive
+// rebuild); startup berikutnya menemukan binary dan skip. Non-blocking —
+// Next.js tetap boot; provider claude-cli baru siap begitu install selesai.
+;(function ensureClaudeCLI() {
+  if (process.platform === 'win32') return
+  const { existsSync } = require('fs')
+  const { spawn } = require('child_process')
+  const PREFIX = '/opt/claude-cli'
+  if (existsSync(`${PREFIX}/bin/claude`)) { console.log('[claude-cli] binary ok:', `${PREFIX}/bin/claude`); return }
+  if (existsSync('/usr/local/bin/claude')) { console.log('[claude-cli] binary ok: /usr/local/bin/claude'); return }
+  console.log('[claude-cli] binary tidak ditemukan — install ke', PREFIX, '…')
+  const inst = spawn('npm', ['install', '-g', `--prefix=${PREFIX}`, '@anthropic-ai/claude-code'], {
+    env: { ...process.env, npm_config_cache: '/tmp/.npm' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  inst.stdout.on('data', d => process.stdout.write(`[claude-cli] ${d}`))
+  inst.stderr.on('data', d => process.stderr.write(`[claude-cli] ${d}`))
+  inst.on('close', code => console.log(code === 0
+    ? '[claude-cli] install sukses — provider claude-cli siap'
+    : `[claude-cli] install gagal (exit ${code}) — cek jaringan, atau jalankan manual: docker exec --user root integrity-sprint-log npm install -g @anthropic-ai/claude-code`))
+  inst.on('error', e => console.error('[claude-cli] install error:', e.message))
+})()
+
 // Intercept the first http.createServer call (which is Next.js's server).
 const _orig = http.createServer.bind(http)
 let _attached = false

@@ -7,6 +7,12 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
+})
+
+pool.on('error', (err) => {
+  console.error('[DB Pool] Idle client error:', err.message)
 })
 
 export const db = drizzle(pool, { schema })

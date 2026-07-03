@@ -22,6 +22,18 @@ ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
+ENV HOME=/home/nextjs
+
+# Claude Code CLI — dipakai provider claude-cli di ISL chat.
+# || true: corporate network may block npm during build; fallback = runtime install
+# oleh server-wrapper.js ke /opt/claude-cli (named volume, survive rebuild).
+RUN npm install -g @anthropic-ai/claude-code || true
+
+# Prefix untuk runtime install claude CLI. Dibuat + di-chown SEBELUM volume mount
+# pertama: Docker menyalin ownership dari image ke named volume yang baru.
+RUN mkdir -p /opt/claude-cli && chown nextjs:nodejs /opt/claude-cli
+ENV PATH="/opt/claude-cli/bin:${PATH}"
+
 # Create writable data dirs
 RUN mkdir -p /app/daily-sprints /app/auth-data /app/cache-data /app/data \
     && echo '{"mode":"live"}' > /app/data/op-mode.json \
@@ -30,13 +42,6 @@ RUN mkdir -p /app/daily-sprints /app/auth-data /app/cache-data /app/data \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# Claude Code CLI — pure Node.js, no glibc deps needed with USE_BUILTIN_RIPGREP=0.
-RUN npm install -g @anthropic-ai/claude-code \
-    && mkdir -p /home/nextjs/.claude \
-    && chown -R nextjs:nodejs /home/nextjs
-ENV HOME=/home/nextjs
-ENV USE_BUILTIN_RIPGREP=0
 
 # ws + node-pty prebuilt from deps stage — copy directly, no compilation.
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/ws ./node_modules/ws

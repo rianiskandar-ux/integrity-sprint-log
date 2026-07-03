@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useI18n } from '@/lib/i18n'
-import { Clock, User, CalendarDays, ClipboardList, ChevronDown, ChevronRight, Loader2, Pencil, Paperclip } from 'lucide-react'
+import OpTaskModal from './OpTaskModal'
+import { Clock, User, CalendarDays, ClipboardList, ChevronDown, ChevronRight, Loader2, Pencil, Paperclip, Info } from 'lucide-react'
 
 interface OPTask {
   id: number
@@ -102,6 +103,7 @@ function TaskRow({
 }) {
   const { t } = useI18n()
   const [expanded, setExpanded]       = useState(false)
+  const [showDetail, setShowDetail]   = useState(false)
   const [suggest, setSuggest]         = useState<Suggestion | null>(null)
   const [suggesting, setSuggesting]   = useState(false)
   const [showLogForm, setShowLogForm] = useState(false)
@@ -220,6 +222,14 @@ function TaskRow({
           <option value="backlog">↓ Backlog</option>
           <option value="close">✕ Close</option>
         </select>
+
+        {/* Detail button */}
+        <button
+          onClick={e => { e.stopPropagation(); setShowDetail(true) }}
+          className="text-gray-300 dark:text-gray-600 hover:text-indigo-400 transition flex-shrink-0"
+          title="Lihat detail task dari OP">
+          <Info size={12} />
+        </button>
 
         {/* AI button */}
         <button
@@ -409,6 +419,14 @@ function TaskRow({
             )}
           </div>
         </div>
+      )}
+
+      {showDetail && (
+        <OpTaskModal
+          wpId={task.id}
+          opUrl={opUrl}
+          onClose={() => setShowDetail(false)}
+        />
       )}
     </div>
   )

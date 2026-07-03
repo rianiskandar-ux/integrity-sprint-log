@@ -12,6 +12,7 @@ export async function GET() {
     llmProvider:     cfg.llmProvider || 'anthropic',
     llmApiKeySet:    !!cfg.llmApiKey,
     llmModel:        cfg.llmModel || '',
+    llmEffort:       cfg.llmEffort || '',
     setupDone:       cfg.setupDone,
     updatedAt:       cfg.updatedAt,
     opTokenSource:      cfg.opToken      ? 'user-config' : (process.env.OP_API_TOKEN      ? 'env' : 'none'),

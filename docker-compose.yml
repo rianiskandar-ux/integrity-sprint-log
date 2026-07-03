@@ -29,6 +29,11 @@ services:
     # mapping here. Override OP_HOST_IP in .env if the OP server IP changes.
     extra_hosts:
       - "tokek.integrity-asia.com:${OP_HOST_IP:-10.30.40.147}"
+    dns:
+      - 10.30.40.42
+      - 10.236.144.228
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,6 +50,10 @@ services:
       - ${CLAUDE_CREDS_DIR:-C:/Users/user199/.claude}:/home/nextjs/.claude
       # Config utama claude (.claude.json) read-only: container baca, host aman dari corrupt.
       - ${CLAUDE_CONFIG_FILE:-C:/Users/user199/.claude.json}:/home/nextjs/.claude.json:ro
+      # Binary claude CLI di named volume → survive rebuild. Corporate network blokir
+      # npm saat docker build, jadi install jalan sekali saat runtime (server-wrapper.js)
+      # dan hasilnya persist di sini. Tidak perlu reinstall manual lagi tiap rebuild.
+      - isl-claude-cli:/opt/claude-cli
     environment:
       - DATABASE_URL=postgresql://isl:${POSTGRES_PASSWORD:-isl-local-2026}@postgres:5432/isl
       - OP_BASE_URL=${OP_BASE_URL:-https://tokek.integrity-asia.com}
@@ -83,3 +92,4 @@ volumes:
   isl-pgdata:
   isl-auth:
   isl-data:
+  isl-claude-cli:

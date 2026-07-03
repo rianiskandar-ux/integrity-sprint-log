@@ -23,6 +23,7 @@ export interface LLMConfig {
   apiKey:    string          // ignored for ollama
   model?:    string          // falls back to DEFAULT_MODELS[provider]
   baseUrl?:  string          // override for ollama or custom endpoints
+  effort?:   string          // claude-cli only: reasoning effort low|medium|high|max
 }
 
 export const DEFAULT_MODELS: Record<LLMProvider, string> = {
@@ -66,7 +67,8 @@ export async function callLLM(prompt: string, config: LLMConfig): Promise<string
       return callGemini(prompt, model, config.apiKey)
 
     case 'claude-cli':
-      return callClaudeCLI(prompt)
+      // 'claude' sentinel = pakai default model dari CLI (jangan pass --model)
+      return callClaudeCLI(prompt, model !== 'claude' ? model : undefined, config.effort)
 
     // OpenAI-compatible providers
     case 'openai':
@@ -150,7 +152,7 @@ async function callGemini(prompt: string, model: string, apiKey: string): Promis
 }
 
 /** Call Claude Code CLI as subprocess — uses existing SSO session, no API key needed */
-async function callClaudeCLI(prompt: string): Promise<string> {
+async function callClaudeCLI(prompt: string, model?: string, effort?: string): Promise<string> {
   const { spawn } = await import('child_process')
   const isWin = process.platform === 'win32'
 
@@ -161,8 +163,15 @@ async function callClaudeCLI(prompt: string): Promise<string> {
     ? process.env.HOME
     : isWin ? (process.env.USERPROFILE ?? process.env.HOME ?? '') : '/home/nextjs'
 
+  // --model/--effort per-invocation: config global (~/.claude/settings.json ter-mount
+  // dari host) TIDAK disentuh, jadi terminal lokal user tidak terpengaruh.
+  // Haiku tidak support effort levels — skip flag agar CLI tidak error.
+  const args = ['--print', '--output-format', 'text']
+  if (model) args.push('--model', model)
+  if (effort && model !== 'haiku') args.push('--effort', effort)
+
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(isWin ? 'claude.cmd' : 'claude', ['--print', '--output-format', 'text'], {
+    const child = spawn(isWin ? 'claude.cmd' : 'claude', args, {
       timeout: 300000,  // 5 min — panjang untuk dokumen besar
       env: { ...process.env, HOME: home },
       shell: isWin,
@@ -203,7 +212,7 @@ export function getLLMConfig(): LLMConfig | null {
   const apiKey   = cfg.llmApiKey || (provider === 'anthropic' ? getAnthropicKey() : '')
 
   // Local providers don't need a key
-  if (provider === 'ollama' || provider === '9router' || provider === 'claude-cli') return { provider, apiKey: '', model: cfg.llmModel || undefined }
+  if (provider === 'ollama' || provider === '9router' || provider === 'claude-cli') return { provider, apiKey: '', model: cfg.llmModel || undefined, effort: cfg.llmEffort || undefined }
   if (!apiKey) return null
 
   return { provider, apiKey, model: cfg.llmModel || undefined }

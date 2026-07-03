@@ -277,20 +277,72 @@ function ActivityTimeline({
   autoSuggest?: boolean
 }) {
   const [suggesting, setSuggesting] = useState(false)
+  const [assigningDuration, setAssigningDuration] = useState(false)
 
   useEffect(() => {
     if (autoSuggest && !suggesting) suggestSegments()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSuggest])
 
+  async function callAI(prompt: string): Promise<{ duration: number; note: string }[] | null> {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: prompt }],
+        taskContext: { id: 'suggest', title: taskTitle ?? '', taskType: 'new' },
+      }),
+    })
+    if (!res.ok) return null
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let full = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      full += dec.decode(value, { stream: true })
+    }
+    const match = full.match(/\[[\s\S]*\]/)
+    if (!match) return null
+    return (JSON.parse(match[0]) as { duration: number; note: string }[])
+      .filter(s => s && s.note != null)
+      .map(s => ({ duration: Math.max(1, Math.round(Number(s.duration) || 1)), note: String(s.note) }))
+  }
+
+  function normalizeToTotal(parsed: { duration: number; note: string }[], total: number) {
+    const sum = parsed.reduce((a, s) => a + s.duration, 0)
+    if (sum !== total && parsed.length > 0) {
+      const last = parsed.length - 1
+      parsed[last] = { ...parsed[last], duration: Math.max(1, parsed[last].duration + (total - sum)) }
+    }
+    return parsed
+  }
+
+  // Generate new activity segments from task title (replaces existing)
   async function suggestSegments() {
     setSuggesting(true)
     try {
-      const items = segments.filter(s => s.note.trim())
-      // If there are real activities, REFINE them (keep items, assign realistic minutes).
-      // Otherwise fall back to generating phases from the title.
-      const prompt = items.length > 0
-        ? `You are a work-log assistant. Below are the activities done for a task and the total time spent. Assign a REALISTIC duration (minutes) to EACH activity based on its likely effort — some longer, some shorter, NOT an even split. Keep the SAME activities, SAME order, SAME count.
+      const prompt = `You are a work-log assistant. Suggest 3-4 realistic activity segments for this task.
+
+Task: "${taskTitle ?? 'Work session'}"
+Total: ${totalMins > 0 ? totalMins : 60} minutes
+
+Reply with ONLY a JSON array: [{"duration": N, "note": "..."}, ...]
+- durations sum to exactly ${totalMins > 0 ? totalMins : 60}; notes concise & action-oriented`
+
+      const parsed = await callAI(prompt)
+      if (parsed && parsed.length > 0) onChange(normalizeToTotal(parsed, totalMins > 0 ? totalMins : 60))
+    } catch { /* ignore */ }
+    setSuggesting(false)
+  }
+
+  // Assign realistic duration to existing segments (keeps notes, reassigns minutes)
+  async function assignDuration() {
+    const items = segments.filter(s => s.note.trim())
+    if (items.length === 0 || totalMins === 0) return
+    setAssigningDuration(true)
+    try {
+      const prompt = `You are a work-log assistant. Below are the activities done for a task and the total time spent. Assign a REALISTIC duration (minutes) to EACH activity based on its likely effort — some longer, some shorter, NOT an even split. Keep the SAME activities, SAME order, SAME count.
 
 Task: "${taskTitle ?? 'Work session'}"
 Total time: ${totalMins} minutes
@@ -303,51 +355,11 @@ Rules:
 - durations must sum to exactly ${totalMins}
 - keep each note's meaning and language; you may lightly tidy wording
 - bigger/complex items get more minutes, trivial ones less`
-        : `You are a work-log assistant. Suggest 3-4 realistic activity segments for this task.
 
-Task: "${taskTitle ?? 'Work session'}"
-Total: ${totalMins} minutes
-
-Reply with ONLY a JSON array: [{"duration": N, "note": "..."}, ...]
-- durations sum to exactly ${totalMins}; notes concise & action-oriented`
-
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: prompt }],
-          taskContext: { id: 'suggest', title: taskTitle ?? '', taskType: 'new' },
-        }),
-      })
-      if (!res.ok) return
-
-      const reader = res.body!.getReader()
-      const dec = new TextDecoder()
-      let full = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        full += dec.decode(value, { stream: true })
-      }
-
-      const match = full.match(/\[[\s\S]*\]/)
-      if (match) {
-        let parsed = (JSON.parse(match[0]) as { duration: number; note: string }[])
-          .filter(s => s && s.note != null)
-          .map(s => ({ duration: Math.max(1, Math.round(Number(s.duration) || 1)), note: String(s.note) }))
-        if (parsed.length > 0) {
-          // Normalize so durations sum EXACTLY to totalMins (AI can be off by a few)
-          const sum = parsed.reduce((a, s) => a + s.duration, 0)
-          if (sum !== totalMins) {
-            const diff = totalMins - sum
-            const last = parsed.length - 1
-            parsed[last] = { ...parsed[last], duration: Math.max(1, parsed[last].duration + diff) }
-          }
-          onChange(parsed)
-        }
-      }
+      const parsed = await callAI(prompt)
+      if (parsed && parsed.length > 0) onChange(normalizeToTotal(parsed, totalMins))
     } catch { /* ignore */ }
-    setSuggesting(false)
+    setAssigningDuration(false)
   }
 
   const usedMins = segments.reduce((s, x) => s + x.duration, 0)
@@ -370,10 +382,16 @@ Reply with ONLY a JSON array: [{"duration": N, "note": "..."}, ...]
       <div className="flex items-center justify-between">
         <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Activity Timeline</label>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={suggestSegments} disabled={suggesting}
-            title="AI atur ulang durasi tiap item secara natural (item dipertahankan, sum tetap pas)"
-            className="text-[9px] font-semibold text-amber-500 hover:text-amber-700 disabled:opacity-50 flex items-center gap-0.5">
-            {suggesting ? <><Loader2 size={9} className="animate-spin" /> Suggesting…</> : <><Sparkles size={9} /> Suggest durasi</>}
+          <button type="button" onClick={suggestSegments} disabled={suggesting || assigningDuration}
+            title="AI generate activity segments dari judul task (replace existing)"
+            className="text-[9px] font-semibold text-violet-500 hover:text-violet-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-0.5">
+            {suggesting ? <><Loader2 size={9} className="animate-spin" /> Generating…</> : <><Sparkles size={9} /> AI segments</>}
+          </button>
+          <button type="button" onClick={assignDuration}
+            disabled={assigningDuration || suggesting || segments.filter(s => s.note.trim()).length === 0 || totalMins === 0}
+            title={totalMins === 0 ? 'Isi durasi dulu' : segments.filter(s => s.note.trim()).length === 0 ? 'Tambah segments dulu' : 'AI assign menit per segment secara natural (sum = total durasi)'}
+            className="text-[9px] font-semibold text-amber-500 hover:text-amber-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-0.5">
+            {assigningDuration ? <><Loader2 size={9} className="animate-spin" /> Assigning…</> : <><Sparkles size={9} /> AI duration</>}
           </button>
           <button type="button"
             onClick={() => onChange([...segments, { duration: Math.max(1, totalMins - usedMins), note: '' }])}
@@ -510,6 +528,24 @@ function SessionCard({
   const fmtMin = (x: number) => x >= 60 ? `${Math.floor(x / 60)}h${x % 60 > 0 ? ` ${x % 60}m` : ''}` : `${x}m`
   const origEst = session.estimatedMins ?? 60
   const actMins = session.actualMins ?? null
+
+  // Redistribute segment durations proportionally when total estimate changes
+  function redistributeSegments(newTotal: number) {
+    if (newTotal <= 0) return
+    setSegments(segs => {
+      if (segs.length === 0) return segs
+      const oldTotal = segs.reduce((a, s) => a + s.duration, 0)
+      if (oldTotal === 0 || oldTotal === newTotal) return segs
+      let allocated = 0
+      return segs.map((s, i) => {
+        const d = i === segs.length - 1
+          ? Math.max(1, newTotal - allocated)
+          : Math.max(1, Math.round((s.duration / oldTotal) * newTotal))
+        if (i < segs.length - 1) allocated += d
+        return { ...s, duration: d }
+      })
+    })
+  }
   // The "Estimated (mins)" field IS the worklog value pushed to OP.
   const loggedMins = form.estimatedMins
   const activeMode: 'estimate' | 'actual' = actMins != null && form.estimatedMins === actMins ? 'actual' : 'estimate'
@@ -518,11 +554,11 @@ function SessionCard({
   const pushTimeToggle = actMins != null ? (
     <div className="flex items-center gap-1 mt-1.5 flex-wrap">
       <span className="text-[9px] text-gray-400 font-semibold">isi cepat:</span>
-      <button type="button" onClick={() => setForm(f => ({ ...f, estimatedMins: origEst }))}
+      <button type="button" onClick={() => { setForm(f => ({ ...f, estimatedMins: origEst })); redistributeSegments(origEst) }}
         className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition ${activeMode === 'estimate' ? 'bg-violet-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
         Est {fmtMin(origEst)}
       </button>
-      <button type="button" onClick={() => setForm(f => ({ ...f, estimatedMins: actMins }))}
+      <button type="button" onClick={() => { setForm(f => ({ ...f, estimatedMins: actMins })); redistributeSegments(actMins) }}
         className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold transition ${activeMode === 'actual' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
         <Clock size={9} /> Actual {fmtMin(actMins)}
       </button>
@@ -814,7 +850,9 @@ function SessionCard({
               {/* Estimated — with est/actual quick-fill toggle */}
               <div>
                 <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Estimated (mins) → ini yg di-log ke OP</label>
-                <input type="number" value={form.estimatedMins} onChange={e => setForm(f => ({ ...f, estimatedMins: Number(e.target.value) }))}
+                <input type="number" value={form.estimatedMins}
+                  onChange={e => setForm(f => ({ ...f, estimatedMins: Number(e.target.value) }))}
+                  onBlur={e => redistributeSegments(Number(e.target.value))}
                   className="mt-1 w-full text-[11px] border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 focus:outline-none" />
                 {pushTimeToggle}
               </div>

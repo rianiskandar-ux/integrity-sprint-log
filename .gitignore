@@ -81,3 +81,7 @@ pnpm-workspace.yaml
 next-env.d.ts
 
 data/
+
+# Demo recordings (besar, bukan source)
+video/
+.dockerignore-tmp

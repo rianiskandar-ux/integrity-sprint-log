@@ -8,7 +8,8 @@ export async function GET(req: Request) {
   const code = searchParams.get('code')
   const error = searchParams.get('error')
 
-  if (error) return NextResponse.redirect(new URL('/?gcal=error', req.url))
+  const PUBLIC_URL = process.env.NEXTAUTH_URL || 'http://localhost:4891'
+  if (error) return NextResponse.redirect(new URL('/?gcal=error', PUBLIC_URL))
   if (!code) return NextResponse.json({ error: 'No code' }, { status: 400 })
 
   // Which user is connecting — from the OAuth state (set by /api/auth/google), or
@@ -44,6 +45,6 @@ export async function GET(req: Request) {
     )
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'OAuth error'
-    return NextResponse.redirect(new URL(`/?gcal=error&msg=${encodeURIComponent(msg)}`, req.url))
+    return NextResponse.redirect(new URL(`/?gcal=error&msg=${encodeURIComponent(msg)}`, PUBLIC_URL))
   }
 }

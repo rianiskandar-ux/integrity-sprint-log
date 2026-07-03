@@ -53,6 +53,8 @@ export default function ChatBubble() {
   useEffect(() => {
     fetch('/api/user-config').then(r => r.json()).then(d => {
       setAiReady(d.llmApiKeySet || ['ollama', '9router', 'claude-cli'].includes(d.llmProvider))
+      if (d.llmProvider) setAiProvider(d.llmProvider)
+      if (d.llmModel)    setAiModel(d.llmModel)
     }).catch(() => setAiReady(false))
     fetch('/api/ai-chat').then(r => r.json()).then(d => { if (d.models) setAiModels(d.models) }).catch(() => {})
   }, [])

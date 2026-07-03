@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import type { CachedWorkPackage } from '@/lib/op-cache'
 import { useI18n } from '@/lib/i18n'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
+import OpTaskModal from './OpTaskModal'
 import { Inbox, CalendarDays, CheckCircle2, Send, MessageCircle, Pencil, Info, RefreshCw, Play, PauseCircle } from 'lucide-react'
 
 const ISL_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -28,6 +29,7 @@ export default function IncomingTasksPanel() {
   const [toast, setToast]       = useState<string | null>(null)
   const [filter, setFilter]     = useState<'open' | 'all'>('open')
   const [chatTask, setChatTask] = useState<TaskChatContext | null>(null)
+  const [opTask, setOpTask] = useState<{ id: number; subject: string } | null>(null)
   const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set())
   const [pushedIds, setPushedIds] = useState<Set<number>>(new Set())
   const [nextSprint, setNextSprint] = useState<{ id: number; name: string } | null>(null)
@@ -286,6 +288,11 @@ export default function IncomingTasksPanel() {
                     ) : (
                     <>
                     <button
+                      onClick={() => setOpTask({ id: task.id, subject: task.subject })}
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                      <Info size={10} /> Detail
+                    </button>
+                    <button
                       onClick={() => setChatTask({
                         id: `incoming-${task.id}`,
                         title: task.subject,
@@ -379,6 +386,14 @@ export default function IncomingTasksPanel() {
             setChatTask(null)
             showToast(r.ok ? `Added to Push Queue` : `Failed: ${r.error ?? 'error'}`)
           } : undefined}
+        />
+      )}
+
+      {opTask && (
+        <OpTaskModal
+          wpId={opTask.id}
+          opUrl={opUrl}
+          onClose={() => setOpTask(null)}
         />
       )}
     </div>

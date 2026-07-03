@@ -771,6 +771,7 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         sessionId, title, bullets,
+        source: 'kafi',  // captured by Claude Code hook (external to ISL)
         estimatedMins: durationMins, actualMins,
         isNewTask, taskStatus: finalStatus,
         // 'pushed' = logged to existing OP task. 'pending' = user approved via Push Queue. 'hub' = no OP match, needs triage in Daily Hub.

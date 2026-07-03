@@ -17,6 +17,7 @@ export interface UserConfig {
   llmProvider:      string
   llmApiKey:        string
   llmModel:         string
+  llmEffort:        string   // reasoning effort untuk claude-cli: low|medium|high|max ('' = default)
   setupDone:        boolean
   updatedAt:        string
   telegramBotToken: string   // per-user Telegram bot token
@@ -33,6 +34,7 @@ const EMPTY: UserConfig = {
   llmProvider:      '',
   llmApiKey:        '',
   llmModel:         '',
+  llmEffort:        '',
   setupDone:        false,
   updatedAt:        '',
   telegramBotToken: '',
