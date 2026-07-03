@@ -8,6 +8,13 @@
       "when": 1782875818763,
       "tag": "0000_cooing_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783076252880,
+      "tag": "0001_narrow_warstar",
+      "breakpoints": true
     }
   ]
 }

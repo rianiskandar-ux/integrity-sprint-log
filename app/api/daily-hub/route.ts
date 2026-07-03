@@ -3,6 +3,7 @@ import { getAllSessions, updateSession } from '@/lib/session-store'
 import { getAllKBEntries, saveKBEntry, createKBId } from '@/lib/kb-store'
 import { loadCache } from '@/lib/op-cache'
 import { getRequestContext } from '@/lib/request-auth'
+import { upsertEmbedding } from '@/lib/embeddings'
 
 // GET /api/daily-hub — hub sessions + KB entries + AI suggest context
 export async function GET(req: Request) {
@@ -61,6 +62,17 @@ export async function POST(req: Request) {
       updatedAt: now,
     }
     await saveKBEntry(entry)
+
+    // AI Layer: index the KB entry for semantic search.
+    // Fire-and-forget, non-fatal — no-ops when GEMINI_API_KEY is absent.
+    upsertEmbedding({
+      userId:     entry.userId,
+      sourceType: 'kb',
+      sourceId:   entry.id,
+      title:      entry.title,
+      chunk:      [entry.summary, ...(entry.keyPoints ?? [])].filter(Boolean).join('\n'),
+    }).catch(() => {})
+
     return NextResponse.json({ ok: true, entry })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

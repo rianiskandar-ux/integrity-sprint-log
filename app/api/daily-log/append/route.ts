@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { getRequestContext } from '@/lib/request-auth'
-import { isOwnerUid } from '@/lib/auth'
+import { isOwnerUid, OWNER_UID } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { dailyLogs } from '@/lib/db/schema'
 import { randomUUID } from 'crypto'
@@ -66,12 +66,17 @@ export async function POST(req: Request) {
     const ctx = await getRequestContext()
     const today = date ?? new Date().toISOString().slice(0, 10)
 
+    // Tanpa session (hook Claude Code / terminal lokal) → attribute ke OWNER.
+    // Kalau dibiarkan NULL, Kafi daily-summary (filter userId=OWNER_UID) tidak
+    // pernah melihat log dari hook — pipeline Kafi→hub jadi kosong terus.
+    const uid = ctx?.uid ?? OWNER_UID
+
     // Always write to Postgres (all users)
     const cleanBulletsForDB = (bullets ?? []).filter(b => b.trim())
       .map(b => b.replace(/^\[\d+m\]\s*/, '').trim())
     await db.insert(dailyLogs).values({
       id:        `${today}-${randomUUID().slice(0, 8)}`,
-      userId:    ctx?.uid ?? null,
+      userId:    uid,
       date:      today,
       title:     title.trim(),
       bullets:   cleanBulletsForDB,
@@ -79,7 +84,7 @@ export async function POST(req: Request) {
     }).catch(() => {}) // non-fatal — file write is the fallback
 
     // Only the owner writes the shared markdown file (backward compat for Daily Log view)
-    if (!isOwnerUid(ctx?.uid)) {
+    if (!isOwnerUid(uid)) {
       return NextResponse.json({ ok: true, db: true, skipped: 'non-owner (DB-backed)' })
     }
     const timestamp = time ?? timeWIB()

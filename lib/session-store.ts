@@ -1,5 +1,6 @@
 import { db, sessions } from './db'
 import { eq, desc, isNull, or, sql } from 'drizzle-orm'
+import { upsertEmbedding } from './embeddings'
 
 export interface SessionLog {
   id: string
@@ -165,6 +166,16 @@ export async function saveSession(session: SessionLog): Promise<void> {
       updatedAt:       new Date(session.updatedAt),
     }
   })
+
+  // AI Layer: index the session for semantic search.
+  // Fire-and-forget, non-fatal — no-ops when GEMINI_API_KEY is absent.
+  upsertEmbedding({
+    userId:     session.userId ?? null,
+    sourceType: 'session',
+    sourceId:   session.id,
+    title:      session.title,
+    chunk:      (session.bullets ?? []).filter(Boolean).join('\n'),
+  }).catch(() => {})
 }
 
 // Only these columns may be patched — anything else (e.g. a stray key from a raw

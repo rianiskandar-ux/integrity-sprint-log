@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { taskMemory } from '@/lib/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { getRequestContext } from '@/lib/request-auth'
+import { OWNER_UID } from '@/lib/auth'
 import { randomUUID } from 'crypto'
 
 export const runtime = 'nodejs'
@@ -25,7 +26,9 @@ export async function POST(req: Request) {
     const id = `${body.sessionId?.slice(0, 8) ?? randomUUID().slice(0, 8)}-${body.opTaskId}`
     await db.insert(taskMemory).values({
       id,
-      userId:    ctx?.uid ?? null,
+      // Tanpa session (hook/terminal lokal) → attribute ke OWNER, sama seperti
+      // daily-log/append — kalau NULL, Kafi daily-summary tidak melihatnya.
+      userId:    ctx?.uid ?? OWNER_UID,
       opTaskId:  body.opTaskId,
       sessionId: body.sessionId ?? null,
       date:      body.date ?? new Date().toISOString().slice(0, 10),

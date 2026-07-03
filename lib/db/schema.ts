@@ -1,4 +1,14 @@
-import { pgTable, text, integer, boolean, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, boolean, jsonb, timestamp, index, uniqueIndex, customType } from 'drizzle-orm/pg-core'
+
+// pgvector column type — drizzle-kit emits `vector(768)` via dataType().
+// Driver format is the pgvector text literal: "[0.1,0.2,...]"
+const vector768 = customType<{ data: number[]; driverData: string }>({
+  dataType() { return 'vector(768)' },
+  toDriver(value: number[]): string { return `[${value.join(',')}]` },
+  fromDriver(value: string): number[] {
+    try { return JSON.parse(value) } catch { return [] }
+  },
+})
 
 // ── users ──────────────────────────────────────────────────────────────────────
 // One row per ISL user. For now userId=8 is the only user (Rian),
@@ -198,6 +208,24 @@ export const taskMemory = pgTable('task_memory', {
 }, (t) => [
   index('task_memory_task_idx').on(t.opTaskId, t.date),
   index('task_memory_user_idx').on(t.userId, t.date),
+])
+
+// ── embeddings ─────────────────────────────────────────────────────────────────
+// AI Layer (Phase 2): pgvector store for semantic search over KB entries,
+// sessions, daily logs and (later) parsed docs. One row per source item.
+// Embedding model: Gemini text-embedding-004 (768 dims). Key-agnostic — rows
+// only appear when GEMINI_API_KEY is configured; all writes no-op otherwise.
+export const embeddings = pgTable('embeddings', {
+  id:         text('id').primaryKey(),                 // emb-<sourceType>-<sourceId>
+  userId:     integer('user_id').references(() => users.id),
+  sourceType: text('source_type').notNull(),           // kb | session | daily_log | doc
+  sourceId:   text('source_id').notNull(),             // id in the source table
+  title:      text('title').notNull(),
+  chunk:      text('chunk').notNull(),                 // text that was embedded
+  embedding:  vector768('embedding'),
+  createdAt:  timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('embeddings_source_idx').on(t.sourceType, t.sourceId),
 ])
 
 // ── events ─────────────────────────────────────────────────────────────────────
