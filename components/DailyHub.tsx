@@ -6,7 +6,7 @@ import type { KBEntry } from '@/lib/kb-store'
 import {
   Bot, Inbox, Brain, ClipboardList, FileText,
   Sparkles, PartyPopper, Lightbulb, Zap,
-  CircleDot, MapPin, ChevronDown, ChevronUp, ArrowRight, Layers,
+  CircleDot, MapPin, ChevronDown, ChevronUp, ArrowRight, Layers, Loader2, Moon,
 } from 'lucide-react'
 
 interface SprintContext {
@@ -22,6 +22,48 @@ interface HubData {
 }
 
 type Tab = 'today' | 'sessions' | 'triage'
+
+// ── Luna Triage Suggestion — saran-only, keputusan tetap manual di user ──────
+interface LunaSuggestion {
+  sessionId: string
+  title: string
+  ageDays: number
+  suggestion: 'push_existing' | 'new_task' | 'delete' | 'keep'
+  opTaskId: number | null
+  confidence: 'high' | 'medium' | 'low'
+  reason: string
+}
+
+function LunaChip({ s }: { s: LunaSuggestion }) {
+  const styles: Record<LunaSuggestion['suggestion'], { cls: string; label: string }> = {
+    push_existing: {
+      cls: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      label: `→ OP #${s.opTaskId ?? '?'}`,
+    },
+    new_task: {
+      cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+      label: 'task baru',
+    },
+    delete: {
+      cls: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800',
+      label: 'kandidat hapus',
+    },
+    keep: {
+      cls: 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700',
+      label: 'biarkan',
+    },
+  }
+  const st = styles[s.suggestion]
+  return (
+    <span
+      title={`🌙 Luna (${s.confidence}): ${s.reason}`}
+      className={`flex-shrink-0 inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${st.cls}`}
+    >
+      <Moon size={8} />
+      {st.label}
+    </span>
+  )
+}
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -193,7 +235,13 @@ function StatCard({ label, value, color, icon }: { label: string; value: number;
 }
 
 // ── Sessions Tab — semua hub sessions ────────────────────────────────────────
-function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage: (id: string, action: string) => void }) {
+function SessionsTab({ sessions, onTriage, luna, lunaLoading, onLuna }: {
+  sessions: SessionLog[]
+  onTriage: (id: string, action: string) => void
+  luna: Record<string, LunaSuggestion>
+  lunaLoading: boolean
+  onLuna: () => void
+}) {
   if (!sessions.length) {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
@@ -217,17 +265,28 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        {liveCount > 0 && <span className="text-emerald-600 font-semibold inline-flex items-center gap-1"><CircleDot size={10} className="text-emerald-500" /> {liveCount} live · </span>}
-        {sessions.filter(s => s.pushStatus !== 'live').length} pending triage · saved until you decide
-      </p>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {liveCount > 0 && <span className="text-emerald-600 font-semibold inline-flex items-center gap-1"><CircleDot size={10} className="text-emerald-500" /> {liveCount} live · </span>}
+          {sessions.filter(s => s.pushStatus !== 'live').length} pending triage · saved until you decide
+        </p>
+        <button
+          onClick={onLuna}
+          disabled={lunaLoading}
+          title="Luna analisa antrian hub dan kasih saran triage per sesi — keputusan tetap di kamu"
+          className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg font-medium border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 disabled:opacity-50 transition"
+        >
+          {lunaLoading && <Loader2 size={12} className="animate-spin" />}
+          {lunaLoading ? 'Luna menganalisa…' : '🌙 Luna: Analisa Antrian'}
+        </button>
+      </div>
       {sortedDates.map(date => (
         <div key={date} className="space-y-2">
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             {date === today ? <span className="inline-flex items-center gap-1"><MapPin size={10} /> Today</span> : date}
           </p>
           {grouped[date].map(s => (
-            <SessionCard key={s.id} session={s} onTriage={onTriage} />
+            <SessionCard key={s.id} session={s} onTriage={onTriage} luna={luna[s.id]} />
           ))}
         </div>
       ))}
@@ -235,7 +294,11 @@ function SessionsTab({ sessions, onTriage }: { sessions: SessionLog[]; onTriage:
   )
 }
 
-function SessionCard({ session: s, onTriage }: { session: SessionLog; onTriage: (id: string, action: string) => void }) {
+function SessionCard({ session: s, onTriage, luna }: {
+  session: SessionLog
+  onTriage: (id: string, action: string) => void
+  luna?: LunaSuggestion
+}) {
   const [expanded, setExpanded] = useState(false)
   const isLive = s.pushStatus === 'live'
 
@@ -261,6 +324,7 @@ function SessionCard({ session: s, onTriage }: { session: SessionLog; onTriage: 
                 LIVE
               </span>
             )}
+            {!isLive && luna && <LunaChip s={luna} />}
           </div>
           <p className="text-[10px] text-gray-400 mt-0.5">
             {isLive ? `Started ${timeAgo(s.startedAt)} · still active` : `${s.date} · ${durationLabel(s.actualMins) ?? '?'} · ${timeAgo(s.createdAt)}`}
@@ -295,6 +359,12 @@ function SessionCard({ session: s, onTriage }: { session: SessionLog; onTriage: 
                 <li key={i} className="text-[11px] text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-gray-200 dark:border-gray-700">{b}</li>
               ))}
             </ul>
+          )}
+          {!isLive && luna && (
+            <p className="text-[10px] text-indigo-500 dark:text-indigo-400 pt-2 flex items-start gap-1">
+              <Moon size={10} className="flex-shrink-0 mt-0.5" />
+              <span>Luna ({luna.confidence}): {luna.reason}</span>
+            </p>
           )}
           {!isLive && (
             <div className="flex gap-2 flex-wrap pt-1">
@@ -444,6 +514,9 @@ export default function DailyHub() {
   const [data, setData] = useState<HubData | null>(null)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  // Luna suggestions — hanya di state komponen (hilang saat refresh, memang begitu)
+  const [luna, setLuna] = useState<Record<string, LunaSuggestion>>({})
+  const [lunaLoading, setLunaLoading] = useState(false)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -469,6 +542,25 @@ export default function DailyHub() {
     })
     showToast(action === 'queue' ? 'Added to Push Queue' : action === 'backlog' ? 'Moved to Backlog' : 'Discarded')
     fetchData()
+  }
+
+  const runLuna = async () => {
+    setLunaLoading(true)
+    try {
+      const res = await fetch('/api/isl/triage-suggest', { method: 'POST' })
+      if (res.ok) {
+        const d = await res.json() as { ok?: boolean; suggestions?: LunaSuggestion[] }
+        const map: Record<string, LunaSuggestion> = {}
+        for (const s of d.suggestions ?? []) map[s.sessionId] = s
+        setLuna(map)
+        showToast(`🌙 Luna: ${d.suggestions?.length ?? 0} saran — keputusan tetap di kamu`)
+      } else {
+        showToast('Luna gagal menganalisa')
+      }
+    } catch {
+      showToast('Luna gagal menganalisa')
+    }
+    setLunaLoading(false)
   }
 
   const handleTriageKB = async (kbId: string, action: string) => {
@@ -527,7 +619,7 @@ export default function DailyHub() {
       ) : (
         <div>
           {tab === 'today' && <TodayTab data={data} onRefresh={fetchData} />}
-          {tab === 'sessions' && <SessionsTab sessions={data.hubSessions} onTriage={handleTriage} />}
+          {tab === 'sessions' && <SessionsTab sessions={data.hubSessions} onTriage={handleTriage} luna={luna} lunaLoading={lunaLoading} onLuna={runLuna} />}
           {tab === 'triage' && (
             <TriageTab
               sessions={data.hubSessions}
