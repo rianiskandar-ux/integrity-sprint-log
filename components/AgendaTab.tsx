@@ -16,6 +16,17 @@ interface AgendaData {
   notes: string
 }
 
+interface AryoInsight {
+  id: string
+  title: string
+  finding: string
+  evidence: string
+  impact: string
+  action: string
+  ticketDraft: { subject: string; description: string }
+  status: 'open' | 'approved' | 'dismissed'
+}
+
 interface OPMeeting {
   id: number
   title: string
@@ -49,6 +60,12 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
   const [stkSummary,    setStkSummary]   = useState('')
   const [stkLoading,    setStkLoading]   = useState(false)
   const [stkCopied,     setStkCopied]    = useState(false)
+  // Aryo Insight — usulan improvement berbasis bukti, approval manual → Push Queue
+  const [insights,      setInsights]     = useState<AryoInsight[]>([])
+  const [insLoading,    setInsLoading]   = useState(false)
+  const [insShowAll,    setInsShowAll]   = useState(false)
+  const [insActing,     setInsActing]    = useState<string | null>(null)
+  const [insJustDone,   setInsJustDone]  = useState<Set<string>>(new Set())
   // Track owned agenda item IDs: { [meetingId]: itemId } per sprint
   const idsKey = `agenda-item-ids-${currentSprintNo}`
   function getOwnedIds(): Record<number, number> {
@@ -286,6 +303,56 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
     })
   }
 
+  useEffect(() => {
+    fetch('/api/aryo/insight').then(r => r.json()).then(d => setInsights(d.insights ?? [])).catch(() => {})
+  }, [])
+
+  async function runAryoAnalysis() {
+    if (insLoading) return
+    setInsLoading(true)
+    try {
+      const r = await fetch('/api/aryo/insight', { method: 'POST' })
+      const body = await r.text()
+      let d: { ok?: boolean; count?: number; insights?: AryoInsight[]; error?: string }
+      try { d = JSON.parse(body) } catch { d = { error: r.ok ? body.slice(0, 160) : `HTTP ${r.status}` } }
+      if (d.ok) {
+        setInsights(d.insights ?? [])
+        setInsJustDone(new Set())
+        showToast((d.count ?? 0) > 0
+          ? `👔 Aryo: ${d.count} usulan improvement`
+          : '👔 Aryo: tidak ada temuan yang memenuhi ambang bukti')
+      } else {
+        showToast(`⚠️ ${String(d.error ?? 'Analisa gagal').slice(0, 160)}`)
+      }
+    } catch (e) {
+      showToast(`⚠️ Gagal analisa: ${String(e).slice(0, 120)}`)
+    }
+    setInsLoading(false)
+  }
+
+  async function actOnInsight(id: string, action: 'approve' | 'dismiss') {
+    if (insActing) return
+    setInsActing(id)
+    try {
+      const d = await fetch('/api/aryo/insight', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      }).then(r => r.json())
+      if (d.ok) {
+        setInsights(prev => prev.map(i => i.id === id
+          ? { ...i, status: action === 'approve' ? 'approved' as const : 'dismissed' as const }
+          : i))
+        if (action === 'approve') {
+          setInsJustDone(prev => new Set(prev).add(id))
+          showToast('Masuk Push Queue ✓')
+        }
+      } else {
+        showToast(`⚠️ ${String(d.error ?? 'Gagal').slice(0, 160)}`)
+      }
+    } catch { showToast('⚠️ Network error') }
+    setInsActing(null)
+  }
+
   async function deleteSavedSummary(sprint: string) {
     const r = await fetch('/api/sprint/summary', {
       method: 'DELETE', headers: { 'Content-Type': 'application/json' },
@@ -414,6 +481,83 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
             Ringkasan sprint untuk client/manajemen — tanpa jargon teknis, fokus temuan & dampak bisnis. Klik &quot;Generate Ringkasan&quot;.
           </p>
         )}
+      </div>
+
+      {/* ARYO INSIGHT — usulan improvement berbasis bukti dari sinyal operasional.
+          Suggest-only: approve manual → jadi draft ticket di Push Queue. */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+              <span>👔</span> Aryo Insight
+            </label>
+            <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">
+              usulan berbasis bukti · approval manual
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {insights.some(i => i.status !== 'open') && (
+              <button onClick={() => setInsShowAll(v => !v)}
+                className="text-[9px] font-semibold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                {insShowAll ? 'sembunyikan selesai' : 'tampilkan semua'}
+              </button>
+            )}
+            <button onClick={runAryoAnalysis} disabled={insLoading}
+              title="Analisa sinyal operasional ISL (hub, queue, error log, produktivitas)"
+              className="text-[10px] font-semibold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-50">
+              {insLoading ? <><Loader2 size={11} className="inline animate-spin" /> Menganalisa…</> : <>🔍 Analisa Sekarang</>}
+            </button>
+          </div>
+        </div>
+        {(() => {
+          const shown = insights.filter(i => insShowAll || i.status === 'open' || insJustDone.has(i.id))
+          if (shown.length === 0) return (
+            <p className="text-[10px] text-gray-300 italic px-1">
+              Belum ada usulan. Aryo menganalisa sinyal operasional tiap Jumat sore — atau klik &quot;Analisa Sekarang&quot;. Hanya usulan dengan bukti kuat yang muncul di sini.
+            </p>
+          )
+          return (
+            <div className="space-y-2">
+              {shown.map(ins => (
+                <div key={ins.id}
+                  className={`rounded-xl border border-indigo-100 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/20 px-4 py-3 ${ins.status === 'dismissed' ? 'opacity-50' : ''}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-[12px] font-bold text-gray-800 dark:text-gray-100">{ins.title}</span>
+                    {ins.status === 'approved' && (
+                      <span className="text-[9px] font-semibold text-emerald-500 flex items-center gap-1 flex-shrink-0"><CheckCircle2 size={10} /> Masuk Push Queue ✓</span>
+                    )}
+                    {ins.status === 'dismissed' && (
+                      <span className="text-[9px] font-semibold text-gray-400 flex-shrink-0">Diabaikan</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">{ins.finding}</p>
+                  {ins.evidence && (
+                    <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500 mt-1 whitespace-pre-wrap">{ins.evidence}</p>
+                  )}
+                  {ins.impact && (
+                    <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-1"><span className="font-semibold">Dampak:</span> {ins.impact}</p>
+                  )}
+                  {ins.action && (
+                    <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-1"><span className="font-semibold">Usulan:</span> {ins.action}</p>
+                  )}
+                  {ins.status === 'open' && (
+                    <div className="flex items-center gap-2 mt-2.5">
+                      <button onClick={() => actOnInsight(ins.id, 'approve')} disabled={insActing !== null}
+                        title={`Draft: ${ins.ticketDraft.subject}`}
+                        className="text-[10px] font-semibold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-50">
+                        {insActing === ins.id ? <><Loader2 size={11} className="inline animate-spin" /> Memproses…</> : <>📋 Buat Draft Ticket</>}
+                      </button>
+                      <button onClick={() => actOnInsight(ins.id, 'dismiss')} disabled={insActing !== null}
+                        className="text-[10px] font-semibold px-3 py-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg transition disabled:opacity-50">
+                        Abaikan
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Key Wins — only show when NOT structured (manual mode) */}
