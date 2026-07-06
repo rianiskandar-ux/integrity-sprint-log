@@ -80,6 +80,23 @@ export async function POST(req: NextRequest) {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
   const historySection = await searchRelevantHistory(lastUserMsg, ctx?.uid ?? null)
 
+  // Super Memory: semantic recall (pgvector + Ollama lokal) — menangkap history
+  // yang relevan secara MAKNA walau kata-katanya beda (FTS di atas hanya exact-ish).
+  // No-op aman kalau Ollama mati — chat tetap jalan tanpa section ini.
+  let semanticSection = ''
+  try {
+    const { semanticSearch } = await import('@/lib/embeddings')
+    const hits = await semanticSearch(lastUserMsg, ctx?.uid ?? null, 5)
+    if (hits.length > 0) {
+      semanticSection = [
+        `\n--- SUPER MEMORY (recall semantik dari seluruh history kerja user) ---`,
+        ...hits.map(h => `• [${h.sourceType}] ${h.title}\n  ${h.chunk.split('\n').filter(Boolean).slice(0, 3).join('; ').slice(0, 300)}`),
+        `Use these past-work references when they help answer — cite the session title when you do.`,
+        `--- END SUPER MEMORY ---`,
+      ].join('\n')
+    }
+  } catch { /* semantic recall best-effort */ }
+
   const taskSection = taskContext?.title ? [
     `\n--- TASK CONTEXT ---`,
     `You are helping with a specific task:`,
@@ -101,6 +118,7 @@ export async function POST(req: NextRequest) {
     myTasks ? `\nOpen tasks in OP:\n${myTasks}` : 'No tasks cached — user may need to sync OP cache from Settings.',
     pendingSessions ? `\nSessions waiting to push to OP:\n${pendingSessions}` : '',
     historySection,
+    semanticSection,
     taskSection,
     `\nYou have full context of the user's sprint and tasks above. Answer questions directly using this data.`,
     `Be concise and practical. Use markdown for lists. Respond in the same language the user writes in.`,
