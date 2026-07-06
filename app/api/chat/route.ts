@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
   // No-op aman kalau Ollama mati — chat tetap jalan tanpa section ini.
   let semanticSection = ''
   try {
-    const { semanticSearch } = await import('@/lib/embeddings')
-    const hits = await semanticSearch(lastUserMsg, ctx?.uid ?? null, 5)
+    const { hybridSearch } = await import('@/lib/embeddings')
+    const hits = await hybridSearch(lastUserMsg, ctx?.uid ?? null, 5)
     if (hits.length > 0) {
       semanticSection = [
         `\n--- SUPER MEMORY (recall semantik dari seluruh history kerja user) ---`,

@@ -8,7 +8,7 @@
  * Model: Gemini text-embedding-004 → 768-dim vectors, cosine distance (<=>).
  */
 import { db, embeddings } from './db'
-import { sql, eq, isNull, or } from 'drizzle-orm'
+import { sql, eq, isNull, or, and, ilike } from 'drizzle-orm'
 
 const GEMINI_EMBED_URL =
   'https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent'
@@ -39,14 +39,19 @@ export function getOllamaUrl(): string {
 const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text'
 
 /** Provider utama: Ollama lokal (gratis, offline). Fallback: Gemini kalau ada key. */
-async function embedViaOllama(input: string): Promise<number[] | null> {
+// nomic-embed-text WAJIB task prefix (asymmetric retrieval) — tanpa ini
+// pertanyaan match ke chunk yang "gaya bahasanya" mirip, bukan topiknya.
+export type EmbedMode = 'doc' | 'query'
+
+async function embedViaOllama(input: string, mode: EmbedMode): Promise<number[] | null> {
   const base = getOllamaUrl()
   if (!base) return null
+  const prefixed = `${mode === 'query' ? 'search_query' : 'search_document'}: ${input.slice(0, MAX_EMBED_CHARS)}`
   try {
     const res = await fetch(`${base}/api/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, prompt: input.slice(0, MAX_EMBED_CHARS) }),
+      body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, prompt: prefixed }),
       signal: AbortSignal.timeout(30000),
     })
     if (!res.ok) {
@@ -70,11 +75,11 @@ async function embedViaOllama(input: string): Promise<number[] | null> {
  * Embed text — Ollama lokal dulu, fallback Gemini bila ada key.
  * Returns 768-dim vector, or null when no provider / empty text / any error. Never throws.
  */
-export async function embedText(text: string): Promise<number[] | null> {
+export async function embedText(text: string, mode: EmbedMode = 'doc'): Promise<number[] | null> {
   const input = (text ?? '').trim()
   if (!input) return null
 
-  const local = await embedViaOllama(input)
+  const local = await embedViaOllama(input, mode)
   if (local) return local
 
   const key = getGeminiKey()
@@ -149,12 +154,15 @@ export async function upsertEmbedding(input: {
  * Rows with NULL user_id are included so single-user/hook-created data stays
  * findable. Returns [] when no key or on any error.
  */
+// Hasil dengan distance di atas ini dianggap tidak relevan — jangan disuntik ke chat
+const MAX_RELEVANT_DISTANCE = 0.5
+
 export async function semanticSearch(
   query: string,
   userId?: number | null,
   topK = 5,
 ): Promise<SemanticResult[]> {
-  const vec = await embedText(query)
+  const vec = await embedText(query, 'query')
   if (!vec) return []
 
   const vecLiteral = `[${vec.join(',')}]`
@@ -176,9 +184,71 @@ export async function semanticSearch(
       .orderBy(distance)
       .limit(topK)
 
-    return rows.map(r => ({ ...r, distance: Number(r.distance) }))
+    return rows
+      .map(r => ({ ...r, distance: Number(r.distance) }))
+      .filter(r => r.distance <= MAX_RELEVANT_DISTANCE)
   } catch (e) {
     console.warn('[embeddings] semanticSearch error:', e instanceof Error ? e.message : e)
     return []
   }
+}
+
+// ── Hybrid search: keyword (nama/istilah spesifik) + semantic (makna) ─────────
+// Semantic murni gagal untuk proper-noun lookup ("Nara") — query conversational
+// malah match ke sesi obrolan lain. Keyword ILIKE menangkap kasus itu.
+const STOPWORDS = new Set([
+  'yang','pernah','kita','kerjakan','kerjain','soal','tentang','apa','aja','saja','gimana','bagaimana',
+  'kenapa','untuk','dengan','dari','sama','juga','udah','sudah','belum','bisa','mau','akan','lalu','terus',
+  'what','have','about','the','this','that','when','where','how','did','was','were','ever','kapan','dimana',
+  'minggu','hari','bulan','kemarin','besok','tadi','nanti',
+])
+
+function extractKeywords(query: string): string[] {
+  return [...new Set(
+    (query.toLowerCase().match(/[a-z0-9][a-z0-9._-]{3,}/g) ?? [])
+      .filter(w => !STOPWORDS.has(w))
+  )].slice(0, 5)
+}
+
+export async function hybridSearch(
+  query: string,
+  userId?: number | null,
+  topK = 5,
+): Promise<SemanticResult[]> {
+  const userFilter = userId != null
+    ? or(eq(embeddings.userId, userId), isNull(embeddings.userId))
+    : sql`true`
+
+  // 1. Keyword pass — title/chunk mengandung istilah spesifik dari query
+  let kwHits: SemanticResult[] = []
+  const kws = extractKeywords(query)
+  if (kws.length > 0) {
+    try {
+      const rows = await db.select({
+        sourceType: embeddings.sourceType,
+        sourceId:   embeddings.sourceId,
+        title:      embeddings.title,
+        chunk:      embeddings.chunk,
+      }).from(embeddings)
+        .where(and(userFilter, or(...kws.flatMap(k => [ilike(embeddings.title, `%${k}%`), ilike(embeddings.chunk, `%${k}%`)]))))
+        .limit(topK)
+      // Rank: yang match di TITLE lebih kuat daripada di chunk
+      kwHits = rows.map(r => ({
+        ...r,
+        distance: kws.some(k => r.title.toLowerCase().includes(k)) ? 0 : 0.1,
+      })).sort((a, b) => a.distance - b.distance)
+    } catch { /* keyword pass best-effort */ }
+  }
+
+  // 2. Semantic pass — makna
+  const semHits = await semanticSearch(query, userId, topK)
+
+  // 3. Merge, dedupe (keyword menang), cap topK
+  const seen = new Set(kwHits.map(h => `${h.sourceType}:${h.sourceId}`))
+  const merged = [...kwHits]
+  for (const h of semHits) {
+    const key = `${h.sourceType}:${h.sourceId}`
+    if (!seen.has(key)) { seen.add(key); merged.push(h) }
+  }
+  return merged.slice(0, topK)
 }

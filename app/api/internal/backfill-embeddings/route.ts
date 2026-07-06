@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sessions, kbEntries, dailyLogs, embeddings } from '@/lib/db/schema'
 import { sql } from 'drizzle-orm'
-import { upsertEmbedding, semanticSearch, type EmbeddingSourceType } from '@/lib/embeddings'
+import { upsertEmbedding, hybridSearch, type EmbeddingSourceType } from '@/lib/embeddings'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
   // Optional: test semantic search langsung dari sini (internal, ber-key)
   const q = url.searchParams.get('q')
-  const testResults = q ? await semanticSearch(q, 1, 5) : undefined
+  const testResults = q ? await hybridSearch(q, 1, 5) : undefined
 
   return NextResponse.json({
     ok: true,
