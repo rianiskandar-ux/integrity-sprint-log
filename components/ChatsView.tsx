@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { MessageCircle, Plus, Sparkles, Lightbulb, Bot, AlertTriangle } from 'lucide-react'
+import { MessageCircle, Plus, Sparkles, Lightbulb, Bot, AlertTriangle, Search, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -18,6 +18,15 @@ interface ChatSummary {
   createdAt: string
   updatedAt: string
 }
+
+// OP work package status fetched in batch via /api/op/task-status-batch
+interface OpTaskStatus {
+  status: string
+  isClosed: boolean
+  sprintName: string | null
+}
+
+const ARCHIVE_AGE_MS = 30 * 86400_000 // last activity older than 30 days → Arsip
 
 function md(text: string): string {
   return text
@@ -87,6 +96,13 @@ export default function ChatsView() {
   const [toast, setToast]       = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [candidates, setCandidates] = useState<{ text: string; kind: 'task' | 'note'; sel: boolean }[] | null>(null)
+  // OP status per linked task id (batch-fetched) + current sprint name for the badge
+  const [opStatuses, setOpStatuses] = useState<Record<number, OpTaskStatus>>({})
+  const [currentSprintName, setCurrentSprintName] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [arsipOpen, setArsipOpen] = useState(false)
+  // Last id-set already sent to the batch route — avoids refetch loops on list reloads
+  const fetchedIdsRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
   const abortRef  = useRef<AbortController | null>(null)
@@ -125,6 +141,32 @@ export default function ChatsView() {
   }, [])
 
   useEffect(() => { loadList() }, [loadList])
+
+  // Batch-fetch OP status for all linked task ids whenever the chat list changes
+  useEffect(() => {
+    const ids = Array.from(new Set(
+      chats.map(c => c.opTaskId).filter((x): x is number => typeof x === 'number' && x > 0)
+    )).sort((a, b) => a - b)
+    if (!ids.length) return
+    const key = ids.join(',')
+    if (fetchedIdsRef.current === key) return
+    fetchedIdsRef.current = key
+    fetch(`/api/op/task-status-batch?ids=${key}`)
+      .then(r => r.json())
+      .then(d => { if (d?.ok && d.statuses) setOpStatuses(prev => ({ ...prev, ...d.statuses })) })
+      .catch(() => {})
+  }, [chats])
+
+  // Current sprint name — used to badge chats whose task sits in another sprint
+  useEffect(() => {
+    fetch('/api/op/versions')
+      .then(r => r.json())
+      .then(d => {
+        const cur = (d.versions ?? []).find((v: { isCurrent?: boolean; name?: string }) => v.isCurrent)
+        if (cur?.name) setCurrentSprintName(cur.name)
+      })
+      .catch(() => {})
+  }, [])
 
   // Load active conversation
   useEffect(() => {
@@ -347,6 +389,59 @@ export default function ChatsView() {
     } else flash('Gagal kirim ke Daily Hub')
   }
 
+  // ── Archive & OP status derivations ──────────────────────────────────────────
+  const statusFor = (c: ChatSummary): OpTaskStatus | undefined =>
+    c.opTaskId ? opStatuses[c.opTaskId] : undefined
+
+  const isArchived = (c: ChatSummary): boolean => {
+    if (statusFor(c)?.isClosed) return true
+    const last = new Date(c.updatedAt || c.createdAt).getTime()
+    return Number.isFinite(last) && Date.now() - last > ARCHIVE_AGE_MS
+  }
+
+  const q = search.trim().toLowerCase()
+  const matchesSearch = (c: ChatSummary): boolean =>
+    !q || c.title.toLowerCase().includes(q) || (c.opTaskId != null && String(c.opTaskId).includes(q))
+
+  // AKTIF keeps the list's existing order (recent first); Arsip likewise
+  const aktifChats = chats.filter(c => !isArchived(c) && matchesSearch(c))
+  const arsipChats = chats.filter(c => isArchived(c) && matchesSearch(c))
+  // Searching auto-expands arsip so matches from both groups are visible
+  const showArsipItems = arsipOpen || (!!q && arsipChats.length > 0)
+
+  // Active chat linked to a closed OP task → read-only archive mode
+  const activeClosed = activeOpId != null && (opStatuses[activeOpId]?.isClosed ?? false)
+
+  const renderChatItem = (c: ChatSummary) => {
+    const tag = tagFor(c)
+    const st = statusFor(c)
+    const showSprintChip = st && !st.isClosed && st.sprintName && currentSprintName && st.sprintName !== currentSprintName
+    const active = c.id === activeId
+    return (
+      <div key={c.id}
+        onClick={() => setActiveId(c.id)}
+        className={`group px-3.5 py-2.5 cursor-pointer border-l-2 transition ${
+          active ? 'bg-white/12 border-blue-400' : 'border-transparent hover:bg-white/6'
+        }`}>
+        <div className="flex items-start gap-1.5">
+          <p className={`flex-1 text-[11px] font-semibold truncate ${st?.isClosed ? 'text-white/55' : 'text-white/90'}`}>{c.title}</p>
+          <button onClick={e => { e.stopPropagation(); delChat(c.id) }}
+            className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-red-400 text-[11px] transition flex-shrink-0">✕</button>
+        </div>
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          <span className="text-[9px] text-white/40">{relTime(c.updatedAt)} · {c.msgCount} msg</span>
+          {tag && <span className={`px-1.5 py-px rounded text-[8px] font-bold ${tag.cls}`}>{tag.label}</span>}
+          {st?.isClosed && (
+            <span className="px-1.5 py-px rounded text-[8px] font-bold bg-emerald-100 text-emerald-700">✓ Closed</span>
+          )}
+          {showSprintChip && (
+            <span className="px-1.5 py-px rounded text-[8px] font-semibold bg-white/10 text-white/45 truncate max-w-[90px]">{st!.sprintName}</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="relative flex h-full min-h-0 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
 
@@ -358,33 +453,44 @@ export default function ChatsView() {
             className="w-full px-3 py-2 rounded-lg bg-white/12 hover:bg-white/20 border border-white/15 text-white text-[11px] font-semibold flex items-center gap-1.5 transition">
             <Plus size={12} /> Create new
           </button>
+          <div className="relative mt-2">
+            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Cari judul / OP id…"
+              className="w-full pl-7 pr-2.5 py-1.5 rounded-lg bg-white/10 border border-white/15 text-[11px] text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-transparent transition"
+            />
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto py-1.5">
           {chats.length === 0 ? (
             <p className="text-[10px] text-white/30 text-center px-4 py-6 leading-relaxed">
               Belum ada percakapan.<br />Klik <strong className="text-white/50">Create new</strong> untuk mulai ide baru.
             </p>
-          ) : chats.map(c => {
-            const tag = tagFor(c)
-            const active = c.id === activeId
-            return (
-              <div key={c.id}
-                onClick={() => setActiveId(c.id)}
-                className={`group px-3.5 py-2.5 cursor-pointer border-l-2 transition ${
-                  active ? 'bg-white/12 border-blue-400' : 'border-transparent hover:bg-white/6'
-                }`}>
-                <div className="flex items-start gap-1.5">
-                  <p className="flex-1 text-[11px] font-semibold text-white/90 truncate">{c.title}</p>
-                  <button onClick={e => { e.stopPropagation(); delChat(c.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-red-400 text-[11px] transition flex-shrink-0">✕</button>
-                </div>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-[9px] text-white/40">{relTime(c.updatedAt)} · {c.msgCount} msg</span>
-                  {tag && <span className={`px-1.5 py-px rounded text-[8px] font-bold ${tag.cls}`}>{tag.label}</span>}
-                </div>
-              </div>
-            )
-          })}
+          ) : (
+            <>
+              {/* AKTIF */}
+              <p className="px-3.5 pt-1.5 pb-1 text-[9px] font-bold tracking-widest text-white/35">AKTIF</p>
+              {aktifChats.length === 0 && !q && (
+                <p className="px-3.5 pb-2 text-[10px] text-white/25">Tidak ada chat aktif</p>
+              )}
+              {aktifChats.map(renderChatItem)}
+
+              {/* ARSIP — collapsed by default, items lazily rendered */}
+              {arsipChats.length > 0 && (
+                <button onClick={() => setArsipOpen(o => !o)}
+                  className="w-full flex items-center gap-1 px-3.5 pt-3 pb-1 text-[9px] font-bold tracking-widest text-white/35 hover:text-white/60 transition">
+                  {showArsipItems ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                  ARSIP · {arsipChats.length}
+                </button>
+              )}
+              {showArsipItems && arsipChats.map(renderChatItem)}
+              {q && aktifChats.length === 0 && arsipChats.length === 0 && (
+                <p className="px-3.5 py-2 text-[10px] text-white/25">Tidak ada chat yang cocok.</p>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -415,13 +521,15 @@ export default function ChatsView() {
                   {messages.length} messages · {activeOpId ? `linked OP #${activeOpId}` : 'not linked to OP'}
                 </p>
               </div>
-              <div className="flex gap-1.5 flex-shrink-0">
-                <button onClick={extractPoints} disabled={extracting || !messages.length}
-                  title="AI ekstrak poin penting → centang mana yang beneran task → kirim ke Daily Hub. Brainstorm yang nggak relevan nggak ikut."
-                  className="px-3 py-1.5 rounded-md text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition">
-                  <span className="flex items-center gap-1">{extracting ? 'Mengekstrak…' : <><Sparkles size={10} /> Ekstrak poin → task</>}</span>
-                </button>
-              </div>
+              {!activeClosed && (
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button onClick={extractPoints} disabled={extracting || !messages.length}
+                    title="AI ekstrak poin penting → centang mana yang beneran task → kirim ke Daily Hub. Brainstorm yang nggak relevan nggak ikut."
+                    className="px-3 py-1.5 rounded-md text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition">
+                    <span className="flex items-center gap-1">{extracting ? 'Mengekstrak…' : <><Sparkles size={10} /> Ekstrak poin → task</>}</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* messages */}
@@ -475,7 +583,14 @@ export default function ChatsView() {
               <div ref={bottomRef} />
             </div>
 
-            {/* input */}
+            {/* input — hidden when the linked OP task is closed (read-only archive) */}
+            {activeClosed ? (
+              <div className="flex-shrink-0 px-4 py-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 text-center">
+                  🔒 Task sudah closed di OP — chat diarsipkan (read-only)
+                </p>
+              </div>
+            ) : (
             <div className="flex-shrink-0 p-3 border-t border-gray-100 dark:border-gray-800">
               <div className="flex gap-2 items-end">
                 <textarea
@@ -500,6 +615,7 @@ export default function ChatsView() {
                 )}
               </div>
             </div>
+            )}
           </>
         )}
       </div>
