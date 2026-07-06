@@ -3,6 +3,7 @@ import { getLLMConfig } from '@/lib/llm'
 import { loadCache, type CachedWorkPackage, type CachedSprint } from '@/lib/op-cache'
 import { loadUserConfig } from '@/lib/user-config'
 import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { sessions, kbEntries, taskMemory } from '@/lib/db/schema'
 import { sql, and, eq } from 'drizzle-orm'
@@ -49,6 +50,18 @@ export async function POST(req: NextRequest) {
 
   // Build ISL context for system prompt
   const ctx     = await getRequestContext()
+
+  // Isolasi multi-user: claude-cli/ollama jalan pakai kredensial OWNER di mesin ini,
+  // tokenrouter/openmodel pakai env key server (juga milik owner). Non-owner dilarang
+  // memakai kuota/akun owner — enforce di server, bukan cuma disembunyikan di UI.
+  if (process.env.ISL_MULTIUSER === '1' && !isOwnerUid(ctx?.uid)) {
+    const sharedOk = process.env.ISL_SHARED_PROVIDERS === '1'
+    const blocked  = ['claude-cli', 'ollama'].includes(provider)
+      || (!sharedOk && ['tokenrouter', 'openmodel'].includes(provider))
+    if (blocked) {
+      return new Response(JSON.stringify({ error: `Provider "${provider}" memakai kredensial owner instance. Set provider + API key sendiri di Settings.` }), { status: 403 })
+    }
+  }
   const userCfg = loadUserConfig()
   const cache   = loadCache(ctx?.uid)
   const sprint  = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent)

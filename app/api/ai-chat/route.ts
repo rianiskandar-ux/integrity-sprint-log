@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { callLLM } from '@/lib/llm'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
+
+// Isolasi multi-user: provider di file ini semua memakai kredensial owner
+// (claude-cli = subscription owner, tokenrouter/openmodel = env key owner).
+async function callerIsOwner(): Promise<boolean> {
+  if (process.env.ISL_MULTIUSER !== '1') return true
+  const ctx = await getRequestContext()
+  return isOwnerUid(ctx?.uid)
+}
+const sharedProvidersEnabled = () => process.env.ISL_SHARED_PROVIDERS === '1'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300  // 5 min — dokumen panjang via Claude CLI
@@ -18,12 +29,15 @@ const PROVIDERS = {
 type ProviderId = keyof typeof PROVIDERS
 
 export async function GET() {
-  const models: Record<string, string[]> = {
-    // claude-cli runs the local Claude Code subscription — always available, no key/quota
-    'claude-cli': ['claude'],
-    tokenrouter:  [],
-    openmodel:    ['deepseek-v4-flash'],
-  }
+  const owner  = await callerIsOwner()
+  const shared = owner || sharedProvidersEnabled()
+
+  const models: Record<string, string[]> = {}
+  // claude-cli = subscription owner di mesin ini — HANYA owner yang boleh lihat/pakai
+  if (owner)  models['claude-cli'] = ['claude']
+  if (shared) { models.tokenrouter = []; models.openmodel = ['deepseek-v4-flash'] }
+
+  if (!shared) return NextResponse.json({ models })
 
   // List only the TokenRouter models this token can actually access
   try {
@@ -63,6 +77,17 @@ export async function POST(req: NextRequest) {
     model:    string
     messages: { role: string; content: string }[]
     system?:  string
+  }
+
+  // Enforce isolasi di server (bukan cuma UI): non-owner tidak boleh membakar
+  // kuota/kredensial owner. claude-cli selalu owner-only; shared providers opt-in.
+  const owner = await callerIsOwner()
+  if (!owner) {
+    const blocked = ['claude-cli', 'ollama'].includes(body.provider)
+      || (!sharedProvidersEnabled() && ['tokenrouter', 'openmodel'].includes(body.provider))
+    if (blocked) {
+      return NextResponse.json({ error: `Provider "${body.provider}" memakai kredensial owner instance. Set provider + API key sendiri di Settings.` }, { status: 403 })
+    }
   }
 
   const { provider, model, messages, system } = body
