@@ -57,6 +57,24 @@ const SUGGESTIONS = [
   'Diskusi arsitektur fitur ',
 ]
 
+// Defensive cleanup for stored histories: drop empty/"..." assistant placeholder
+// bubbles and consecutive duplicate user messages. This self-heals histories that
+// were corrupted by the old save path (stuck stream placeholders, double-sends) —
+// they render clean on load and get persisted clean on the next save.
+function sanitizeHistory(raw: { role: string; content: string }[] | undefined | null): { role: 'user' | 'assistant'; content: string }[] {
+  const out: { role: 'user' | 'assistant'; content: string }[] = []
+  for (const m of raw ?? []) {
+    const role: 'user' | 'assistant' = m.role === 'user' ? 'user' : 'assistant'
+    const content = String(m.content ?? '')
+    const trimmed = content.trim()
+    if (role === 'assistant' && (!trimmed || trimmed === '...' || trimmed === '…')) continue
+    const prev = out[out.length - 1]
+    if (prev && prev.role === 'user' && role === 'user' && prev.content.trim() === trimmed) continue
+    out.push({ role, content })
+  }
+  return out
+}
+
 export default function ChatsView() {
   const [chats, setChats]       = useState<ChatSummary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -72,6 +90,16 @@ export default function ChatsView() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
   const abortRef  = useRef<AbortController | null>(null)
+  // Always-current selected chat id (state can be stale inside async stream callbacks)
+  const activeIdRef = useRef<string | null>(null)
+  // Which chat the `messages` state currently belongs to — guards against sending
+  // with another chat's messages still on screen right after switching chats.
+  const loadedForRef = useRef<string | null>(null)
+  // Live conversation of an in-flight stream, keyed by ITS chat id, so switching
+  // away and back mid-stream shows the stream instead of the stale server copy.
+  const liveStreamRef = useRef<{ id: string; msgs: Message[]; title: string } | null>(null)
+
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
 
   function flash(msg: string) {
     setToast(msg)
@@ -100,28 +128,43 @@ export default function ChatsView() {
 
   // Load active conversation
   useEffect(() => {
-    if (!activeId) { setMessages([]); setActiveTitle(''); setActiveOpId(null); return }
+    if (!activeId) { setMessages([]); setActiveTitle(''); setActiveOpId(null); loadedForRef.current = null; return }
+    // A stream in-flight for THIS chat owns its messages — show the live
+    // conversation instead of the (stale) server copy.
+    const live = liveStreamRef.current
+    if (live?.id === activeId) {
+      setMessages(live.msgs)
+      setActiveTitle(live.title)
+      loadedForRef.current = activeId
+    }
+    let stale = false
     fetch(`/api/chat/history/${activeId}`)
       .then(r => r.json())
       .then(d => {
+        if (stale) return // user switched again — never apply an outdated response
         const chat = d.chat
+        const streamingThis = liveStreamRef.current?.id === activeId
         if (chat) {
-          setActiveTitle(chat.title ?? 'Untitled')
           setActiveOpId(chat.opTaskId ?? null)
-          setMessages((chat.messages ?? []).map((m: { role: string; content: string }, i: number) => ({
-            role: m.role as 'user' | 'assistant', content: m.content, id: String(i),
-          })))
-        } else {
+          if (!streamingThis) {
+            setActiveTitle(chat.title ?? 'Untitled')
+            setMessages(sanitizeHistory(chat.messages).map((m, i) => ({ ...m, id: `h${i}` })))
+          }
+        } else if (!streamingThis) {
           setMessages([])
         }
+        loadedForRef.current = activeId
       })
       .catch(() => {})
+    return () => { stale = true }
   }, [activeId])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   function newChat() {
     const id = `chat-${Date.now().toString(36)}`
+    activeIdRef.current = id
+    loadedForRef.current = id // messages state ([]) now represents this chat
     setActiveId(id)
     setActiveTitle('New conversation')
     setActiveOpId(null)
@@ -129,36 +172,70 @@ export default function ChatsView() {
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
-  function persist(id: string, title: string, msgs: Message[]) {
+  function persist(id: string, title: string, msgs: Message[], opTaskId: number | null) {
     fetch(`/api/chat/history/${id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, taskType: 'idea', opTaskId: activeOpId, messages: msgs.map(m => ({ role: m.role, content: m.content })) }),
+      body: JSON.stringify({ title, taskType: 'idea', opTaskId, messages: msgs.map(m => ({ role: m.role, content: m.content })) }),
     }).then(() => loadList()).catch(() => {})
   }
 
   const send = useCallback(async (text: string) => {
     const content = text.trim()
     if (!content || streaming) return
-    let id = activeId
-    if (!id) { id = `chat-${Date.now().toString(36)}`; setActiveId(id) }
+
+    // Bind the ENTIRE send/stream/save lifecycle to the chat id captured NOW.
+    // Switching chats mid-stream must never redirect tokens or the final save.
+    let chatId = activeId
+    if (!chatId) {
+      chatId = `chat-${Date.now().toString(36)}`
+      activeIdRef.current = chatId
+      loadedForRef.current = chatId
+      setActiveId(chatId)
+    }
+    setInput('')
+    setStreaming(true)
+
+    // Base history must belong to chatId. Right after a chat switch the displayed
+    // messages can still be the PREVIOUS chat's (its load fetch not resolved yet)
+    // — in that case fetch this chat's own history instead of trusting state.
+    let base: Message[]
+    let baseTitle = activeTitle
+    let opId = activeOpId
+    if (loadedForRef.current === chatId) {
+      base = messages
+    } else {
+      const d = await fetch(`/api/chat/history/${chatId}`).then(r => r.json()).catch(() => null)
+      const c = d?.chat
+      base = sanitizeHistory(c?.messages).map((m, i) => ({ ...m, id: `h${i}` }))
+      baseTitle = c?.title ?? ''
+      opId = c?.opTaskId ?? null
+    }
 
     // derive title from first user message if still default/new
-    const title = (!activeTitle || activeTitle === 'New conversation')
+    const title = (!baseTitle || baseTitle === 'New conversation')
       ? content.slice(0, 50) + (content.length > 50 ? '…' : '')
-      : activeTitle
-    if (title !== activeTitle) setActiveTitle(title)
+      : baseTitle
+    if (activeIdRef.current === chatId && title !== activeTitle) setActiveTitle(title)
 
     const userMsg: Message = { role: 'user', content, id: Date.now().toString() }
     const assistantId = (Date.now() + 1).toString()
-    const assistantMsg: Message = { role: 'assistant', content: '', id: assistantId }
-    setMessages(prev => [...prev, userMsg, assistantMsg])
-    setInput('')
-    setStreaming(true)
+    // Local single source of truth for this send — never read back from shared state.
+    let convo: Message[] = [...base, userMsg, { role: 'assistant', content: '', id: assistantId }]
+
+    const syncUI = () => {
+      liveStreamRef.current = { id: chatId!, msgs: convo, title }
+      if (activeIdRef.current === chatId) setMessages(convo)
+    }
+    const setAssistant = (txt: string) => {
+      convo = convo.map(m => m.id === assistantId ? { ...m, content: txt } : m)
+      syncUI()
+    }
+    syncUI()
     abortRef.current = new AbortController()
 
     try {
-      const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+      const history = [...base, userMsg].map(m => ({ role: m.role, content: m.content }))
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -172,7 +249,7 @@ export default function ChatsView() {
         if (friendly.includes('credit balance is too low')) friendly = 'API credit habis. Top up di console.anthropic.com.'
         else if (friendly.includes('invalid_api_key')) friendly = 'API key tidak valid. Cek Settings.'
         else if (friendly.length > 160) friendly = friendly.slice(0, 160) + '…'
-        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: `[Error] ${friendly}` } : m))
+        setAssistant(`[Error] ${friendly}`)
         return
       }
       const reader = res.body!.getReader()
@@ -182,15 +259,20 @@ export default function ChatsView() {
         const { done, value } = await reader.read()
         if (done) break
         full += dec.decode(value, { stream: true })
-        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: full } : m))
+        setAssistant(full)
       }
     } catch (e: unknown) {
-      if ((e as Error).name === 'AbortError') return
-      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: '[Error] Connection error.' } : m))
+      if ((e as Error).name !== 'AbortError') setAssistant('[Error] Connection error.')
     } finally {
       setStreaming(false)
       abortRef.current = null
-      setMessages(prev => { persist(id!, title, prev); return prev })
+      // Never persist an empty "..." placeholder (e.g. stream aborted before any token)
+      convo = convo.filter(m => !(m.role === 'assistant' && !m.content.trim()))
+      liveStreamRef.current = null
+      if (activeIdRef.current === chatId) setMessages(convo)
+      // Save ONLY under the send-time chat id — if the user switched away this
+      // updates that chat's stored history without touching the displayed chat.
+      persist(chatId!, title, convo, opId)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, streaming, activeId, activeTitle, activeOpId])

@@ -44,6 +44,16 @@ export async function getTaskChat(id: string): Promise<TaskChat | null> {
   return rows[0] ? rowToChat(rows[0]) : null
 }
 
+// Empty/"..." assistant bubbles are never-completed stream placeholders — they
+// must never reach the database, regardless of which UI wrote the history.
+function stripPlaceholders(messages: ChatMessage[]): ChatMessage[] {
+  return (messages ?? []).filter(m => {
+    if (m.role !== 'assistant') return true
+    const t = (m.content ?? '').trim()
+    return t !== '' && t !== '...' && t !== '…'
+  })
+}
+
 export async function saveTaskChat(chat: TaskChat): Promise<TaskChat> {
   const now = new Date()
   const values = {
@@ -55,7 +65,7 @@ export async function saveTaskChat(chat: TaskChat): Promise<TaskChat> {
     opStoryId:  chat.opStoryId ?? null,
     sprintName: chat.sprintName ?? null,
     date:       chat.date ?? null,
-    messages:   chat.messages,
+    messages:   stripPlaceholders(chat.messages),
     updatedAt:  now,
   }
   await db.insert(taskChats).values(values).onConflictDoUpdate({
