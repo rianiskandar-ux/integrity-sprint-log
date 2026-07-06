@@ -134,10 +134,12 @@ export async function POST(req: NextRequest) {
     semanticSection,
     taskSection,
     `\nYou have full context of the user's sprint and tasks above. Answer questions directly using this data.`,
-    `Be concise and practical. Use markdown for lists. Respond in the same language the user writes in.`,
+    `Be concise and practical. Use markdown for lists.`,
     taskContext?.opTaskId
       ? `\nIMPORTANT: You CANNOT call the OpenProject API yourself. When the user wants to push/log this work to OP, do NOT tell them to do it manually in OpenProject — instead tell them to click the "Push #${taskContext.opTaskId}" button at the top of this chat, which logs the worklog to OP ticket #${taskContext.opTaskId} in one click. You may help draft the progress note first.`
       : `\nIMPORTANT: You CANNOT call the OpenProject API yourself. To push work to OP, the user uses the Push Queue (to pick or create a ticket). Help draft the note; don't claim you can push automatically.`,
+    // Aturan bahasa di POSISI TERAKHIR — paling dipatuhi model, terutama saat effort low.
+    `\nATURAN BAHASA (WAJIB): Balas dalam bahasa yang SAMA dengan pesan terakhir user. User menulis Bahasa Indonesia → jawab FULL Bahasa Indonesia (istilah teknis boleh tetap English). User menulis English → jawab English. Jangan pernah ganti bahasa sendiri.`,
   ].filter(Boolean).join('\n')
 
   try {
