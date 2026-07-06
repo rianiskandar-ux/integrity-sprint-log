@@ -43,6 +43,8 @@ export default function ChatBubble() {
   const [aiProvider, setAiProvider] = useState('claude-cli')
   const [aiModel,    setAiModel]    = useState('claude')
   const [aiModels,   setAiModels]   = useState<Record<string, string[]>>({ 'claude-cli': ['claude'] })
+  // Setelan efektif claude-cli (dari Launcher switcher) — ditampilkan di label picker
+  const [cliDefault, setCliDefault] = useState('')
   const [taskShortcuts, setShortcuts] = useState<TaskShortcut[]>([])
   const [showWorkspace, setShowWorkspace] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
@@ -55,6 +57,8 @@ export default function ChatBubble() {
       setAiReady(d.llmApiKeySet || ['ollama', '9router', 'claude-cli'].includes(d.llmProvider))
       if (d.llmProvider) setAiProvider(d.llmProvider)
       if (d.llmModel)    setAiModel(d.llmModel)
+      const parts = [d.llmModel && d.llmModel !== 'claude' ? d.llmModel : 'default', d.llmEffort].filter(Boolean)
+      setCliDefault(parts.join(' · '))
     }).catch(() => setAiReady(false))
     fetch('/api/ai-chat').then(r => r.json()).then(d => { if (d.models) setAiModels(d.models) }).catch(() => {})
   }, [])
@@ -232,7 +236,7 @@ export default function ChatBubble() {
             onChange={e => { const [p, m] = e.target.value.split('::'); setAiProvider(p); setAiModel(m) }}
             className="flex-1 text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-300">
             {Object.entries(aiModels).map(([prov, list]) => (
-              <optgroup key={prov} label={prov === 'claude-cli' ? 'Claude CLI (gratis)' : prov}>
+              <optgroup key={prov} label={prov === 'claude-cli' ? `Claude CLI (gratis)${cliDefault ? ` — ${cliDefault}` : ''}` : prov}>
                 {list.map(m => <option key={`${prov}::${m}`} value={`${prov}::${m}`}>{m}</option>)}
               </optgroup>
             ))}
