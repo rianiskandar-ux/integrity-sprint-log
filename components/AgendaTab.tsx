@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   ClipboardList, Save, Sparkles, Loader2, BookOpen,
   ChevronRight, CheckCircle2, RefreshCw, Check,
-  Upload, Square, CheckSquare, ExternalLink,
+  Upload, Square, CheckSquare, ExternalLink, Copy, Users,
 } from 'lucide-react'
 
 interface AgendaData {
@@ -44,6 +44,11 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
   const [savedSummaries, setSavedSummaries] = useState<{ sprint: string; summary: string; savedAt: string }[]>([])
   const [saving,        setSaving]       = useState(false)
   const [showSaved,     setShowSaved]    = useState(false)
+  // Ringkasan Stakeholder (Bahasa Indonesia, non-teknis, copy-only — never posted to OP)
+  const stkKey = `stakeholder-summary-${currentSprintNo}`
+  const [stkSummary,    setStkSummary]   = useState('')
+  const [stkLoading,    setStkLoading]   = useState(false)
+  const [stkCopied,     setStkCopied]    = useState(false)
   // Track owned agenda item IDs: { [meetingId]: itemId } per sprint
   const idsKey = `agenda-item-ids-${currentSprintNo}`
   function getOwnedIds(): Record<number, number> {
@@ -58,6 +63,7 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
   useEffect(() => {
     const saved = localStorage.getItem(storageKey)
     if (saved) { try { setAgenda(JSON.parse(saved)) } catch { /* ignore */ } }
+    setStkSummary(localStorage.getItem(stkKey) ?? '')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSprintNo])
 
@@ -249,6 +255,37 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
     setSaving(false)
   }
 
+  async function generateStakeholderSummary() {
+    if (stkLoading) return
+    setStkLoading(true)
+    try {
+      const r = await fetch('/api/sprint/stakeholder-summary', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sprintName: agenda.sprintName || undefined }),
+      })
+      const body = await r.text()
+      let d: { ok?: boolean; summary?: string; error?: string }
+      try { d = JSON.parse(body) } catch { d = { error: r.ok ? body.slice(0, 160) : `HTTP ${r.status}` } }
+      if (d.ok && d.summary) {
+        setStkSummary(d.summary)
+        localStorage.setItem(stkKey, d.summary)
+      } else {
+        showToast(`⚠️ ${String(d.error ?? 'Gagal generate ringkasan').slice(0, 160)}`)
+      }
+    } catch (e) {
+      showToast(`⚠️ Gagal generate: ${String(e).slice(0, 120)}`)
+    }
+    setStkLoading(false)
+  }
+
+  function copyStakeholderSummary() {
+    if (!stkSummary) return
+    navigator.clipboard.writeText(stkSummary).then(() => {
+      setStkCopied(true)
+      setTimeout(() => setStkCopied(false), 2000)
+    })
+  }
+
   async function deleteSavedSummary(sprint: string) {
     const r = await fetch('/api/sprint/summary', {
       method: 'DELETE', headers: { 'Content-Type': 'application/json' },
@@ -339,6 +376,45 @@ export default function AgendaTab({ currentSprintNo }: { currentSprintNo: number
           </div>
         )
       })()}
+
+      {/* Ringkasan Stakeholder — Bahasa Indonesia, non-teknis. Copy-only:
+          TIDAK di-wire ke "Post to OP Meeting" (konten OP wajib English). */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+              <Users size={9} /> Ringkasan Stakeholder
+            </label>
+            <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 border border-teal-100 dark:border-teal-900">
+              Bahasa Indonesia · non-teknis
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {stkSummary && (
+              <button onClick={copyStakeholderSummary}
+                title="Copy markdown ke clipboard"
+                className="text-[10px] font-semibold px-3 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                {stkCopied ? <><Check size={11} className="inline text-emerald-500" /> Tersalin ✓</> : <><Copy size={11} className="inline" /> Copy</>}
+              </button>
+            )}
+            <button onClick={generateStakeholderSummary} disabled={stkLoading}
+              title="Generate ringkasan non-teknis untuk client/manajemen"
+              className="text-[10px] font-semibold px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition disabled:opacity-50">
+              {stkLoading ? <><Loader2 size={11} className="inline animate-spin" /> Generating…</> : <><Sparkles size={11} className="inline" /> Generate Ringkasan</>}
+            </button>
+          </div>
+        </div>
+        {stkSummary ? (
+          <div className="rounded-xl border border-teal-100 dark:border-teal-900 bg-teal-50/40 dark:bg-teal-950/20 px-4 py-3">
+            <div className="text-[12px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{stkSummary}</div>
+            <p className="text-[9px] text-gray-400 mt-2">Copy-only — tidak dipost ke OP meeting (konten OP wajib English). Tersimpan otomatis secara lokal.</p>
+          </div>
+        ) : (
+          <p className="text-[10px] text-gray-300 italic px-1">
+            Ringkasan sprint untuk client/manajemen — tanpa jargon teknis, fokus temuan & dampak bisnis. Klik &quot;Generate Ringkasan&quot;.
+          </p>
+        )}
+      </div>
 
       {/* Key Wins — only show when NOT structured (manual mode) */}
       {!agenda.retrospective.includes('COMPLETED') && (
