@@ -39,6 +39,9 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
   const [opContext, setOpContext] = useState<string>('')
   const [pushing, setPushing]     = useState(false)
   const [pushResult, setPushResult] = useState<string | null>(null)
+  // Activity Log Sync — ringkas chat (English) → comment ke activity log ticket OP
+  const [activityBusy, setActivityBusy]   = useState<'generating' | 'sending' | null>(null)
+  const [activityDraft, setActivityDraft] = useState<string | null>(null)
   const [ticketLog, setTicketLog] = useState<{ totalMins: number; count: number } | null>(null)
 
   // Total time already logged on this ticket (sum across all sessions for opTaskId)
@@ -253,6 +256,47 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
     }
   }
 
+  // Activity Log Sync: generate an ENGLISH summary of this chat (preview, editable)
+  async function generateActivitySummary() {
+    if (!task.opTaskId || activityBusy) return
+    const msgs = messagesRef.current
+      .filter(m => m.id !== 'greeting' && m.content.trim())
+      .map(m => ({ role: m.role, content: m.content }))
+    if (!msgs.length) { setPushResult('Belum ada percakapan untuk diringkas.'); return }
+    setActivityBusy('generating'); setPushResult(null)
+    try {
+      const r = await fetch('/api/op/activity-summary', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opTaskId: task.opTaskId, messages: msgs, mode: 'preview' }),
+      }).then(res => res.json())
+      if (r.error) throw new Error(r.error)
+      setActivityDraft((r.summary as string) ?? '')
+    } catch (e) {
+      setPushResult(`⚠️ Gagal buat ringkasan: ${String(e).slice(0, 140)}`)
+    } finally {
+      setActivityBusy(null)
+    }
+  }
+
+  // Kirim ringkasan (yang mungkin sudah diedit) sebagai comment di activity log OP
+  async function sendActivitySummary() {
+    if (!task.opTaskId || activityBusy || !activityDraft?.trim()) return
+    setActivityBusy('sending')
+    try {
+      const r = await fetch('/api/op/activity-summary', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opTaskId: task.opTaskId, mode: 'post', summary: activityDraft.trim() }),
+      }).then(res => res.json())
+      if (r.error) throw new Error(r.error)
+      setActivityDraft(null)
+      setPushResult(`✓ Terkirim ke OP #${task.opTaskId}`)
+    } catch (e) {
+      setPushResult(`⚠️ Gagal kirim ke OP: ${String(e).slice(0, 140)}`)
+    } finally {
+      setActivityBusy(null)
+    }
+  }
+
   const typeLabel = task.taskType === 'incoming' ? 'Incoming' : task.taskType === 'session' ? 'Push Queue' : 'New'
 
   return (
@@ -299,6 +343,13 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
                 {pushing ? 'Pushing…' : (task.opTaskId ? `Push #${task.opTaskId}` : 'Push to OP')}
               </button>
             )}
+            {task.opTaskId && (
+              <button onClick={generateActivitySummary} disabled={activityBusy !== null}
+                title={`Ringkas chat ini (English) → comment di activity log OP #${task.opTaskId}`}
+                className="text-[11px] font-bold px-2.5 py-1 rounded-lg text-white border border-white/30 hover:bg-white/20 transition disabled:opacity-50">
+                {activityBusy === 'generating' ? 'Menyusun…' : '📝 Update Activity'}
+              </button>
+            )}
             {task.taskType === 'incoming' && onAddToQueue && (
               <button onClick={() => {
                 const reversed = [...messagesRef.current].reverse()
@@ -329,12 +380,37 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
         {/* Push result banner */}
         {pushResult && (
           <div className={`px-3 py-1.5 text-[11px] border-b flex items-center justify-between gap-2 ${
-            pushResult.startsWith('Pushed')
+            pushResult.startsWith('Pushed') || pushResult.startsWith('✓')
               ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900'
               : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-100 dark:border-amber-900'
           }`}>
             <span className="flex-1">{pushResult}</span>
             <button onClick={() => setPushResult(null)} className="opacity-60 hover:opacity-100">✕</button>
+          </div>
+        )}
+
+        {/* Activity Log Sync — preview ringkasan (editable) sebelum dikirim ke OP */}
+        {activityDraft !== null && task.opTaskId && (
+          <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-blue-50/60 dark:bg-blue-950/20 space-y-1.5">
+            <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Ringkasan Activity (English) — edit sebelum kirim
+            </p>
+            <textarea
+              value={activityDraft}
+              onChange={e => setActivityDraft(e.target.value)}
+              rows={6}
+              className="w-full text-[11px] leading-relaxed rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setActivityDraft(null)} disabled={activityBusy === 'sending'}
+                className="text-[11px] px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-50">
+                Batal
+              </button>
+              <button onClick={sendActivitySummary} disabled={activityBusy === 'sending' || !activityDraft.trim()}
+                className="text-[11px] font-bold px-3 py-1 rounded-lg text-white transition disabled:opacity-50"
+                style={{ background: BRAND }}>
+                {activityBusy === 'sending' ? 'Mengirim…' : `Kirim ke OP #${task.opTaskId}`}
+              </button>
+            </div>
           </div>
         )}
 
