@@ -366,6 +366,27 @@ function markProcessed(sessionId) {
   } catch {}
 }
 
+// ── Ollama lokal (Phase B) — otak utama summarization, gratis & offline ─────
+// Hook jalan di HOST, jadi localhost:11434 langsung. Gagal/invalid → fallback Claude CLI.
+async function callOllama(prompt) {
+  const base  = process.env.OLLAMA_LOCAL_URL || 'http://localhost:11434'
+  const model = process.env.OLLAMA_CHAT_MODEL || 'qwen2.5:3b'
+  try {
+    const res = await fetch(`${base}/api/generate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model, prompt, stream: false, options: { temperature: 0.2, num_ctx: 8192 } }),
+      signal: AbortSignal.timeout(90000),
+    })
+    if (!res.ok) return ''
+    const d = await res.json()
+    return (d.response ?? '').trim()
+  } catch (e) {
+    process.stderr.write(`[ISL] Ollama unavailable: ${e.message}\n`)
+    return ''
+  }
+}
+
 // ── Claude CLI call (subscription, no API key needed) ────────────────────────
 function callClaudeCLI(prompt) {
   const isWin = process.platform === 'win32'
@@ -499,8 +520,20 @@ activities: 4-10 specific completed steps, past tense, technical detail, English
 Return ONLY valid JSON, no markdown, no extra text:
 {"isSubstantial":true,"topics":[{"title":"...","activities":["step 1","..."],"taskStatus":"in_progress"}]}`
 
-    const raw  = await callClaudeCLI(prompt)
-    const json = JSON.parse((raw ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '{}')
+    // Phase B: otak lokal dulu (gratis), Claude CLI hanya fallback.
+    // Bias ke CAPTURE: kalau lokal bilang tidak-substansial, verifikasi ke Claude —
+    // false-negative dari 3B = sesi hilang senyap, lebih mahal dari 1 panggilan Claude.
+    const parse = (raw) => { try { return JSON.parse((raw ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '{}') } catch { return {} } }
+    const validShape = (j) => typeof j.isSubstantial === 'boolean' && (!j.isSubstantial || (Array.isArray(j.topics) && j.topics.length > 0))
+
+    let json = parse(await callOllama(prompt))
+    let brain = 'ollama'
+    if (!validShape(json) || json.isSubstantial === false) {
+      json = parse(await callClaudeCLI(prompt))
+      brain = 'claude-cli'
+    }
+    process.stderr.write(`[ISL] summary via ${brain}\n`)
+
     if (json.isSubstantial && Array.isArray(json.topics) && json.topics.length > 0) {
       // Multi-topic: return array; single-topic: wrap in array for uniform handling
       taskInfo = json.topics

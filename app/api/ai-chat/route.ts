@@ -35,6 +35,18 @@ export async function GET() {
   const models: Record<string, string[]> = {}
   // claude-cli = subscription owner di mesin ini — HANYA owner yang boleh lihat/pakai
   if (owner)  models['claude-cli'] = ['claude']
+  // ollama = LLM lokal di mesin owner (gratis, offline) — chat models saja (exclude embed)
+  if (owner) {
+    try {
+      const base = process.env.OLLAMA_URL || 'http://localhost:11434'
+      const r = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(3000) })
+      if (r.ok) {
+        const d = await r.json() as { models?: { name: string }[] }
+        const chatModels = (d.models ?? []).map(m => m.name).filter(n => !n.includes('embed'))
+        if (chatModels.length > 0) models.ollama = chatModels
+      }
+    } catch { /* Ollama mati → grup tidak muncul */ }
+  }
   if (shared) { models.tokenrouter = []; models.openmodel = ['deepseek-v4-flash'] }
 
   if (!shared) return NextResponse.json({ models })

@@ -34,7 +34,7 @@ export const DEFAULT_MODELS: Record<LLMProvider, string> = {
   openrouter:  'meta-llama/llama-3.1-8b-instruct:free',
   mistral:     'mistral-small-latest',
   together:    'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
-  ollama:      'llama3.2',
+  ollama:      process.env.OLLAMA_CHAT_MODEL || 'qwen2.5:3b',
   '9router':   'gemini/gemini-2.0-flash-lite',
   'claude-cli': 'claude',
 }
@@ -93,7 +93,7 @@ function resolveBase(provider: LLMProvider, override?: string): string {
     openrouter: 'https://openrouter.ai/api/v1',
     mistral:    'https://api.mistral.ai/v1',
     together:   'https://api.together.xyz/v1',
-    ollama:     'http://localhost:11434/v1',
+    ollama:     `${process.env.OLLAMA_URL || 'http://localhost:11434'}/v1`,
     '9router':  'http://localhost:20128/v1',
   }
   return BASES[provider] ?? 'https://api.openai.com/v1'

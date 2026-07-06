@@ -249,7 +249,7 @@ function getDefaultModel(provider: string): string {
     openrouter: 'meta-llama/llama-3.1-8b-instruct:free',
     mistral:    'mistral-small-latest',
     together:   'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
-    ollama:     'llama3.2',
+    ollama:     process.env.OLLAMA_CHAT_MODEL || 'qwen2.5:3b',
     '9router':  'claude-sonnet-4-6',
     tokenrouter:'MiniMax-M3',
     openmodel:  'deepseek-v4-flash',
@@ -264,7 +264,8 @@ function resolveBase(provider: string): string {
     openrouter: 'https://openrouter.ai/api/v1',
     mistral:    'https://api.mistral.ai/v1',
     together:   'https://api.together.xyz/v1',
-    ollama:     'http://localhost:11434/v1',
+    // Dari container, Ollama host = host.docker.internal (env OLLAMA_URL di compose)
+    ollama:     `${process.env.OLLAMA_URL || 'http://localhost:11434'}/v1`,
     '9router':  'http://localhost:20128/v1',
     tokenrouter:process.env.AI_CHAT_TR_BASE || 'https://api.tokenrouter.com/v1',
     openmodel:  process.env.AI_CHAT_OM_BASE || 'https://api.openmodel.ai/v1',
