@@ -375,7 +375,24 @@ async function callOllama(prompt) {
     const res = await fetch(`${base}/api/generate`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, prompt, stream: false, options: { temperature: 0.2, num_ctx: 8192 } }),
+      // format = JSON Schema penuh → constrained decoding, struktur DIJAMIN persis
+      // (3B suka meratakan skema: activities naik ke level atas, topics kosong)
+      body: JSON.stringify({ model, prompt, stream: false, format: {
+        type: 'object',
+        properties: {
+          isSubstantial: { type: 'boolean' },
+          topics: { type: 'array', items: {
+            type: 'object',
+            properties: {
+              title:      { type: 'string' },
+              activities: { type: 'array', items: { type: 'string' } },
+              taskStatus: { type: 'string', enum: ['done', 'on_hold', 'in_progress', 'backlog', 'abandoned'] },
+            },
+            required: ['title', 'activities', 'taskStatus'],
+          } },
+        },
+        required: ['isSubstantial', 'topics'],
+      }, options: { temperature: 0.2, num_ctx: 8192 } }),
       signal: AbortSignal.timeout(90000),
     })
     if (!res.ok) return ''
@@ -526,11 +543,16 @@ Return ONLY valid JSON, no markdown, no extra text:
     const parse = (raw) => { try { return JSON.parse((raw ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '{}') } catch { return {} } }
     const validShape = (j) => typeof j.isSubstantial === 'boolean' && (!j.isSubstantial || (Array.isArray(j.topics) && j.topics.length > 0))
 
-    let json = parse(await callOllama(prompt))
+    const localRaw = await callOllama(prompt)
+    let json = parse(localRaw)
     let brain = 'ollama'
-    if (!validShape(json) || json.isSubstantial === false) {
+    if (!validShape(json)) {
+      process.stderr.write(`[ISL] lokal raw (${localRaw.length} chars): ${localRaw.slice(0, 200)}\n`)
       json = parse(await callClaudeCLI(prompt))
-      brain = 'claude-cli'
+      brain = 'claude-cli (lokal: output invalid)'
+    } else if (json.isSubstantial === false) {
+      json = parse(await callClaudeCLI(prompt))
+      brain = 'claude-cli (lokal bilang skip — verifikasi)'
     }
     process.stderr.write(`[ISL] summary via ${brain}\n`)
 
