@@ -29,6 +29,9 @@ services:
     # mapping here. Override OP_HOST_IP in .env if the OP server IP changes.
     extra_hosts:
       - "tokek.integrity-asia.com:${OP_HOST_IP:-10.30.40.147}"
+      # Custom dns: di bawah bikin embedded DNS Docker kelewat — pin host gateway
+      # manual supaya container bisa reach Ollama di host (embedding lokal).
+      - "host.docker.internal:host-gateway"
     dns:
       - 10.30.40.42
       - 10.236.144.228
@@ -81,6 +84,8 @@ services:
       - ISL_OWNER_UID=${ISL_OWNER_UID:-1}
       # Local key untuk perintah terminal `isl-timer.ps1` (kosong = pakai ISL_ENCRYPTION_KEY).
       - ISL_TIMER_KEY=${ISL_TIMER_KEY:-}
+      # Embedding lokal via Ollama di host (nomic-embed-text, 768 dim)
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       # AI Chat providers (server-side only, tidak expose ke client)
       - AI_CHAT_TR_KEY=${AI_CHAT_TR_KEY:-}
       - AI_CHAT_TR_BASE=${AI_CHAT_TR_BASE:-https://api.tokenrouter.com/v1}

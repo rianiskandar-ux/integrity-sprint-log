@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAllSessions, getSessionBySessionId, saveSession, createSessionId, type SessionLog } from '@/lib/session-store'
 import { loadCache } from '@/lib/op-cache'
 import { getRequestContext } from '@/lib/request-auth'
+import { OWNER_UID } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 
@@ -33,9 +34,12 @@ export async function POST(req: Request) {
     if (body.bullets && !Array.isArray(body.bullets)) body.bullets = [String(body.bullets)]
 
     const ctx = await getRequestContext()
+    // Machine auth untuk hook lokal (Arka/isl-context.mjs): x-kafi-key → OWNER.
+    // Tanpa ini hook kena 401 sejak multiuser aktif — Arka diam ~10 hari (root cause).
+    const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')
     // Multi-user: every write must belong to an authenticated user. Without this,
     // a null ctx would write userId=null (orphan) or trust a client-supplied userId.
-    if (process.env.ISL_MULTIUSER === '1' && !ctx) {
+    if (process.env.ISL_MULTIUSER === '1' && !ctx && !machineAuth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const now  = new Date().toISOString()
@@ -74,7 +78,8 @@ export async function POST(req: Request) {
     }
 
     // Tag session with the authenticated user's uid. Never trust client body.userId.
-    const uid = ctx?.uid ?? null
+    // Machine-auth (hook) di-attribute ke OWNER_UID supaya kebaca Kafi & filter user.
+    const uid = ctx?.uid ?? (machineAuth ? OWNER_UID : null)
 
     const cache = loadCache(ctx?.uid)
     const session: SessionLog = {

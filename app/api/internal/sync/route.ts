@@ -38,6 +38,13 @@ export async function POST(req: Request) {
 
   try {
     const cache = await rebuildCache(opToken, opBaseUrl, projects, opUserId, userName, uid)
+
+    // Aryo lapor: Rendi selesai sync OP (fire-and-forget)
+    ;(async () => {
+      const { sendTelegram } = await import('@/lib/telegram')
+      await sendTelegram(`👔 <b>Aryo</b> — laporan agent\n🛡️ Rendi: OP sync selesai\n  › ${(cache.sprints ?? []).length} sprint · ${(cache.myOpenTasks ?? []).length} open task · ${(cache.incomingTasks ?? []).length} incoming`)
+    })().catch(() => {})
+
     return NextResponse.json({
       ok: true,
       uid,

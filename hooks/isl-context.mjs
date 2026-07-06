@@ -768,7 +768,8 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
   try {
     await fetch(`${ISL_URL}/api/isl/sessions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // x-kafi-key: machine auth — sejak ISL_MULTIUSER=1, POST tanpa session browser kena 401
+      headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
       body: JSON.stringify({
         sessionId, title, bullets,
         source: 'kafi',  // captured by Claude Code hook (external to ISL)

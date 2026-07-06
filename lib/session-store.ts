@@ -118,6 +118,11 @@ export async function getSessionsByStatus(status: SessionLog['pushStatus']): Pro
 }
 
 export async function saveSession(session: SessionLog): Promise<void> {
+  // Untuk notif Telegram: bedakan insert baru vs update, dan transisi ke 'pushed'
+  const prev = await db.select({ id: sessions.id, pushStatus: sessions.pushStatus })
+    .from(sessions).where(eq(sessions.id, session.id)).limit(1)
+    .then(r => r[0] ?? null).catch(() => null)
+
   await db.insert(sessions).values({
     id:               session.id,
     sessionId:        session.sessionId ?? null,
@@ -176,6 +181,22 @@ export async function saveSession(session: SessionLog): Promise<void> {
     title:      session.title,
     chunk:      (session.bullets ?? []).filter(Boolean).join('\n'),
   }).catch(() => {})
+
+  // Telegram real-time: sesi BARU masuk, atau transisi ke 'pushed'.
+  // Fire-and-forget — notif gagal tidak boleh mengganggu save.
+  // Semua notif dikirim atas nama Aryo (manager) — konsisten dengan flow:
+  // agent bekerja → lapor Aryo → Aryo kabari Rian.
+  ;(async () => {
+    const { sendTelegram } = await import('./telegram')
+    const srcName: Record<string, string> = { kafi: '🌐 Kafi', hook: '📝 Arka', manual: '✍️ Manual', 'auto-log': '🤖 Auto Log' }
+    const who = srcName[session.source ?? ''] ?? `⚡ ${session.source ?? '?'}`
+    if (!prev) {
+      const mins = session.actualMins ? ` · ${session.actualMins}m` : ''
+      await sendTelegram(`👔 <b>Aryo</b> — laporan agent\n${who}: sesi baru → <b>${session.pushStatus}</b>\n  › ${session.title}${mins}`)
+    } else if (prev.pushStatus !== 'pushed' && session.pushStatus === 'pushed') {
+      await sendTelegram(`👔 <b>Aryo</b> — laporan agent\n✅ Sesi di-push ke OP\n  › ${session.title}${session.opTaskId ? `\n  › OP #${session.opTaskId}` : ''}`)
+    }
+  })().catch(() => {})
 }
 
 // Only these columns may be patched — anything else (e.g. a stray key from a raw

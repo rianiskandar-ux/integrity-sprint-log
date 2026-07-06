@@ -31,14 +31,54 @@ export function getGeminiKey(): string {
   return process.env.GEMINI_API_KEY ?? ''
 }
 
+/** Ollama di host (nomic-embed-text, 768 dim). Dari container: host.docker.internal. */
+export function getOllamaUrl(): string {
+  return process.env.OLLAMA_URL ?? ''
+}
+
+const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text'
+
+/** Provider utama: Ollama lokal (gratis, offline). Fallback: Gemini kalau ada key. */
+async function embedViaOllama(input: string): Promise<number[] | null> {
+  const base = getOllamaUrl()
+  if (!base) return null
+  try {
+    const res = await fetch(`${base}/api/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, prompt: input.slice(0, MAX_EMBED_CHARS) }),
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) {
+      console.warn(`[embeddings] Ollama embed failed: ${res.status}`)
+      return null
+    }
+    const data = await res.json() as { embedding?: number[] }
+    const values = data?.embedding
+    if (!Array.isArray(values) || values.length !== 768) {
+      console.warn(`[embeddings] Ollama unexpected shape (len=${Array.isArray(values) ? values.length : 'n/a'})`)
+      return null
+    }
+    return values
+  } catch (e) {
+    console.warn('[embeddings] Ollama error:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 /**
- * Embed a piece of text via Gemini text-embedding-004.
- * Returns 768-dim vector, or null when no key / empty text / any error. Never throws.
+ * Embed text — Ollama lokal dulu, fallback Gemini bila ada key.
+ * Returns 768-dim vector, or null when no provider / empty text / any error. Never throws.
  */
 export async function embedText(text: string): Promise<number[] | null> {
-  const key = getGeminiKey()
   const input = (text ?? '').trim()
-  if (!key || !input) return null
+  if (!input) return null
+
+  const local = await embedViaOllama(input)
+  if (local) return local
+
+  const key = getGeminiKey()
+  if (!key) return null
 
   try {
     const res = await fetch(`${GEMINI_EMBED_URL}?key=${encodeURIComponent(key)}`, {
