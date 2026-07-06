@@ -212,17 +212,12 @@ export default function ChatsView() {
     setExtracting(true)
     try {
       const transcript = messages.map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join('\n').slice(0, 4000)
-      const res = await fetch('/api/chat', {
+      // Local-first: /api/chat/extract coba Ollama dulu, fallback Claude.
+      // Response tetap plain text baris "TASK | ..." / "NOTE | ..." — parser di bawah tidak berubah.
+      const res = await fetch('/api/chat/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{
-          role: 'user',
-          content: `Berikut transkrip diskusi/brainstorm. Ekstrak poin-poin penting.
-Untuk tiap poin, tentukan apakah itu KANDIDAT TASK (rencana kerja nyata yang bisa dikerjakan) atau sekadar CATATAN/brainstorm.
-Output HANYA baris-baris dengan format persis: "TASK | <poin>" atau "NOTE | <poin>". Tanpa kalimat lain, tanpa nomor.
-
-Transkrip:
-${transcript}` }] }),
+        body: JSON.stringify({ transcript }),
       })
       if (!res.ok) { flash('Gagal ekstrak'); return }
       const reader = res.body!.getReader()
