@@ -86,10 +86,12 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
       .catch(() => {})
   }, [task.opTaskId])
 
-  // Load existing chat history
+  // Load existing chat history. opTaskId is passed so the server can fall back
+  // to this ticket's existing chat row even when this surface uses another id.
   useEffect(() => {
     const greeting = buildGreeting(task)
-    fetch(`/api/chat/history/${encodeURIComponent(task.id)}`)
+    const opQ = task.opTaskId ? `?opTaskId=${task.opTaskId}` : ''
+    fetch(`/api/chat/history/${encodeURIComponent(task.id)}${opQ}`)
       .then(r => r.json())
       .then(d => {
         if (d.chat?.messages?.length) {

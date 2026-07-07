@@ -70,6 +70,11 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
   const [spentM, setSpentM]     = useState<string>('')
   const [comment, setComment]   = useState<string>('')
 
+  // "Catatan Otomatis": AI-drafted progress note for the OP activity log
+  const [drafting, setDrafting]           = useState(false)
+  const [guardBanner, setGuardBanner]     = useState(false)
+  const [guardTriggered, setGuardTriggered] = useState(false)
+
   const [entries, setEntries]       = useState<TimeEntry[]>([])
   const [entriesOpen, setEntriesOpen] = useState(false)
   const [loadingEntries, setLoadingEntries] = useState(false)
@@ -150,8 +155,50 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
   const totalSpentPrev = currentSpent + newSpentHours
   const remainPreview  = pct >= 100 ? 0 : Math.max(0, estHVal - totalSpentPrev)
 
-  async function save() {
-    if (!d || saving) return
+  // Draft an ENGLISH progress note from the ticket's work history (task_memory,
+  // sessions, chat, OP description). Returns null on any failure — never blocks.
+  async function draftNote(): Promise<string | null> {
+    const statusChanged = d != null && statusId !== d.statusId
+    const statusTo   = statusChanged ? STATUSES.find(s => s.id === statusId)?.label : undefined
+    const statusFrom = statusChanged ? d?.status : undefined
+    const res = await fetch('/api/op/activity-summary', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'task-note', opTaskId: wpId, statusFrom, statusTo }),
+    }).then(r => r.json()).catch(() => null)
+    const summary = res && !res.error ? String(res.summary ?? '').trim() : ''
+    return summary || null
+  }
+
+  async function handleDraftClick() {
+    if (drafting || saving) return
+    setDrafting(true); setMsg(null)
+    const note = await draftNote()
+    setDrafting(false)
+    if (note) setComment(prev => prev.trim() ? `${prev.trimEnd()}\n\n${note}` : note)
+    else setMsg('⚠️ Gagal membuat draft catatan')
+  }
+
+  async function save(bypassGuard = false, skipComment = false) {
+    if (!d || saving || drafting) return
+
+    // SAVE GUARD ("Catatan Otomatis"): status changed + no note + not yet
+    // intercepted this open → draft a note from work history ONCE, fill the
+    // textarea and ask the user to review. Never auto-submits; if the draft
+    // fails, fall through to the normal save (AI must never block a save).
+    if (!bypassGuard && statusId !== d.statusId && !comment.trim() && !guardTriggered) {
+      setGuardTriggered(true)
+      setDrafting(true); setMsg(null)
+      const note = await draftNote()
+      setDrafting(false)
+      if (note) {
+        setComment(note)
+        setGuardBanner(true)
+        return
+      }
+      // draft failed → proceed with the original save below
+    }
+
+    setGuardBanner(false)
     setSaving(true); setMsg(null)
     try {
       // 1) status / estimate + pass spentMins so wp-update can set remaining correctly
@@ -182,7 +229,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
       }
 
       // 3) comment
-      if (comment.trim()) {
+      if (!skipComment && comment.trim()) {
         await fetch('/api/op/comment', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ wpId, comment: comment.trim() }),
@@ -393,10 +440,30 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
 
             {/* Comment */}
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">+ Komentar / progress note</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">+ Komentar / progress note</p>
+                <button onClick={handleDraftClick} disabled={drafting || saving}
+                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-50 transition"
+                  title="Buat draft catatan progress (English) dari riwayat kerja">
+                  {drafting
+                    ? <><span className="w-3 h-3 border-2 border-indigo-200 dark:border-indigo-800 border-t-indigo-500 rounded-full animate-spin" />Menyusun…</>
+                    : '✨ Draft Catatan'}
+                </button>
+              </div>
               <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2}
                 placeholder="catatan progress (opsional)…"
                 className="w-full text-[12px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 resize-none" />
+              {guardBanner && (
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5">
+                  <span className="text-[11px] text-amber-700 dark:text-amber-300 flex-1 min-w-[160px]">
+                    Catatan dibuat otomatis dari riwayat kerja — cek sebentar, lalu klik Simpan lagi.
+                  </span>
+                  <button onClick={() => { setGuardBanner(false); setComment(''); void save(true, true) }}
+                    className="text-[10px] font-bold text-amber-700 dark:text-amber-300 underline hover:text-amber-900 dark:hover:text-amber-100 flex-shrink-0">
+                    simpan tanpa catatan
+                  </button>
+                </div>
+              )}
             </div>
 
             {d.description && (
@@ -431,10 +498,10 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
                 {msg}
               </span>
             )}
-            <button onClick={save} disabled={saving}
+            <button onClick={() => { void save() }} disabled={saving || drafting}
               className="ml-auto px-4 py-1.5 text-[11px] font-bold text-white rounded-lg disabled:opacity-50 transition"
               style={{ background: BRAND }}>
-              {saving ? 'Menyimpan…' : '💾 Simpan ke OP'}
+              {saving ? 'Menyimpan…' : drafting ? 'Menyusun catatan…' : '💾 Simpan ke OP'}
             </button>
             <button onClick={onClose} className="text-[11px] text-gray-400 hover:text-gray-600 px-2">Tutup</button>
           </div>

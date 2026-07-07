@@ -93,6 +93,8 @@ Format WAJIB (markdown, tiap poin 1-2 kalimat):
 (3-5 poin: masalah/insight yang ditemukan + dampak bisnisnya + apa yang sudah dilakukan)
 ## Perlu Perhatian / Keputusan
 (0-3 poin yang butuh keputusan atau perhatian stakeholder; kalau tidak ada tulis 'Tidak ada — semua terkendali.')
+## Bahan Diskusi
+(2-4 topik PROAKTIF yang mengajak stakeholder berinteraksi — bukan laporan, tapi pertanyaan/pilihan yang muncul dari pekerjaan sprint ini. Setiap poin WAJIB: konteks singkat → implikasi → PERTANYAAN konkret ke stakeholder, sebutkan opsi bila ada. Contoh pola: "Privacy notice sudah diperbarui untuk versi English & Indonesia — namun website juga tersedia dalam Thai & Malay. Apakah konten dua bahasa itu dikerjakan dengan bantuan AI oleh tim kami, atau diserahkan ke tim cabang terkait?" Gali dari: cakupan yang belum tersentuh dari pekerjaan yang selesai, konsekuensi lanjutan sebuah temuan, pilihan arah yang butuh preferensi bisnis. HARUS berakar dari data sprint di bawah — DILARANG topik generik yang bisa ditulis tanpa membaca data. Kalau benar-benar tidak ada, tulis 'Tidak ada topik diskusi periode ini.')
 ## Fokus Berikutnya
 (1-2 kalimat rencana periode depan)
 

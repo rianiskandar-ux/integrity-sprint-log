@@ -44,6 +44,18 @@ export async function getTaskChat(id: string): Promise<TaskChat | null> {
   return rows[0] ? rowToChat(rows[0]) : null
 }
 
+// Latest chat linked to an OP work package. Different UI surfaces historically
+// generated different ids for the same ticket (sprinttask-N, banner-N,
+// incoming-N, …) — this lets load/save converge on ONE row per ticket instead
+// of creating a new row per surface.
+export async function getTaskChatByOpTask(opTaskId: number): Promise<TaskChat | null> {
+  const rows = await db.select().from(taskChats)
+    .where(eq(taskChats.opTaskId, opTaskId))
+    .orderBy(desc(taskChats.updatedAt))
+    .limit(1)
+  return rows[0] ? rowToChat(rows[0]) : null
+}
+
 // Empty/"..." assistant bubbles are never-completed stream placeholders — they
 // must never reach the database, regardless of which UI wrote the history.
 function stripPlaceholders(messages: ChatMessage[]): ChatMessage[] {
@@ -104,7 +116,17 @@ export async function appendMessage(
 
 export async function getAllTaskChats(): Promise<TaskChat[]> {
   const rows = await db.select().from(taskChats).orderBy(desc(taskChats.updatedAt))
-  return rows.map(rowToChat)
+  // Defensive: id is the PK, but a corrupted unique index once produced
+  // physical duplicates. Keep only the newest row per id (rows are already
+  // ordered by updatedAt desc) so the UI never renders duplicate entries.
+  const seen = new Set<string>()
+  const unique: typeof rows = []
+  for (const r of rows) {
+    if (seen.has(r.id)) continue
+    seen.add(r.id)
+    unique.push(r)
+  }
+  return unique.map(rowToChat)
 }
 
 export async function deleteTaskChat(id: string): Promise<void> {

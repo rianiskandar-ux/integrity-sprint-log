@@ -116,6 +116,9 @@ export default function ChatsView() {
   const liveStreamRef = useRef<{ id: string; msgs: Message[]; title: string } | null>(null)
 
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
+  // Current sidebar summaries, readable inside the load effect without widening its deps
+  const chatsRef = useRef<ChatSummary[]>([])
+  useEffect(() => { chatsRef.current = chats }, [chats])
 
   function flash(msg: string) {
     setToast(msg)
@@ -180,7 +183,10 @@ export default function ChatsView() {
       loadedForRef.current = activeId
     }
     let stale = false
-    fetch(`/api/chat/history/${activeId}`)
+    // opTaskId hint lets the server fall back to this ticket's chat row if the
+    // id lookup misses (legacy surface-specific ids for the same OP ticket).
+    const opHint = chatsRef.current.find(c => c.id === activeId)?.opTaskId
+    fetch(`/api/chat/history/${activeId}${opHint ? `?opTaskId=${opHint}` : ''}`)
       .then(r => r.json())
       .then(d => {
         if (stale) return // user switched again — never apply an outdated response
