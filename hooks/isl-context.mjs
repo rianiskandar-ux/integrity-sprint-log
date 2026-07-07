@@ -555,6 +555,17 @@ Return ONLY valid JSON, no markdown, no extra text:
       brain = 'claude-cli (lokal bilang skip — verifikasi)'
     }
     process.stderr.write(`[ISL] summary via ${brain}\n`)
+    // Durable event log (Scorecard) — awaited with a short timeout since the
+    // hook process exits synchronously via process.exit(0) further down;
+    // a true fire-and-forget fetch could get killed before it sends.
+    try {
+      await fetch(`${ISL_URL}/api/events/log`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
+        body: JSON.stringify({ agent: 'arka', event: brain === 'ollama' ? 'summary_local' : 'summary_fallback' }),
+        signal: AbortSignal.timeout(3000),
+      })
+    } catch { /* logging is best-effort — never block the hook */ }
 
     if (json.isSubstantial && Array.isArray(json.topics) && json.topics.length > 0) {
       // Multi-topic: return array; single-topic: wrap in array for uniform handling

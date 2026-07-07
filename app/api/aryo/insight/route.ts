@@ -7,6 +7,7 @@ import { getRequestContext } from '@/lib/request-auth'
 import { getAllSessions, saveSession, createSessionId, type SessionLog } from '@/lib/session-store'
 import { sendTelegram } from '@/lib/telegram'
 import { OWNER_UID } from '@/lib/auth'
+import { db, agentEvents } from '@/lib/db'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -59,6 +60,15 @@ async function resolveAuth(req: NextRequest): Promise<{ uid: number } | null> {
   const ctx = await getRequestContext()
   if (ctx) return { uid: ctx.uid }
   return null
+}
+
+// ── Durable event log (Scorecard) — fire-and-forget, never blocks the route ──
+function logEvent(agent: string, event: string, meta?: Record<string, unknown>) {
+  db.insert(agentEvents).values({
+    id:    `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    agent, event,
+    meta:  meta ?? null,
+  }).catch(() => {})
 }
 
 // ── GET — saved insights ──────────────────────────────────────────────────────
@@ -190,6 +200,7 @@ ${signals}`
       }))
 
     saveInsights({ insights, generatedAt: new Date().toISOString() })
+    logEvent('aryo', 'insight_proposed', { count: insights.length })
 
     if (insights.length > 0) {
       // Fire-and-forget — notif gagal tidak boleh mengganggu hasil analisa.
@@ -225,6 +236,7 @@ export async function PATCH(req: NextRequest) {
     if (action === 'dismiss') {
       insight.status = 'dismissed'
       saveInsights(data)
+      logEvent('aryo', 'insight_dismissed', { id: insight.id })
       return NextResponse.json({ ok: true })
     }
 
@@ -266,6 +278,7 @@ export async function PATCH(req: NextRequest) {
 
     insight.status = 'approved'
     saveInsights(data)
+    logEvent('aryo', 'insight_approved', { id: insight.id })
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error('[aryo-insight] PATCH error:', e)

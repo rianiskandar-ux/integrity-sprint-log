@@ -247,6 +247,21 @@ export const sageSnapshots = pgTable('sage_snapshots', {
   updatedAt:  timestamp('updated_at').defaultNow().notNull(),
 })
 
+// ── agent_events ───────────────────────────────────────────────────────────────
+// Durable, queryable event log for agent actions — replaces ephemeral stderr/
+// console lines (e.g. Arka's `[ISL] summary via ${brain}`). Feeds the Scorecard
+// dashboard (agent activity/efficiency) and seeds data for a future correction
+// loop (comparing Luna's suggestions to actual outcomes).
+export const agentEvents = pgTable('agent_events', {
+  id:        text('id').primaryKey(),          // evt-<timestamp>-<random>
+  agent:     text('agent').notNull(),           // arka | luna | aryo | kafi | sage
+  event:     text('event').notNull(),           // summary_local | summary_fallback | suggestion_made | insight_proposed | insight_approved | insight_dismissed | digest_generated | pushed | skipped
+  meta:      jsonb('meta').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('agent_events_agent_created_idx').on(t.agent, t.createdAt),
+])
+
 // ── events ─────────────────────────────────────────────────────────────────────
 // Timestamped audit log — semua kejadian sistem yang penting
 export const events = pgTable('events', {

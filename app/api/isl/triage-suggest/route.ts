@@ -3,6 +3,7 @@ import { loadCache, type CachedWorkPackage } from '@/lib/op-cache'
 import { getRequestContext } from '@/lib/request-auth'
 import { getAllSessions, type SessionLog } from '@/lib/session-store'
 import { OWNER_UID } from '@/lib/auth'
+import { db, agentEvents } from '@/lib/db'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -138,6 +139,15 @@ ATURAN:
 - "reason": Bahasa Indonesia, singkat (1 kalimat).`
 }
 
+// ── Durable event log (Scorecard) — fire-and-forget, never blocks the route ──
+function logEvent(agent: string, event: string, meta?: Record<string, unknown>) {
+  db.insert(agentEvents).values({
+    id:    `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    agent, event,
+    meta:  meta ?? null,
+  }).catch(() => {})
+}
+
 function fallbackSuggestion(session: SessionLog, ageDays: number, reason: string): TriageSuggestion {
   return {
     sessionId: session.id,
@@ -209,7 +219,9 @@ export async function POST(req: NextRequest) {
     // Sequential — Ollama lokal 3B, satu request per waktu lebih stabil
     const suggestions: TriageSuggestion[] = []
     for (const session of targets) {
-      suggestions.push(await suggestFor(session, tasks, now))
+      const suggestion = await suggestFor(session, tasks, now)
+      suggestions.push(suggestion)
+      logEvent('luna', 'suggestion_made', { suggestion: suggestion.suggestion, sessionId: suggestion.sessionId })
     }
 
     return NextResponse.json({ ok: true, count: suggestions.length, suggestions })

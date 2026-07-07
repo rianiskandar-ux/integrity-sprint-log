@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db, sageDigests, sageSnapshots } from '@/lib/db'
+import { db, sageDigests, sageSnapshots, agentEvents } from '@/lib/db'
 import { desc, eq } from 'drizzle-orm'
 import { callLLM, getLLMConfig } from '@/lib/llm'
 import { sendTelegram } from '@/lib/telegram'
@@ -42,6 +42,15 @@ async function resolveAuth(req: NextRequest): Promise<{ uid: number } | null> {
   const ctx = await getRequestContext()
   if (ctx) return { uid: ctx.uid }
   return null
+}
+
+// ── Durable event log (Scorecard) — fire-and-forget, never blocks the route ──
+function logEvent(agent: string, event: string, meta?: Record<string, unknown>) {
+  db.insert(agentEvents).values({
+    id:    `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    agent, event,
+    meta:  meta ?? null,
+  }).catch(() => {})
 }
 
 // ── RSS parsing (no XML dep in repo — lightweight regex parser) ─────────────
@@ -358,6 +367,12 @@ ${signalList}`
 
     const llmCfg = getLLMConfig() ?? { provider: 'claude-cli' as const, apiKey: '', model: 'claude' }
     const digest = await callLLM(prompt, llmCfg)
+
+    // Security section is a fixed heading — flag this run if it did NOT come
+    // back clean (i.e. the digest found something worth a manual look).
+    const securitySection = digest.split(/##\s*⚠️\s*Perhatian Keamanan/i)[1] ?? ''
+    const riskFlagged = securitySection.length > 0 && !securitySection.includes('Tidak ada temuan risiko')
+    logEvent('sage', 'digest_generated', { riskFlagged })
 
     // Step 4 — persist + fire-and-forget embedding for semantic search.
     const id = `sage-${weekOf}`
