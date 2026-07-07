@@ -51,6 +51,7 @@ export const translations = {
   'nav.skills':   { id: 'Rekap Topik',  en: 'Topic Recap' },
   'nav.autolog':  { id: 'Auto Log',     en: 'Auto Log' },
   'nav.incoming': { id: 'Tiket Masuk',  en: 'Incoming' },
+  'nav.inquiries': { id: 'Inquiries',   en: 'Inquiries' },
   'nav.isldash':    { id: 'Dashboard',    en: 'Dashboard' },
   'nav.dailyhub':   { id: 'Daily Hub',   en: 'Daily Hub' },
   'nav.pushqueue':  { id: 'Push Queue',  en: 'Push Queue' },

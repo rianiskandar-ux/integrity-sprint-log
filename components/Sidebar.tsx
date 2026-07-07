@@ -6,13 +6,13 @@ import { loadAppConfig } from '@/lib/op-config'
 import { useI18n } from '@/lib/i18n'
 import {
   Activity, CalendarDays, Target, LayoutDashboard,
-  MessageSquarePlus, Brain, Inbox, Send,
+  MessageSquarePlus, Brain, Inbox, Send, Mail,
   ClipboardList, Bot, BookOpen, Archive,
   Settings, Terminal, MessageCircle,
   ChevronLeft, ChevronRight, ChevronDown,
 } from 'lucide-react'
 
-const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
+const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
 const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
 
 interface Props {
@@ -193,6 +193,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <NavItem id="chats"     icon={<MessageSquarePlus size={14} />} label="Create new"         shortcut="C" color="text-sky-400"     indent={1} />
           <NavItem id="dailyhub"  icon={<Brain size={14} />}            label={t('nav.dailyhub')}  shortcut="H" color="text-indigo-400" indent={1} />
           <NavItem id="incoming"  icon={<Inbox size={14} />}            label={t('nav.incoming')}  shortcut="I" color="text-blue-400"   indent={1} badge={incomingCount} />
+          <NavItem id="inquiries" icon={<Mail size={14} />}             label={t('nav.inquiries')} shortcut="U" color="text-sky-400"    indent={1} />
           <NavItem id="pushqueue" icon={<Send size={14} />}             label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"  indent={1} badge={queueCount} />
 
           {/* Log expandable group */}
