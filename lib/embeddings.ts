@@ -16,7 +16,7 @@ const GEMINI_EMBED_URL =
 // Gemini embedContent input limit safety — plenty for titles + bullets/summaries
 const MAX_EMBED_CHARS = 8000
 
-export type EmbeddingSourceType = 'kb' | 'session' | 'daily_log' | 'doc'
+export type EmbeddingSourceType = 'kb' | 'session' | 'daily_log' | 'doc' | 'sage_digest'
 
 export interface SemanticResult {
   sourceType: string

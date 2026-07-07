@@ -8,9 +8,25 @@ import {
   Activity, CalendarDays, Target, LayoutDashboard,
   MessageSquarePlus, Brain, Inbox, Send, Mail,
   ClipboardList, Bot, BookOpen, Archive,
-  Settings, Terminal, MessageCircle,
+  Settings, Lock, MessageCircle,
   ChevronLeft, ChevronRight, ChevronDown,
 } from 'lucide-react'
+
+// Launcher Admin Console — PIN-gated terminal + Quick Fix, lives in the
+// separate launcher-dashboard app (localhost:9000 / launcher.test via nginx).
+// Opened in a new tab (not embedded — cross-origin WS from an iframe is
+// fragile) with a quick reachability probe so it still works on machines
+// where the launcher.test nginx vhost/DNS isn't set up.
+function openAdminConsole() {
+  const primary = 'http://launcher.test/admin'
+  const fallback = 'http://localhost:9000/admin'
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 800)
+  fetch(primary, { mode: 'no-cors', signal: controller.signal })
+    .then(() => window.open(primary, '_blank', 'noopener'))
+    .catch(() => window.open(fallback, '_blank', 'noopener'))
+    .finally(() => clearTimeout(timeout))
+}
 
 const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'autolog', 'dailylog', 'backlog'])
 const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
@@ -277,7 +293,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
         )}
       </nav>
 
-      {/* Bottom — Settings / Terminal / Feedback */}
+      {/* Bottom — Settings / Admin Console / Feedback */}
       <div className={`${open ? 'px-3 py-2' : 'px-2 py-2'} space-y-0.5`} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         <a
           href="/settings"
@@ -288,12 +304,12 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           {open && <span className="text-[10px]">Settings</span>}
         </a>
         <button
-          onClick={() => window.dispatchEvent(new CustomEvent('isl:toggle-terminal'))}
-          title="Terminal"
+          onClick={openAdminConsole}
+          title="Admin Console (PIN-gated terminal + Quick Fix, opens in new tab)"
           className="w-full flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
         >
-          <Terminal size={14} />
-          {open && <span className="text-[10px]">Terminal</span>}
+          <Lock size={14} />
+          {open && <span className="text-[10px]">Admin Console</span>}
         </button>
         {onFeedback && (
           <button
