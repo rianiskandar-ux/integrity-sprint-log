@@ -29,3 +29,4 @@ sprint-summaries-*.json
 work-timer-*.json
 daily-hub
 *.bak
+docker-deps

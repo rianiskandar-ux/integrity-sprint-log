@@ -2,13 +2,27 @@ import { NextRequest } from 'next/server'
 import { getLLMConfig } from '@/lib/llm'
 import { loadCache, type CachedWorkPackage, type CachedSprint } from '@/lib/op-cache'
 import { loadUserConfig } from '@/lib/user-config'
-import { getRequestContext } from '@/lib/request-auth'
+import { getRequestContext, type RequestContext } from '@/lib/request-auth'
 import { isOwnerUid } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { db, userSettings } from '@/lib/db'
 import { sessions, kbEntries, taskMemory } from '@/lib/db/schema'
 import { sql, and, eq } from 'drizzle-orm'
+import { decrypt } from '@/lib/crypto'
 
 export const runtime = 'nodejs'
+
+/** Non-owner's personal LLM config (provider + decrypted key), if they've set one in Settings.
+ *  Defense-in-depth: claude-cli/ollama are never treated as a "personal" provider here even
+ *  if somehow present in stale data — the write path (app/api/settings/personal-llm) already
+ *  rejects them, this is a second guard. */
+async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: string; apiKey: string; model: string | null } | null> {
+  if (!ctx) return null
+  const row = (await db.select().from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]
+  if (!row?.personalLlmProvider || ['claude-cli', 'ollama'].includes(row.personalLlmProvider)) return null
+  const apiKey = row.personalLlmApiKey ? decrypt(row.personalLlmApiKey) : ''
+  if (!apiKey) return null
+  return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel }
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as {
@@ -26,10 +40,21 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: 'No messages provided' }), { status: 400 })
   }
 
+  // Build ISL context first — needed to resolve a non-owner's personal provider key.
+  const ctx      = await getRequestContext()
+  const nonOwner = process.env.ISL_MULTIUSER === '1' && !isOwnerUid(ctx?.uid)
+  const personal = nonOwner ? await getPersonalLLM(ctx) : null
+  // Non-owner selecting THEIR OWN configured provider — always allowed, uses their own key.
+  const isPersonalCall = !!personal && body.provider === personal.provider
+
   // Resolve the effective provider/key/model. A per-chat override (body.provider)
   // wins over the global Settings config so the model picker inside each chat works.
   let provider: string, apiKey: string, model: string
-  if (body.provider) {
+  if (isPersonalCall && personal) {
+    provider = personal.provider
+    apiKey   = personal.apiKey
+    model    = body.model || personal.model || getDefaultModel(provider)
+  } else if (body.provider) {
     provider = body.provider
     if      (provider === 'claude-cli')  apiKey = ''
     else if (provider === 'tokenrouter') apiKey = process.env.AI_CHAT_TR_KEY || ''
@@ -48,13 +73,11 @@ export async function POST(req: NextRequest) {
     model    = cfg.model || getDefaultModel(cfg.provider)
   }
 
-  // Build ISL context for system prompt
-  const ctx     = await getRequestContext()
-
   // Isolasi multi-user: claude-cli/ollama jalan pakai kredensial OWNER di mesin ini,
   // tokenrouter/openmodel pakai env key server (juga milik owner). Non-owner dilarang
   // memakai kuota/akun owner — enforce di server, bukan cuma disembunyikan di UI.
-  if (process.env.ISL_MULTIUSER === '1' && !isOwnerUid(ctx?.uid)) {
+  // EXCEPT isPersonalCall: that's the teammate's own key, always allowed.
+  if (nonOwner && !isPersonalCall) {
     const sharedOk = process.env.ISL_SHARED_PROVIDERS === '1'
     const blocked  = ['claude-cli', 'ollama'].includes(provider)
       || (!sharedOk && ['tokenrouter', 'openmodel'].includes(provider))

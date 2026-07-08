@@ -8,7 +8,7 @@ import {
   Activity, CalendarDays, Target, LayoutDashboard,
   MessageSquarePlus, Brain, Inbox, Send, Mail,
   ClipboardList, Bot, BookOpen, Archive,
-  Settings, Lock, MessageCircle, BarChart3,
+  Settings, Lock, MessageCircle, BarChart3, FileText,
   ChevronLeft, ChevronRight, ChevronDown,
 } from 'lucide-react'
 
@@ -28,7 +28,7 @@ function openAdminConsole() {
     .finally(() => clearTimeout(timeout))
 }
 
-const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'scorecard', 'autolog', 'dailylog', 'backlog'])
+const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'scorecard', 'docs', 'autolog', 'dailylog', 'backlog'])
 const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
 
 interface Props {
@@ -212,6 +212,7 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <NavItem id="inquiries" icon={<Mail size={14} />}             label={t('nav.inquiries')} shortcut="U" color="text-sky-400"    indent={1} />
           <NavItem id="pushqueue" icon={<Send size={14} />}             label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"  indent={1} badge={queueCount} />
           <NavItem id="scorecard" icon={<BarChart3 size={14} />}        label="Scorecard"          shortcut="R" color="text-cyan-400"   indent={1} />
+          <NavItem id="docs"      icon={<FileText size={14} />}        label="Dokumen"            shortcut="D" color="text-fuchsia-400" indent={1} />
 
           {/* Log expandable group */}
           <div>

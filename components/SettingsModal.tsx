@@ -31,6 +31,63 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
   const [allUsers, setAllUsers] = useState<{ id: number; name: string }[]>([])
   const { t } = useI18n()
 
+  // Personal AI provider (Phase 1a multi-user): teammate's own cloud provider + key,
+  // separate from the owner-only Claude CLI / Ollama / shared providers above.
+  const PERSONAL_PROVIDERS = ['openai', 'google', 'groq', 'openrouter', 'mistral', 'together'] as const
+  const [personalIsOwner, setPersonalIsOwner] = useState<boolean | null>(null)
+  const [personalProvider, setPersonalProvider] = useState<string>('openai')
+  const [personalModel, setPersonalModel] = useState('')
+  const [personalApiKey, setPersonalApiKey] = useState('')
+  const [personalApiKeySet, setPersonalApiKeySet] = useState(false)
+  const [personalConfigured, setPersonalConfigured] = useState(false)
+  const [personalSaving, setPersonalSaving] = useState(false)
+  const [personalSaved, setPersonalSaved] = useState(false)
+  const [personalError, setPersonalError] = useState('')
+
+  function loadPersonalLLM() {
+    fetch('/api/settings/personal-llm').then(r => r.json()).then(d => {
+      setPersonalIsOwner(!!d.isOwner)
+      if (d.provider) { setPersonalProvider(d.provider); setPersonalConfigured(true) } else { setPersonalConfigured(false) }
+      setPersonalModel(d.model ?? '')
+      setPersonalApiKeySet(!!d.apiKeySet)
+    }).catch(() => {})
+  }
+
+  async function handleSavePersonalLLM() {
+    setPersonalError('')
+    if (!personalApiKey.trim()) { setPersonalError('API key wajib diisi.'); return }
+    setPersonalSaving(true)
+    try {
+      const res = await fetch('/api/settings/personal-llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: personalProvider, apiKey: personalApiKey, model: personalModel }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setPersonalError(d.error || 'Gagal menyimpan.'); return }
+      setPersonalApiKey('')
+      setPersonalSaved(true)
+      loadPersonalLLM()
+      setTimeout(() => setPersonalSaved(false), 1500)
+    } catch {
+      setPersonalError('Gagal menyimpan — cek koneksi.')
+    } finally {
+      setPersonalSaving(false)
+    }
+  }
+
+  async function handleDeletePersonalLLM() {
+    setPersonalSaving(true)
+    try {
+      await fetch('/api/settings/personal-llm', { method: 'DELETE' })
+      setPersonalApiKey('')
+      setPersonalModel('')
+      loadPersonalLLM()
+    } finally {
+      setPersonalSaving(false)
+    }
+  }
+
   useEffect(() => {
     if (open) {
       setSettings(loadSettings())
@@ -48,7 +105,9 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
       fetch('/api/op/cache').then(r => r.json()).then(d => setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0, incoming: d.incomingTasks?.length ?? 0 })).catch(() => {})
       fetch('/api/op/projects').then(r => r.json()).then(d => setAllProjects(d.projects ?? [])).catch(() => {})
       fetch('/api/op/users?q=').then(r => r.json()).then(d => setAllUsers((d.users ?? []).map((u: { id: number; name: string }) => ({ id: u.id, name: u.name })))).catch(() => {})
+      loadPersonalLLM()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {
@@ -225,6 +284,57 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                         className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">{t('common.connect')}</a>
                   }
                 </div>
+              </section>
+
+              <section>
+                <h3 className={sec}>🔑 Model AI Pribadi</h3>
+                {personalIsOwner ? (
+                  <div className={card}>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Anda owner — pakai Claude CLI/Ollama bawaan, tidak perlu ini.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={`${card} space-y-3`}>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Pakai provider AI &amp; API key Anda sendiri (mis. Gemini/OpenAI) untuk chat AI di ISL — terpisah dari kredensial owner instance.
+                    </p>
+                    {personalConfigured && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                        ✓ Aktif: {personalProvider}{personalModel ? ` · ${personalModel}` : ''}
+                      </p>
+                    )}
+                    <label className="block">
+                      <span className={lbl}>Provider</span>
+                      <select value={personalProvider} onChange={(e) => setPersonalProvider(e.target.value)} className={sel}>
+                        {PERSONAL_PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className={lbl}>API Key {personalApiKeySet && <span className="text-emerald-500 font-normal">(tersimpan ✓ — isi ulang untuk mengganti)</span>}</span>
+                      <input type="password" value={personalApiKey} onChange={(e) => setPersonalApiKey(e.target.value)}
+                        placeholder={personalApiKeySet ? '••••••••••• (biarkan kosong kalau tidak ganti)' : 'API key Anda'} className={inp} />
+                    </label>
+                    <label className="block">
+                      <span className={lbl}>Model (opsional)</span>
+                      <input value={personalModel} onChange={(e) => setPersonalModel(e.target.value)}
+                        placeholder="default otomatis" className={inp} />
+                    </label>
+                    {personalError && <p className="text-xs text-red-500">{personalError}</p>}
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleSavePersonalLLM} disabled={personalSaving}
+                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
+                        {personalSaving ? 'Menyimpan...' : personalSaved ? 'Tersimpan ✓' : 'Simpan'}
+                      </button>
+                      {personalConfigured && (
+                        <button onClick={handleDeletePersonalLLM} disabled={personalSaving}
+                          className="text-xs text-red-500 hover:text-red-600 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
+                          Hapus
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </section>
 
               <section>

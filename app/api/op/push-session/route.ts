@@ -1,7 +1,54 @@
 import { NextResponse } from 'next/server'
-import { getAllSessions, saveSession } from '@/lib/session-store'
+import { getAllSessions, saveSession, type SessionLog } from '@/lib/session-store'
 import { sendTelegram, getTelegramConfig, notifPushed } from '@/lib/telegram'
 import { getRequestContext } from '@/lib/request-auth'
+import { db, agentEvents, arkaCorrections } from '@/lib/db'
+import { upsertEmbedding } from '@/lib/embeddings'
+
+// ── Arka Correction Loop v1 ───────────────────────────────────────────────────
+// This route is the single choke point where a session's opTaskId — already
+// set once by Arka's hook-side matcher (findMatchingTask in isl-context.mjs,
+// or left null for a 'hub' session) — gets finalized/changed by Rian during
+// triage (Push Queue "link existing" or "create new"). Whenever the final
+// taskId differs from what was already stored on the session, that's a
+// correction signal: log it durably + make it retrievable via hybridSearch
+// (same embeddings table/search used everywhere else — no new search infra).
+async function logCorrection(session: SessionLog, newTaskId: number) {
+  const oldTaskId = session.opTaskId ?? null
+  if (oldTaskId === newTaskId) return
+
+  const correctionId = `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  try {
+    await db.insert(arkaCorrections).values({
+      id:              correctionId,
+      sessionId:       session.id,
+      sessionTitle:    session.title,
+      sessionBullets:  session.bullets ?? [],
+      arkaGuessTaskId: oldTaskId,
+      correctedTaskId: newTaskId,
+    })
+  } catch (e) {
+    console.warn('[arka-correction] insert failed:', e instanceof Error ? e.message : e)
+    return // don't embed/log an event for a correction that never landed
+  }
+
+  // Durable event log (Scorecard) — fire-and-forget, never blocks the route
+  db.insert(agentEvents).values({
+    id:    `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    agent: 'arka',
+    event: 'correction',
+    meta:  { sessionId: session.id, arkaGuessTaskId: oldTaskId, correctedTaskId: newTaskId },
+  }).catch(() => {})
+
+  // Retrievable via the SAME hybridSearch used everywhere else — fire-and-forget
+  upsertEmbedding({
+    userId:     null,
+    sourceType: 'correction',
+    sourceId:   `correction-${correctionId}`,
+    title:      `Koreksi Arka: ${session.title}`,
+    chunk:      `Sesi ini SEHARUSNYA di-assign ke task berbeda dari tebakan awal. Judul sesi: ${session.title}. Detail: ${(session.bullets ?? []).join('; ')}. Tebakan salah: task #${oldTaskId}. Koreksi benar: task #${newTaskId}.`,
+  }).catch(() => {})
+}
 
 function toISODuration(minutes: number): string {
   const h = Math.floor(minutes / 60), m = minutes % 60
@@ -339,6 +386,7 @@ export async function POST(req: Request) {
 
     // Return extra info about created structure
     const structureInfo = { usId, tasks: createdTasks }
+    await logCorrection(session, usId)
     const updated = { ...session, opTaskId: usId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: false, updatedAt: new Date().toISOString() }
     await saveSession(updated)
 
@@ -356,6 +404,7 @@ export async function POST(req: Request) {
   if (!taskId) return NextResponse.json({ error: 'No task ID resolved' }, { status: 500 })
 
   // Update ISL session (for link_existing path)
+  await logCorrection(session, taskId)
   const updated = { ...session, opTaskId: taskId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: false, updatedAt: new Date().toISOString() }
   await saveSession(updated)
 

@@ -1,16 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { callLLM } from '@/lib/llm'
-import { getRequestContext } from '@/lib/request-auth'
+import { callLLM, DEFAULT_MODELS, type LLMProvider } from '@/lib/llm'
+import { getRequestContext, type RequestContext } from '@/lib/request-auth'
 import { isOwnerUid } from '@/lib/auth'
+import { db, userSettings } from '@/lib/db'
+import { eq } from 'drizzle-orm'
+import { decrypt } from '@/lib/crypto'
 
 // Isolasi multi-user: provider di file ini semua memakai kredensial owner
-// (claude-cli = subscription owner, tokenrouter/openmodel = env key owner).
-async function callerIsOwner(): Promise<boolean> {
-  if (process.env.ISL_MULTIUSER !== '1') return true
+// (claude-cli = subscription owner, tokenrouter/openmodel = env key owner) —
+// KECUALI provider pribadi yang teammate set sendiri di Settings (personalLlmProvider),
+// yang selalu memakai API key milik teammate itu sendiri, terlepas dari flag di atas.
+async function callerCtx(): Promise<{ ctx: RequestContext | null; owner: boolean }> {
+  if (process.env.ISL_MULTIUSER !== '1') return { ctx: null, owner: true }
   const ctx = await getRequestContext()
-  return isOwnerUid(ctx?.uid)
+  return { ctx, owner: isOwnerUid(ctx?.uid) }
 }
 const sharedProvidersEnabled = () => process.env.ISL_SHARED_PROVIDERS === '1'
+
+/** Non-owner's personal LLM config (provider + decrypted key), if they've set one in Settings.
+ *  Defense-in-depth: claude-cli/ollama are never treated as a "personal" provider here even
+ *  if somehow present in stale data — the write path (app/api/settings/personal-llm) already
+ *  rejects them, this is a second guard. */
+async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: string; apiKey: string; model: string | null } | null> {
+  if (!ctx) return null
+  const row = (await db.select().from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]
+  if (!row?.personalLlmProvider || ['claude-cli', 'ollama'].includes(row.personalLlmProvider)) return null
+  const apiKey = row.personalLlmApiKey ? decrypt(row.personalLlmApiKey) : ''
+  if (!apiKey) return null
+  return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel }
+}
 
 export const runtime = 'nodejs'
 export const maxDuration = 300  // 5 min — dokumen panjang via Claude CLI
@@ -29,7 +47,7 @@ const PROVIDERS = {
 type ProviderId = keyof typeof PROVIDERS
 
 export async function GET() {
-  const owner  = await callerIsOwner()
+  const { ctx, owner } = await callerCtx()
   const shared = owner || sharedProvidersEnabled()
 
   const models: Record<string, string[]> = {}
@@ -48,6 +66,16 @@ export async function GET() {
     } catch { /* Ollama mati → grup tidak muncul */ }
   }
   if (shared) { models.tokenrouter = []; models.openmodel = ['deepseek-v4-flash'] }
+
+  // Personal provider: a non-owner teammate's own configured provider (set via
+  // Settings → 🔑 Model AI Pribadi). Shown ONLY in their own picker, never to others.
+  if (!owner) {
+    const personal = await getPersonalLLM(ctx)
+    if (personal) {
+      const model = personal.model || DEFAULT_MODELS[personal.provider as LLMProvider] || personal.provider
+      models[personal.provider] = [model]
+    }
+  }
 
   if (!shared) return NextResponse.json({ models })
 
@@ -93,8 +121,12 @@ export async function POST(req: NextRequest) {
 
   // Enforce isolasi di server (bukan cuma UI): non-owner tidak boleh membakar
   // kuota/kredensial owner. claude-cli selalu owner-only; shared providers opt-in.
-  const owner = await callerIsOwner()
-  if (!owner) {
+  // EXCEPT: a non-owner using their OWN configured personal provider is always
+  // allowed — that call uses their own key, not the owner's credentials.
+  const { ctx, owner } = await callerCtx()
+  const personal = owner ? null : await getPersonalLLM(ctx)
+  const isPersonalCall = !!personal && personal.provider === body.provider
+  if (!owner && !isPersonalCall) {
     const blocked = ['claude-cli', 'ollama'].includes(body.provider)
       || (!sharedProvidersEnabled() && ['tokenrouter', 'openmodel'].includes(body.provider))
     if (blocked) {
@@ -105,6 +137,27 @@ export async function POST(req: NextRequest) {
   const { provider, model, messages, system } = body
   if (!provider || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'provider, messages required' }, { status: 400 })
+  }
+
+  // ── Personal provider: teammate's own key (openai/google/groq/etc), always allowed ──
+  if (isPersonalCall && personal) {
+    try {
+      const prompt = [
+        system ? `${system}\n\n---` : '',
+        ...messages.map(m => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${m.content}`),
+      ].filter(Boolean).join('\n\n')
+      const effModel = model || personal.model || DEFAULT_MODELS[personal.provider as LLMProvider]
+      const text = await callLLM(prompt, { provider: personal.provider as LLMProvider, apiKey: personal.apiKey, model: effModel })
+      const enc = new TextEncoder()
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) { c.enqueue(enc.encode(text)); c.close() },
+      })
+      return new Response(stream, {
+        headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
+      })
+    } catch (e) {
+      return NextResponse.json({ error: `${personal.provider} error: ${String(e).slice(0, 300)}` }, { status: 500 })
+    }
   }
 
   // ── Claude CLI: local subscription, no API key / no cloud quota ──────────────

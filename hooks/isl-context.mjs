@@ -187,6 +187,41 @@ function findMatchingTask(title, bullets) {
   } catch { return null }
 }
 
+// ── Correction Loop v1 — retrieval before matching ────────────────────────────
+// Checks past corrections (Rian re-assigning a session away from Arka's
+// original guess) via /api/arka/corrections (hybridSearch over the embeddings
+// table, sourceType 'correction'). Zero effect until >=1 correction has been
+// made + embedded — expected to be a silent no-op early on, not a bug.
+// Threshold: same "reasonably similar" cutoff family as MAX_RELEVANT_DISTANCE
+// (0.5) in lib/embeddings.ts, but a bit tighter for an override decision.
+const CORRECTION_OVERRIDE_MAX_DISTANCE = 0.4
+
+async function fetchCorrections(title, bullets) {
+  try {
+    const q = encodeURIComponent(`${title} ${bullets.join(' ')}`)
+    const res = await fetch(`${ISL_URL}/api/arka/corrections?query=${q}&limit=3`, {
+      headers: { 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
+      signal: AbortSignal.timeout(3500),
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data.corrections) ? data.corrections : []
+  } catch {
+    return []  // never block the hook on a correction-lookup failure
+  }
+}
+
+// Pulls "task #123" ids out of the correction chunk built in
+// app/api/op/push-session/route.ts's logCorrection() — keep phrasing in sync.
+function parseCorrectionTaskIds(chunk) {
+  const wrong = (chunk ?? '').match(/Tebakan salah: task #(\d+)/)
+  const right = (chunk ?? '').match(/Koreksi benar: task #(\d+)/)
+  return {
+    wrongId: wrong ? parseInt(wrong[1], 10) : null,
+    rightId: right ? parseInt(right[1], 10) : null,
+  }
+}
+
 // Find task by exact OP ID (for !ticket:ID binding)
 function findTaskById(taskId) {
   try {
@@ -701,7 +736,24 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
         existingTask = boundWP
       }
     } else {
+      // Kick off the correction lookup alongside the (synchronous, instant)
+      // keyword match — no real parallelism gain since findMatchingTask never
+      // yields, but keeps the fetch call issued before the match decision per
+      // the correction-loop design (avoid repeating a mismatch already fixed).
+      const correctionsPromise = fetchCorrections(title, bullets)
       existingTask = findMatchingTask(title, bullets)
+
+      const corrections = await correctionsPromise
+      if (existingTask && corrections.length) {
+        const relevant = corrections.find(c => c.distance < CORRECTION_OVERRIDE_MAX_DISTANCE)
+        if (relevant) {
+          const { wrongId } = parseCorrectionTaskIds(relevant.chunk)
+          if (wrongId === existingTask.id) {
+            process.stderr.write(`[ISL] Arka correction loop: avoided repeat mismatch to task #${wrongId}\n`)
+            existingTask = null
+          }
+        }
+      }
     }
 
     // Check if there's a related OLD task (for reference in new task description)

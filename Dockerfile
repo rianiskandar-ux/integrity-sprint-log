@@ -2,9 +2,22 @@ FROM node:20-alpine AS base
 
 FROM base AS deps
 WORKDIR /app
-COPY package*.json ./
-# @homebridge/node-pty-prebuilt-multiarch bundles musl/Alpine prebuilts — no compilation needed.
-RUN npm ci
+# npm ci is NOT run as a Dockerfile RUN step. On this corporate network a
+# plain `docker run node:20-alpine npm ci` reliably succeeds (~6-7min, some
+# individual package fetches take 40-60s but do complete) while the
+# identical install run as a BuildKit RUN step reliably died at ~328-330s
+# every single time, including with --network=host (which rules out
+# Docker's virtual network/DNS as the cause). That near-identical timing
+# across unrelated attempts pointed at BuildKit's own RUN-step session
+# handling on Docker Desktop for Windows, not the npm registry connection
+# itself. Fix: install deps OUTSIDE the build via `docker run`, then
+# `docker commit` that container into a local image (isl-deps-snapshot) and
+# COPY --from it here — this stays entirely inside Docker's Linux-side
+# storage, avoiding a Windows-symlink-privilege failure that hits if you try
+# to `docker cp` node_modules (with its .bin symlinks) out onto the Windows
+# host filesystem instead. Run `./prebuild-deps.sh` after any
+# package.json/package-lock.json change, before `docker compose build`.
+COPY --from=isl-deps-snapshot:latest /app/node_modules ./node_modules
 
 FROM base AS builder
 WORKDIR /app
@@ -46,6 +59,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # ws + node-pty prebuilt from deps stage — copy directly, no compilation.
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/ws ./node_modules/ws
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/@homebridge ./node_modules/@homebridge
+# Doc parser (pdf-parse v1 pure-JS + mammoth) — same standalone-tracing gap as
+# above (ws/@homebridge): copy directly, don't rely on Next's file tracing.
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/pdf-parse ./node_modules/pdf-parse
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/mammoth ./node_modules/mammoth
 
 COPY --chown=nextjs:nodejs server-wrapper.js ./server-wrapper.js
 

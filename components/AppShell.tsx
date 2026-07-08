@@ -26,6 +26,7 @@ import EnvModeBadge from './EnvModeBadge'
 import IncomingTasksPanel from './IncomingTasksPanel'
 import InquiriesPanel from './InquiriesPanel'
 import ScorecardPanel from './ScorecardPanel'
+import DocsPanel from './DocsPanel'
 import StaleBacklogView from './StaleBacklogView'
 import SprintPlanView from './SprintPlanView'
 import PushQueueView from './PushQueueView'
@@ -394,7 +395,7 @@ export default function AppShell({
           {(() => {
             const VIEW_LABELS: Record<string, string> = {
               sprint: 'Sprint', month: 'Month', skills: 'Skills',
-              isldash: 'ISL Dashboard', incoming: 'Incoming', inquiries: 'Inquiries', pushqueue: 'Push Queue', scorecard: 'Scorecard',
+              isldash: 'ISL Dashboard', incoming: 'Incoming', inquiries: 'Inquiries', pushqueue: 'Push Queue', scorecard: 'Scorecard', docs: 'Dokumen',
               autolog: 'Auto Log', dailylog: 'Daily Log', dailyhub: 'Daily Hub', sprintplan: 'Sprint Plan', backlog: 'Backlog', oldtasks: 'Backlog', chats: 'Create new',
             }
             return <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{VIEW_LABELS[view] ?? view}</span>
@@ -547,6 +548,7 @@ export default function AppShell({
           {view === 'incoming' && <IncomingTasksPanel />}
           {view === 'inquiries' && <InquiriesPanel />}
           {view === 'scorecard' && <ScorecardPanel />}
+          {view === 'docs' && <DocsPanel />}
           {view === 'isldash'   && <div className="flex-1 min-h-0 overflow-hidden"><ISLDashboard onNavigate={v => navigate({ view: v })} onReport={() => setReportOpen(true)} /></div>}
           {view === 'oldtasks'  && <StaleBacklogView onToast={msg => { setToast(msg); setTimeout(() => setToast(null), 3000) }} />}
           {view === 'backlog'   && <StaleBacklogView onToast={msg => { setToast(msg); setTimeout(() => setToast(null), 3000) }} />}
