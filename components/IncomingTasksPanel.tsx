@@ -5,7 +5,7 @@ import type { CachedWorkPackage } from '@/lib/op-cache'
 import { useI18n } from '@/lib/i18n'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import OpTaskModal from './OpTaskModal'
-import { Inbox, CalendarDays, CheckCircle2, Send, MessageCircle, Pencil, Info, RefreshCw, Play, PauseCircle } from 'lucide-react'
+import { Inbox, CalendarDays, CheckCircle2, Send, MessageCircle, Pencil, Info, RefreshCw, Play, PauseCircle, Layers, X, Plus, Trash2 } from 'lucide-react'
 
 const ISL_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   new:         { label: 'New',         color: 'text-gray-500',   dot: 'bg-gray-400' },
@@ -33,6 +33,11 @@ export default function IncomingTasksPanel() {
   const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set())
   const [pushedIds, setPushedIds] = useState<Set<number>>(new Set())
   const [nextSprint, setNextSprint] = useState<{ id: number; name: string } | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [restructureModal, setRestructureModal] = useState(false)
+  const [restructureSubject, setRestructureSubject] = useState('')
+  const [newTaskInputs, setNewTaskInputs] = useState<string[]>([''])
+  const [restructuring, setRestructuring] = useState(false)
 
   useEffect(() => {
     fetch('/api/op/cache')
@@ -148,6 +153,50 @@ export default function IncomingTasksPanel() {
     setTimeout(() => setToast(null), 3500)
   }
 
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const selectedTasks = tasks.filter(t => selectedIds.has(t.id))
+  const selectedProjectIds = new Set(selectedTasks.map(t => t.projectId))
+  const selectionMixedProject = selectedProjectIds.size > 1
+
+  async function submitRestructure() {
+    if (!restructureSubject.trim() || restructuring) return
+    setRestructuring(true)
+    const projectId = selectedTasks[0]?.projectId
+    const r = await fetch('/api/op/restructure-to-story', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject: restructureSubject.trim(),
+        projectId,
+        existingWpIds: Array.from(selectedIds),
+        newTaskSubjects: newTaskInputs.map(s => s.trim()).filter(Boolean),
+      }),
+    }).then(r => r.json()).catch((e) => ({ ok: false, error: String(e) }))
+    setRestructuring(false)
+    if (r.ok) {
+      const failed = (r.reparented ?? []).filter((x: { ok: boolean }) => !x.ok)
+      showToast(
+        failed.length > 0
+          ? `US #${r.usId} dibuat, tapi ${failed.length} tiket gagal di-reparent`
+          : `✓ User Story #${r.usId} dibuat, ${r.reparented?.length ?? 0} tiket + ${r.newTasks?.length ?? 0} task baru`
+      )
+      setRestructureModal(false)
+      setSelectedIds(new Set())
+      setRestructureSubject('')
+      setNewTaskInputs([''])
+      await triggerSync()
+    } else {
+      showToast(`Gagal restrukturisasi: ${r.error ?? 'unknown'}`)
+    }
+  }
+
   const shown = filter === 'open'
     ? tasks.filter(t => t.islStatus !== 'done' && t.islStatus !== 'rejected')
     : tasks
@@ -225,6 +274,15 @@ export default function IncomingTasksPanel() {
                   : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
               }`}>
                 <div className="flex items-start gap-3">
+                  {!isProcessed && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(task.id)}
+                      onChange={() => toggleSelect(task.id)}
+                      className="mt-1 flex-shrink-0 w-3.5 h-3.5 accent-violet-500 cursor-pointer"
+                      title="Pilih untuk restrukturisasi ke User Story"
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
 
                     {/* Row 1: project badge + type + status */}
@@ -355,6 +413,101 @@ export default function IncomingTasksPanel() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Restructure CTA bar — appears once 1+ ticket selected */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-800 text-white rounded-xl shadow-xl z-40 px-4 py-3 flex items-center gap-3">
+          <span className="text-xs font-semibold">{selectedIds.size} tiket dipilih</span>
+          {selectionMixedProject && (
+            <span className="text-[10px] text-amber-300">⚠ beda project, tidak bisa digabung</span>
+          )}
+          <button
+            onClick={() => setRestructureModal(true)}
+            disabled={selectionMixedProject}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition">
+            <Layers size={12} /> Restrukturisasi ke User Story
+          </button>
+          <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-white transition" title="Batal pilih">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Restructure modal */}
+      {restructureModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Layers size={15} /> User Story Baru
+              </h3>
+              <button onClick={() => setRestructureModal(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Judul User Story</label>
+              <input
+                autoFocus
+                value={restructureSubject}
+                onChange={e => setRestructureSubject(e.target.value)}
+                placeholder="Misal: New EBS LP for Singapore"
+                className="mt-1 w-full text-sm border border-gray-200 dark:border-gray-700 dark:bg-gray-900 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                Tiket yang akan jadi child ({selectedTasks.length})
+              </label>
+              <ul className="mt-1 space-y-1">
+                {selectedTasks.map(t => (
+                  <li key={t.id} className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
+                    <span className="font-mono text-indigo-500">#{t.id}</span> {t.subject}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Task breakdown baru (opsional)</label>
+              <div className="mt-1 space-y-1.5">
+                {newTaskInputs.map((val, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <input
+                      value={val}
+                      onChange={e => setNewTaskInputs(prev => prev.map((v, j) => j === i ? e.target.value : v))}
+                      placeholder={`Task baru #${i + 1}`}
+                      className="flex-1 text-xs border border-gray-200 dark:border-gray-700 dark:bg-gray-900 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    />
+                    {newTaskInputs.length > 1 && (
+                      <button onClick={() => setNewTaskInputs(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setNewTaskInputs(prev => [...prev, ''])}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:text-violet-700">
+                  <Plus size={11} /> Tambah task
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setRestructureModal(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700">
+                Batal
+              </button>
+              <button
+                onClick={submitRestructure}
+                disabled={!restructureSubject.trim() || restructuring}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-40 rounded-lg transition">
+                {restructuring ? 'Membuat...' : 'Buat User Story'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -30,6 +30,48 @@ const OP_BASE_URL       = process.env.OP_BASE_URL || 'https://tokek.integrity-as
 const OP_API_TOKEN      = process.env.OP_API_TOKEN
 const ISL_DIR           = process.env.ISL_DIR || process.env.CACHE_DATA_DIR || process.cwd()
 const MEMORY_DIR        = `${ISL_DIR}/memory`
+const PENDING_QUEUE_FILE = `${ISL_DIR}/pending-hook-posts.json`
+
+// ── Durable POST ──────────────────────────────────────────────────────────────
+// A bare `fetch(...).catch(()=>{})` never checks res.ok and drops the payload
+// on any failure — found (2026-07-09) to have silently lost 2+ days of session
+// data while the ISL app/DB were down/rebuilding. postDurable() checks res.ok,
+// and on ANY failure (network or non-2xx) queues the payload to a local JSON
+// file instead of dropping it. Every call also flushes whatever's already
+// queued first, so the next successful hook run recovers prior failures —
+// no data is lost outright, at worst it's late.
+function loadPendingQueue() {
+  try { return JSON.parse(readFileSync(PENDING_QUEUE_FILE, 'utf-8')) } catch { return [] }
+}
+function savePendingQueue(queue) {
+  try { writeFileSync(PENDING_QUEUE_FILE, JSON.stringify(queue, null, 2)) } catch {}
+}
+async function postDurable(path, body, headers) {
+  let queue = loadPendingQueue()
+  if (queue.length > 0) {
+    const stillPending = []
+    for (const item of queue) {
+      try {
+        const r = await fetch(`${ISL_URL}${item.path}`, {
+          method: 'POST', headers: item.headers, body: JSON.stringify(item.body),
+          signal: AbortSignal.timeout(5000),
+        })
+        if (!r.ok) stillPending.push(item)
+      } catch { stillPending.push(item) }
+    }
+    queue = stillPending
+  }
+  try {
+    const r = await fetch(`${ISL_URL}${path}`, {
+      method: 'POST', headers, body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!r.ok) queue.push({ path, headers, body, queuedAt: new Date().toISOString() })
+  } catch {
+    queue.push({ path, headers, body, queuedAt: new Date().toISOString() })
+  }
+  savePendingQueue(queue)
+}
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 // Commands set ISL-local status only — OP status is NOT auto-synced.
@@ -883,27 +925,21 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     ? { inputTokens: tokenUsage.input_tokens ?? 0, outputTokens: tokenUsage.output_tokens ?? 0 }
     : null
 
-  try {
-    await fetch(`${ISL_URL}/api/isl/sessions`, {
-      method: 'POST',
-      // x-kafi-key: machine auth — sejak ISL_MULTIUSER=1, POST tanpa session browser kena 401
-      headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
-      body: JSON.stringify({
-        sessionId, title, bullets,
-        source: 'kafi',  // captured by Claude Code hook (external to ISL)
-        estimatedMins: durationMins, actualMins,
-        isNewTask, taskStatus: finalStatus,
-        // 'pushed' = logged to existing OP task. 'pending' = user approved via Push Queue. 'hub' = no OP match, needs triage in Daily Hub.
-        pushStatus: taskId ? 'pushed' : (hasExplicitCmd ? 'pending' : 'hub'),
-        needsValidation: taskId ? needsValidation : true,
-        hasExplicitCmd, aiStatus,
-        opTaskId: taskId, opStoryId: storyId, autoPushed: !!taskId,
-        tokenUsage: tokenSummary,
-        relatedOldTaskId: relatedOldId,
-        ticketBinding,
-      }),
-    })
-  } catch {}
+  // x-kafi-key: machine auth — sejak ISL_MULTIUSER=1, POST tanpa session browser kena 401
+  await postDurable('/api/isl/sessions', {
+    sessionId, title, bullets,
+    source: 'kafi',  // captured by Claude Code hook (external to ISL)
+    estimatedMins: durationMins, actualMins,
+    isNewTask, taskStatus: finalStatus,
+    // 'pushed' = logged to existing OP task. 'pending' = user approved via Push Queue. 'hub' = no OP match, needs triage in Daily Hub.
+    pushStatus: taskId ? 'pushed' : (hasExplicitCmd ? 'pending' : 'hub'),
+    needsValidation: taskId ? needsValidation : true,
+    hasExplicitCmd, aiStatus,
+    opTaskId: taskId, opStoryId: storyId, autoPushed: !!taskId,
+    tokenUsage: tokenSummary,
+    relatedOldTaskId: relatedOldId,
+    ticketBinding,
+  }, { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' })
 
   // Append to Daily Log — fire and forget
   const logDate = new Date().toISOString().slice(0, 10)

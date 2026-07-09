@@ -86,3 +86,4 @@ data/
 video/
 .dockerignore-tmp
 docker-deps/
+pending-hook-posts.json
