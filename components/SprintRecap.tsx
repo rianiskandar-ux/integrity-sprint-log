@@ -10,6 +10,7 @@ export interface RecapTask {
   estimatedHours: number | null
   spentHours: number | null
   percentDone: number
+  parentId?: number | null
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -80,7 +81,32 @@ export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick
     const k = s.toLowerCase()
     return k.includes('progress') ? 0 : k.includes('hold') ? 1 : k.includes('closed') || k.includes('reject') ? 3 : 2
   }
-  const sorted = [...tasks].sort((a, b) => rank(a.status) - rank(b.status) || a.id - b.id)
+  // Group by parent so a User Story's own Tasks/Bugs sit right under it, instead
+  // of every row sorting flat by status (which put all User Stories together at
+  // the top and all Tasks together below, looking like unrelated siblings).
+  // Only one level deep — Epics are already excluded upstream, so the realistic
+  // hierarchy here is US/Feature -> Task/Bug. A child whose parent isn't in this
+  // same list (parent outside the sprint, or filtered out) surfaces at top level
+  // rather than disappearing.
+  const byId = new Map(tasks.map(t => [t.id, t]))
+  const childrenOf = new Map<number, RecapTask[]>()
+  const topLevel: RecapTask[] = []
+  for (const t of tasks) {
+    if (t.parentId != null && byId.has(t.parentId)) {
+      const list = childrenOf.get(t.parentId) ?? []
+      list.push(t)
+      childrenOf.set(t.parentId, list)
+    } else {
+      topLevel.push(t)
+    }
+  }
+  topLevel.sort((a, b) => rank(a.status) - rank(b.status) || a.id - b.id)
+  const sorted: (RecapTask & { depth: number })[] = []
+  for (const parent of topLevel) {
+    sorted.push({ ...parent, depth: 0 })
+    const kids = (childrenOf.get(parent.id) ?? []).sort((a, b) => rank(a.status) - rank(b.status) || a.id - b.id)
+    for (const kid of kids) sorted.push({ ...kid, depth: 1 })
+  }
   const managed    = tasks.filter(t => isManaged(t.type))
   const totalEst   = managed.reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
   const totalSpent = managed.reduce((a, t) => a + (t.spentHours ?? 0), 0)
@@ -168,9 +194,10 @@ export default function SprintRecap({ title, subtitle, tasks, opUrl, onTaskClick
           const remaining = t.percentDone >= 100 ? 0 : Math.max(0, (t.estimatedHours ?? 0) - (t.spentHours ?? 0))
           const inner = (
             <>
+              {t.depth > 0 && <span className="text-gray-300 dark:text-gray-600 flex-shrink-0 w-3 text-center">└</span>}
               <TypeBadge type={t.type} />
               <span className="font-mono text-[10px] text-gray-400 flex-shrink-0 w-10">#{t.id}</span>
-              <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{t.subject}</span>
+              <span className={`flex-1 truncate text-gray-700 dark:text-gray-200 ${t.depth > 0 ? 'pl-1' : ''}`}>{t.subject}</span>
               <span className={`text-[9px] font-semibold flex-shrink-0 ${STATUS_COLOR[t.status.toLowerCase()] ?? 'text-gray-400'}`}>{t.status}</span>
               <span className="text-[10px] text-gray-400 flex-shrink-0 w-10 text-right" title="Estimated">{fmtH(t.estimatedHours)}</span>
               <span className="text-[9px] text-gray-400 flex-shrink-0 w-7 text-right">{t.percentDone}%</span>

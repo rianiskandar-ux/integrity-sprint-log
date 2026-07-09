@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 
   type WPItem = {
     id: number; subject: string; status: string; type: string; project: string; assignee: string | null
-    estimatedHours: number | null; spentHours: number | null; percentDone: number
+    estimatedHours: number | null; spentHours: number | null; percentDone: number; parentId: number | null
   }
 
   function parseIsoDur(dur: unknown): number | null {
@@ -43,6 +43,7 @@ export async function GET(req: Request) {
         estimatedHours: parseIsoDur(wp.estimatedTime),
         spentHours:     parseIsoDur(wp.spentTime),
         percentDone:    (wp.percentageDone as number) ?? 0,
+        parentId:       links.parent?.href ? Number(links.parent.href.split('/').pop()) : null,
       }
     })
   }
