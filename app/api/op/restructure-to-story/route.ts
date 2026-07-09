@@ -41,12 +41,31 @@ export async function POST(req: Request) {
   const date = new Date().toISOString().slice(0, 10)
   const userId = body.userId ?? ctx?.opUserId ?? 0
 
+  // If no sprint was explicitly given, inherit it from the first existing
+  // ticket being wrapped — otherwise the new US ends up with NO version at
+  // all (invisible in every sprint-scoped ISL view) while its re-parented
+  // children keep whatever version they already had. Found 2026-07-09: a
+  // real restructure left the US floating with version=none while its
+  // child task showed "Sprint #119", making it look like only 1 lone task
+  // existed instead of a US + task.
+  let sprintId = body.sprintId ?? null
+  if (!sprintId && existingWpIds.length > 0) {
+    try {
+      const firstRes = await fetch(`${OP_BASE}/api/v3/work_packages/${existingWpIds[0]}`, { headers })
+      if (firstRes.ok) {
+        const first = await firstRes.json()
+        const versionHref = first._links?.version?.href as string | undefined
+        if (versionHref) sprintId = Number(versionHref.split('/').pop())
+      }
+    } catch { /* fall through with no sprint — better than crashing the whole request */ }
+  }
+
   const baseLinks: Record<string, { href: string } | undefined> = {
     project: { href: `/api/v3/projects/${body.projectId}` },
     status:  { href: '/api/v3/statuses/7' },
   }
   if (userId) baseLinks.assignee = { href: `/api/v3/users/${userId}` }
-  if (body.sprintId) baseLinks.version = { href: `/api/v3/versions/${body.sprintId}` }
+  if (sprintId) baseLinks.version = { href: `/api/v3/versions/${sprintId}` }
 
   // ── Step 1: Create the new User Story ────────────────────────────────────────
   const usDesc = [

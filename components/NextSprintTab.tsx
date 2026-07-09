@@ -58,6 +58,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
   const [opTaskId,   setOpTaskId]   = useState<number | null>(null)
   const [curSprint,  setCurSprint]  = useState<{ id: number; name: string } | null>(null)
   const [reverting,  setReverting]  = useState<number | null>(null)
+  const [nextSprintId, setNextSprintId] = useState<number | null>(null)
 
   const storageKey = `next-sprint-staged-${currentSprintNo}`
 
@@ -75,6 +76,7 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
           .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))[0]
         if (!next) return
         setNextName(next.name)
+        setNextSprintId(next.id)
         const all = [...(d.myOpenTasks ?? []), ...(d.incomingTasks ?? [])] as { id: number; subject: string; status: string; type: string; sprintId: number | null }[]
         const seen = new Set<number>()
         const items = all.filter(t => t.sprintId === next.id && !seen.has(t.id) && seen.add(t.id))
@@ -240,30 +242,67 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
     })
   }
 
+  // Carry-over items already exist as OP work packages — "moving" them means
+  // actually PATCHing their OP version via sprint-move, never re-queuing a
+  // duplicate Push Queue session (that used to be a dead end: the resulting
+  // session's only available action, "push log to existing task", logs a
+  // comment/time-entry and never touches _links.version — the carry-over task
+  // stayed stuck in the current sprint no matter what you clicked).
+  // Genuinely new AI-suggested tasks (no opTaskId yet) still go to Push Queue
+  // as before, since they need the normal create-new-in-OP flow.
   async function pushSelected() {
-    const toPush = staged.filter(s => s.bucket === 'next' && selected.has(s.key))
+    const startedFrom = staged  // stable snapshot — every removal below filters from THIS, not live state
+    const toPush = startedFrom.filter(s => s.bucket === 'next' && selected.has(s.key))
     if (!toPush.length) return
     setPushing(true)
-    let ok = 0
-    for (const item of toPush) {
+
+    const carryItems = toPush.filter(s => s.source === 'carryover' && s.opTaskId)
+    const aiItems     = toPush.filter(s => s.source === 'ai')
+    let movedOk = 0, queuedOk = 0
+    const removeKeys = new Set<string>()
+
+    if (carryItems.length > 0) {
+      if (!nextSprintId) {
+        showToast('⚠️ Next sprint (version OP) belum ketemu — tidak bisa pindah')
+      } else {
+        const r = await fetch('/api/op/sprint-move', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskIds: carryItems.map(s => s.opTaskId), targetSprintId: nextSprintId, defaultEstMins: 60 }),
+        }).then(r => r.json()).catch(() => ({ results: [] }))
+        const okIds = new Set(
+          (r.results ?? []).filter((x: { ok: boolean }) => x.ok).map((x: { id: number }) => x.id)
+        )
+        movedOk = okIds.size
+        for (const s of carryItems) if (s.opTaskId != null && okIds.has(s.opTaskId)) removeKeys.add(s.key)
+        setCarryOver(prev => prev.filter(t => !okIds.has(t.id)))
+      }
+    }
+
+    for (const item of aiItems) {
       const r = await fetch('/api/isl/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: item.subject,
           bullets: [item.reason, `Type: ${item.type}`, `Project: ${item.projectHint}`].filter(Boolean),
-          opTaskId: item.opTaskId ?? null,
           pushStatus: 'pending',
           estimatedMins: Math.round(item.estimatedHours * 60),
           taskStatus: 'new',
-          source: item.source === 'carryover' ? 'incoming' : 'general',
+          source: 'general',
         }),
       }).then(r => r.json()).catch(() => ({ ok: false }))
-      if (r.ok) ok++
+      if (r.ok) { queuedOk++; removeKeys.add(item.key) }
     }
+
+    if (removeKeys.size > 0) saveStaged(startedFrom.filter(s => !removeKeys.has(s.key)))
+
     setPushing(false)
-    showToast(`${ok}/${toPush.length} tasks added to Push Queue`)
+    const parts = []
+    if (carryItems.length) parts.push(`${movedOk}/${carryItems.length} dipindah ke ${nextName || 'next sprint'} (OP)`)
+    if (aiItems.length) parts.push(`${queuedOk}/${aiItems.length} task baru masuk Push Queue`)
+    showToast(parts.join(' · ') || 'Tidak ada yang diproses')
     setSelected(new Set())
+    await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {})
     window.dispatchEvent(new Event('isl:cache-refreshed'))
   }
 
@@ -480,7 +519,13 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
             {selectedNext.length > 0 && (
               <button onClick={pushSelected} disabled={pushing}
                 className="mt-3 w-full py-2 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition disabled:opacity-50">
-                {pushing ? <Loader2 size={10} className="animate-spin" /> : <><Send size={10} /> Add {selectedNext.length} to Push Queue</>}
+                {pushing ? <Loader2 size={10} className="animate-spin" /> : (() => {
+                  const carryCount = selectedNext.filter(s => s.source === 'carryover').length
+                  const aiCount = selectedNext.length - carryCount
+                  if (carryCount && aiCount) return <><Send size={10} /> Pindahkan {carryCount} + queue {aiCount} task baru</>
+                  if (carryCount) return <><Send size={10} /> Pindahkan {carryCount} task ke {nextName || 'next sprint'} (OP)</>
+                  return <><Send size={10} /> Add {aiCount} to Push Queue</>
+                })()}
               </button>
             )}
           </div>
