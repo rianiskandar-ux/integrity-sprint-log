@@ -18,16 +18,20 @@ async function callerCtx(): Promise<{ ctx: RequestContext | null; owner: boolean
 const sharedProvidersEnabled = () => process.env.ISL_SHARED_PROVIDERS === '1'
 
 /** Non-owner's personal LLM config (provider + decrypted key), if they've set one in Settings.
- *  Defense-in-depth: claude-cli/ollama are never treated as a "personal" provider here even
- *  if somehow present in stale data — the write path (app/api/settings/personal-llm) already
- *  rejects them, this is a second guard. */
-async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: string; apiKey: string; model: string | null } | null> {
+ *  Defense-in-depth: claude-cli is never treated as a "personal" provider here even if somehow
+ *  present in stale data — the write path (app/api/settings/personal-llm) already rejects it,
+ *  this is a second guard. ollama IS allowed here (their own baseUrl, never the owner's). */
+async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: string; apiKey: string; model: string | null; baseUrl: string | null } | null> {
   if (!ctx) return null
   const row = (await db.select().from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]
-  if (!row?.personalLlmProvider || ['claude-cli', 'ollama'].includes(row.personalLlmProvider)) return null
+  if (!row?.personalLlmProvider || row.personalLlmProvider === 'claude-cli') return null
+  if (row.personalLlmProvider === 'ollama') {
+    if (!row.personalLlmBaseUrl) return null
+    return { provider: 'ollama', apiKey: '', model: row.personalLlmModel, baseUrl: row.personalLlmBaseUrl }
+  }
   const apiKey = row.personalLlmApiKey ? decrypt(row.personalLlmApiKey) : ''
   if (!apiKey) return null
-  return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel }
+  return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel, baseUrl: null }
 }
 
 export const runtime = 'nodejs'
@@ -147,7 +151,7 @@ export async function POST(req: NextRequest) {
         ...messages.map(m => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${m.content}`),
       ].filter(Boolean).join('\n\n')
       const effModel = model || personal.model || DEFAULT_MODELS[personal.provider as LLMProvider]
-      const text = await callLLM(prompt, { provider: personal.provider as LLMProvider, apiKey: personal.apiKey, model: effModel })
+      const text = await callLLM(prompt, { provider: personal.provider as LLMProvider, apiKey: personal.apiKey, model: effModel, baseUrl: personal.baseUrl ?? undefined })
       const enc = new TextEncoder()
       const stream = new ReadableStream<Uint8Array>({
         start(c) { c.enqueue(enc.encode(text)); c.close() },

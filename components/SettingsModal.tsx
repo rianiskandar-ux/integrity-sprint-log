@@ -32,13 +32,15 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
   const { t } = useI18n()
 
   // Personal AI provider (Phase 1a multi-user): teammate's own cloud provider + key,
-  // separate from the owner-only Claude CLI / Ollama / shared providers above.
-  const PERSONAL_PROVIDERS = ['openai', 'google', 'groq', 'openrouter', 'mistral', 'together'] as const
+  // separate from the owner-only Claude CLI above. 'ollama' is allowed here — it's
+  // their OWN LAN-reachable Ollama (baseUrl, no API key), never the owner's local one.
+  const PERSONAL_PROVIDERS = ['openai', 'google', 'groq', 'openrouter', 'mistral', 'together', 'ollama'] as const
   const [personalIsOwner, setPersonalIsOwner] = useState<boolean | null>(null)
   const [personalProvider, setPersonalProvider] = useState<string>('openai')
   const [personalModel, setPersonalModel] = useState('')
   const [personalApiKey, setPersonalApiKey] = useState('')
   const [personalApiKeySet, setPersonalApiKeySet] = useState(false)
+  const [personalBaseUrl, setPersonalBaseUrl] = useState('')
   const [personalConfigured, setPersonalConfigured] = useState(false)
   const [personalSaving, setPersonalSaving] = useState(false)
   const [personalSaved, setPersonalSaved] = useState(false)
@@ -50,18 +52,23 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
       if (d.provider) { setPersonalProvider(d.provider); setPersonalConfigured(true) } else { setPersonalConfigured(false) }
       setPersonalModel(d.model ?? '')
       setPersonalApiKeySet(!!d.apiKeySet)
+      setPersonalBaseUrl(d.baseUrl ?? '')
     }).catch(() => {})
   }
 
   async function handleSavePersonalLLM() {
     setPersonalError('')
-    if (!personalApiKey.trim()) { setPersonalError('API key wajib diisi.'); return }
+    if (personalProvider === 'ollama') {
+      if (!personalBaseUrl.trim()) { setPersonalError('Base URL Ollama wajib diisi (contoh: http://192.168.1.50:11434).'); return }
+    } else if (!personalApiKey.trim()) {
+      setPersonalError('API key wajib diisi.'); return
+    }
     setPersonalSaving(true)
     try {
       const res = await fetch('/api/settings/personal-llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: personalProvider, apiKey: personalApiKey, model: personalModel }),
+        body: JSON.stringify({ provider: personalProvider, apiKey: personalApiKey, model: personalModel, baseUrl: personalBaseUrl }),
       })
       const d = await res.json()
       if (!res.ok) { setPersonalError(d.error || 'Gagal menyimpan.'); return }
@@ -82,6 +89,7 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
       await fetch('/api/settings/personal-llm', { method: 'DELETE' })
       setPersonalApiKey('')
       setPersonalModel('')
+      setPersonalBaseUrl('')
       loadPersonalLLM()
     } finally {
       setPersonalSaving(false)
@@ -307,14 +315,25 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                     <label className="block">
                       <span className={lbl}>Provider</span>
                       <select value={personalProvider} onChange={(e) => setPersonalProvider(e.target.value)} className={sel}>
-                        {PERSONAL_PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+                        {PERSONAL_PROVIDERS.map((p) => <option key={p} value={p}>{p === 'ollama' ? 'ollama (lokal Anda sendiri)' : p}</option>)}
                       </select>
                     </label>
-                    <label className="block">
-                      <span className={lbl}>API Key {personalApiKeySet && <span className="text-emerald-500 font-normal">(tersimpan ✓ — isi ulang untuk mengganti)</span>}</span>
-                      <input type="password" value={personalApiKey} onChange={(e) => setPersonalApiKey(e.target.value)}
-                        placeholder={personalApiKeySet ? '••••••••••• (biarkan kosong kalau tidak ganti)' : 'API key Anda'} className={inp} />
-                    </label>
+                    {personalProvider === 'ollama' ? (
+                      <label className="block">
+                        <span className={lbl}>Base URL Ollama Anda</span>
+                        <input value={personalBaseUrl} onChange={(e) => setPersonalBaseUrl(e.target.value)}
+                          placeholder="http://192.168.1.50:11434" className={inp} />
+                        <span className="text-[11px] text-gray-400 mt-1 block">
+                          Ollama harus jalan di mesin Anda dan reachable dari server ISL (LAN, bukan localhost mesin Anda sendiri). Tidak perlu API key.
+                        </span>
+                      </label>
+                    ) : (
+                      <label className="block">
+                        <span className={lbl}>API Key {personalApiKeySet && <span className="text-emerald-500 font-normal">(tersimpan ✓ — isi ulang untuk mengganti)</span>}</span>
+                        <input type="password" value={personalApiKey} onChange={(e) => setPersonalApiKey(e.target.value)}
+                          placeholder={personalApiKeySet ? '••••••••••• (biarkan kosong kalau tidak ganti)' : 'API key Anda'} className={inp} />
+                      </label>
+                    )}
                     <label className="block">
                       <span className={lbl}>Model (opsional)</span>
                       <input value={personalModel} onChange={(e) => setPersonalModel(e.target.value)}

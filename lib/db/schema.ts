@@ -114,11 +114,15 @@ export const userSettings = pgTable('user_settings', {
   setupDone:                boolean('setup_done').default(false),
   // Phase 1a multi-user: per-user LLM provider config so a non-owner teammate can
   // use THEIR OWN cloud provider key (openai/google/groq/etc) instead of the
-  // owner-only claude-cli/ollama or shared providers. personalLlmApiKey is stored
+  // owner-only claude-cli or shared providers. personalLlmApiKey is stored
   // ENCRYPTED (lib/crypto.ts), same pattern as opApiToken above.
+  // personalLlmBaseUrl: only meaningful for provider='ollama' — their OWN local
+  // Ollama endpoint (e.g. http://192.168.x.x:11434 on their own LAN-exposed
+  // machine). No API key needed for ollama; baseUrl is required instead.
   personalLlmProvider:      text('personal_llm_provider'),
   personalLlmApiKey:        text('personal_llm_api_key'),
   personalLlmModel:         text('personal_llm_model'),
+  personalLlmBaseUrl:       text('personal_llm_base_url'),
   updatedAt:                timestamp('updated_at').defaultNow().notNull(),
 })
 

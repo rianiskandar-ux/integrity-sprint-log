@@ -12,16 +12,20 @@ import { decrypt } from '@/lib/crypto'
 export const runtime = 'nodejs'
 
 /** Non-owner's personal LLM config (provider + decrypted key), if they've set one in Settings.
- *  Defense-in-depth: claude-cli/ollama are never treated as a "personal" provider here even
- *  if somehow present in stale data — the write path (app/api/settings/personal-llm) already
- *  rejects them, this is a second guard. */
-async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: string; apiKey: string; model: string | null } | null> {
+ *  Defense-in-depth: claude-cli is never treated as a "personal" provider here even if somehow
+ *  present in stale data — the write path (app/api/settings/personal-llm) already rejects it,
+ *  this is a second guard. ollama IS allowed here (their own baseUrl, never the owner's). */
+async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: string; apiKey: string; model: string | null; baseUrl: string | null } | null> {
   if (!ctx) return null
   const row = (await db.select().from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]
-  if (!row?.personalLlmProvider || ['claude-cli', 'ollama'].includes(row.personalLlmProvider)) return null
+  if (!row?.personalLlmProvider || row.personalLlmProvider === 'claude-cli') return null
+  if (row.personalLlmProvider === 'ollama') {
+    if (!row.personalLlmBaseUrl) return null
+    return { provider: 'ollama', apiKey: '', model: row.personalLlmModel, baseUrl: row.personalLlmBaseUrl }
+  }
   const apiKey = row.personalLlmApiKey ? decrypt(row.personalLlmApiKey) : ''
   if (!apiKey) return null
-  return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel }
+  return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel, baseUrl: null }
 }
 
 export async function POST(req: NextRequest) {
@@ -50,10 +54,12 @@ export async function POST(req: NextRequest) {
   // Resolve the effective provider/key/model. A per-chat override (body.provider)
   // wins over the global Settings config so the model picker inside each chat works.
   let provider: string, apiKey: string, model: string
+  let baseUrlOverride: string | undefined
   if (isPersonalCall && personal) {
     provider = personal.provider
     apiKey   = personal.apiKey
     model    = body.model || personal.model || getDefaultModel(provider)
+    baseUrlOverride = personal.baseUrl ?? undefined
   } else if (body.provider) {
     provider = body.provider
     if      (provider === 'claude-cli')  apiKey = ''
@@ -166,7 +172,7 @@ export async function POST(req: NextRequest) {
   ].filter(Boolean).join('\n')
 
   try {
-    const stream = await callStream(provider, apiKey, model, systemPrompt, messages)
+    const stream = await callStream(provider, apiKey, model, systemPrompt, messages, baseUrlOverride)
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
@@ -280,7 +286,11 @@ function getDefaultModel(provider: string): string {
   return map[provider] ?? 'gpt-4o-mini'
 }
 
-function resolveBase(provider: string): string {
+function resolveBase(provider: string, override?: string): string {
+  // override = a teammate's OWN personal-provider baseUrl (currently only used
+  // for 'ollama' — see app/api/settings/personal-llm/route.ts, which already
+  // normalizes it to end in /v1 before it's ever stored).
+  if (override) return override
   const map: Record<string, string> = {
     openai:     'https://api.openai.com/v1',
     groq:       'https://api.groq.com/openai/v1',
@@ -299,6 +309,7 @@ function resolveBase(provider: string): string {
 async function callStream(
   provider: string, apiKey: string, model: string,
   system: string, messages: { role: string; content: string }[],
+  baseUrlOverride?: string,
 ): Promise<ReadableStream<Uint8Array>> {
   const encoder = new TextEncoder()
 
@@ -342,7 +353,7 @@ async function callStream(
   }
 
   // OpenAI-compatible streaming
-  const base = resolveBase(provider)
+  const base = resolveBase(provider, baseUrlOverride)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
 

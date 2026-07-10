@@ -1,17 +1,36 @@
 import { NextResponse } from 'next/server'
 import { loadCache } from '@/lib/op-cache'
 import { getRequestContext } from '@/lib/request-auth'
+import { OWNER_UID } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+// which=next reports the next sprint's stats instead of the current one — used
+// by the Aryo report (cross-app, launcher-dashboard) so it can show both.
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const which = searchParams.get('which') === 'next' ? 'next' : 'current'
+
   const ctx = await getRequestContext()
-  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { opToken: OP_TOKEN, opBaseUrl: OP_BASE, uid } = ctx
+  // Machine auth: launcher-dashboard's Aryo report calls this cross-app with no
+  // session cookie. Without this it always 401s — the report's "Sprint Status"
+  // section showing permanent "—" dashes was this, not a data problem.
+  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')
+  if (!ctx && !machineAuth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const OP_TOKEN = ctx?.opToken || (machineAuth ? process.env.OP_API_TOKEN : '') || ''
+  const OP_BASE  = ctx?.opBaseUrl || process.env.OP_BASE_URL || ''
+  const uid      = ctx?.uid ?? (machineAuth ? OWNER_UID : null)
+  if (!OP_TOKEN || !OP_BASE) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
   const cache = loadCache(uid)
-  const currentSprint = (cache.sprints ?? []).find(s => s.isCurrent)
-  if (!currentSprint) return NextResponse.json({ error: 'No current sprint' }, { status: 404 })
+  const sprints = cache.sprints ?? []
+  const currentSprint = which === 'current'
+    ? sprints.find(s => s.isCurrent)
+    : sprints
+        .filter(s => (s.startDate ?? '') > (sprints.find(x => x.isCurrent)?.endDate ?? ''))
+        .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))[0]
+  if (!currentSprint) return NextResponse.json({ error: which === 'current' ? 'No current sprint' : 'No next sprint' }, { status: 404 })
 
   const auth = 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64')
 
