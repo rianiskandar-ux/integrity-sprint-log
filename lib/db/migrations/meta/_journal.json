@@ -50,6 +50,13 @@
       "when": 1783653920822,
       "tag": "0006_lovely_mephistopheles",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783673014168,
+      "tag": "0007_massive_vindicator",
+      "breakpoints": true
     }
   ]
 }

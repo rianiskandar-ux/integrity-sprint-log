@@ -123,6 +123,11 @@ export const userSettings = pgTable('user_settings', {
   personalLlmApiKey:        text('personal_llm_api_key'),
   personalLlmModel:         text('personal_llm_model'),
   personalLlmBaseUrl:       text('personal_llm_base_url'),
+  // Per-user machine key for the Claude Code Stop hook (isl-context.mjs).
+  // The global KAFI_API_KEY attributes everything to the OWNER — a teammate
+  // running the same hook on their own laptop sets THIS key instead, so their
+  // captured sessions/daily-logs land under their own uid, not the owner's.
+  captureKey:               text('capture_key'),
   updatedAt:                timestamp('updated_at').defaultNow().notNull(),
 })
 

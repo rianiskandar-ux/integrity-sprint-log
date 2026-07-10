@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { getRequestContext } from '@/lib/request-auth'
 import { isOwnerUid, OWNER_UID } from '@/lib/auth'
+import { resolveCaptureUid } from '@/lib/capture-auth'
 import { db } from '@/lib/db'
 import { dailyLogs } from '@/lib/db/schema'
 import { randomUUID } from 'crypto'
@@ -66,10 +67,11 @@ export async function POST(req: Request) {
     const ctx = await getRequestContext()
     const today = date ?? new Date().toISOString().slice(0, 10)
 
-    // Tanpa session (hook Claude Code / terminal lokal) → attribute ke OWNER.
-    // Kalau dibiarkan NULL, Kafi daily-summary (filter userId=OWNER_UID) tidak
-    // pernah melihat log dari hook — pipeline Kafi→hub jadi kosong terus.
-    const uid = ctx?.uid ?? OWNER_UID
+    // Tanpa session (hook Claude Code / terminal lokal) → attribute via captureKey
+    // (per-user, teammate's own hook) → fallback OWNER. Kalau dibiarkan NULL,
+    // Kafi daily-summary (filter per-userId) tidak pernah melihat log dari hook.
+    const captureUid = await resolveCaptureUid(req.headers.get('x-kafi-key'))
+    const uid = ctx?.uid ?? captureUid ?? OWNER_UID
 
     // Always write to Postgres (all users)
     const cleanBulletsForDB = (bullets ?? []).filter(b => b.trim())

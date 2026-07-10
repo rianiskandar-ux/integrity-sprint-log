@@ -941,11 +941,12 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     ticketBinding,
   }, { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' })
 
-  // Append to Daily Log — fire and forget
+  // Append to Daily Log — fire and forget. x-kafi-key: per-user captureKey
+  // (teammate's own hook) or the global default (owner) — drives attribution.
   const logDate = new Date().toISOString().slice(0, 10)
   fetch(`${ISL_URL}/api/daily-log/append`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
     body: JSON.stringify({ title, bullets, date: logDate, sessionId }),
   }).catch(() => {})
 

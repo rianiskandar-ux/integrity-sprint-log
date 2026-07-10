@@ -25,6 +25,36 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
   const [saved, setSaved] = useState(false)
   const [gcalConnected, setGcalConnected] = useState<boolean | null>(null)
   const [googleProfile, setGoogleProfile] = useState<{ name: string; email: string } | null>(null)
+  // Manual paste flow — for teammates on other PCs, where Google bounces the
+  // callback to localhost on THEIR machine (dead end page holding the code).
+  const [gcalPaste, setGcalPaste] = useState('')
+  const [gcalPasteBusy, setGcalPasteBusy] = useState(false)
+  const [gcalPasteMsg, setGcalPasteMsg] = useState('')
+  const isRemoteClient = typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)
+
+  async function submitGcalPaste() {
+    if (!gcalPaste.trim() || gcalPasteBusy) return
+    setGcalPasteBusy(true); setGcalPasteMsg('')
+    try {
+      const res = await fetch('/api/auth/google/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pasted: gcalPaste }),
+      })
+      const d = await res.json()
+      if (d.ok) {
+        setGcalConnected(true)
+        setGcalPaste(''); setGcalPasteMsg('')
+        if (d.profile?.email) setGoogleProfile({ name: d.profile.name ?? '', email: d.profile.email })
+      } else {
+        setGcalPasteMsg(d.error || 'Gagal — coba ulangi dari tombol Connect.')
+      }
+    } catch {
+      setGcalPasteMsg('Gagal — cek koneksi.')
+    } finally {
+      setGcalPasteBusy(false)
+    }
+  }
   const [cacheStatus, setCacheStatus] = useState<{ lastSync: string | null; tasks: number; stories: number; incoming: number } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [allProjects, setAllProjects] = useState<{ id: number; name: string; identifier: string }[]>([])
@@ -96,6 +126,21 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
     }
   }
 
+  // Auto-capture key (Claude Code hook attribution — per user)
+  const [captureKey, setCaptureKey] = useState<string | null>(null)
+  const [captureKeyBusy, setCaptureKeyBusy] = useState(false)
+
+  function loadCaptureKey() {
+    fetch('/api/settings/capture-key').then(r => r.json()).then(d => setCaptureKey(d.captureKey ?? null)).catch(() => {})
+  }
+  async function generateCaptureKey() {
+    setCaptureKeyBusy(true)
+    try {
+      const d = await fetch('/api/settings/capture-key', { method: 'POST' }).then(r => r.json())
+      if (d.ok) setCaptureKey(d.captureKey)
+    } finally { setCaptureKeyBusy(false) }
+  }
+
   useEffect(() => {
     if (open) {
       setSettings(loadSettings())
@@ -114,6 +159,7 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
       fetch('/api/op/projects').then(r => r.json()).then(d => setAllProjects(d.projects ?? [])).catch(() => {})
       fetch('/api/op/users?q=').then(r => r.json()).then(d => setAllUsers((d.users ?? []).map((u: { id: number; name: string }) => ({ id: u.id, name: u.name })))).catch(() => {})
       loadPersonalLLM()
+      loadCaptureKey()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -292,6 +338,31 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                         className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">{t('common.connect')}</a>
                   }
                 </div>
+                {!gcalConnected && isRemoteClient && (
+                  <div className={`${card} mt-2 space-y-2`}>
+                    <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                      Akses dari PC lain? Connect Google butuh 1 langkah ekstra:
+                    </p>
+                    <ol className="text-xs text-gray-500 dark:text-gray-400 list-decimal ml-4 space-y-0.5">
+                      <li>Klik Connect di atas → login &amp; izinkan di Google seperti biasa</li>
+                      <li>Browser akan nyasar ke halaman <code>localhost:4891</code> yang <strong>error</strong> — itu normal</li>
+                      <li>Copy <strong>seluruh URL</strong> dari address bar halaman error itu, paste di bawah (cepat — code kedaluwarsa dalam beberapa menit)</li>
+                    </ol>
+                    <div className="flex gap-2">
+                      <input
+                        value={gcalPaste}
+                        onChange={(e) => setGcalPaste(e.target.value)}
+                        placeholder="http://localhost:4891/api/auth/callback/google?code=…"
+                        className={`${inp} flex-1`}
+                      />
+                      <button onClick={submitGcalPaste} disabled={gcalPasteBusy || !gcalPaste.trim()}
+                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 flex-shrink-0">
+                        {gcalPasteBusy ? 'Memproses…' : 'Selesaikan'}
+                      </button>
+                    </div>
+                    {gcalPasteMsg && <p className="text-xs text-red-500">{gcalPasteMsg}</p>}
+                  </div>
+                )}
               </section>
 
               <section>
@@ -354,6 +425,45 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                     </div>
                   </div>
                 )}
+              </section>
+
+              <section>
+                <h3 className={sec}>🪝 Auto-Capture (Hook Claude Code)</h3>
+                <div className={`${card} space-y-3`}>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Kalau Anda pakai Claude Code di laptop sendiri, hook ini otomatis mencatat sesi kerja ke ISL
+                    sebagai <strong>akun Anda</strong>. Generate key, lalu pasang di laptop Anda.
+                  </p>
+                  {captureKey ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1.5 rounded font-mono flex-1 break-all">{captureKey}</code>
+                        <button onClick={() => navigator.clipboard?.writeText(captureKey)}
+                          className="text-xs text-indigo-600 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition flex-shrink-0">
+                          Copy
+                        </button>
+                      </div>
+                      <details className="text-xs text-gray-500 dark:text-gray-400">
+                        <summary className="cursor-pointer font-semibold">Cara pasang di laptop Anda</summary>
+                        <ol className="list-decimal ml-4 mt-1.5 space-y-1">
+                          <li>Copy file <code>hooks/isl-context.mjs</code> dari repo ISL ke laptop Anda</li>
+                          <li>Di <code>~/.claude/settings.json</code>, tambahkan di <code>env</code>: <code>{'"ISL_URL": "http://10.30.112.87:4891", "KAFI_API_KEY": "<key di atas>"'}</code></li>
+                          <li>Tambahkan hook <code>Stop</code>: <code>{'"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "node <path>/isl-context.mjs"}]}]}'}</code></li>
+                          <li>Selesai — tiap sesi Claude Code selesai, kerjaan Anda otomatis tercatat di ISL sebagai Anda</li>
+                        </ol>
+                      </details>
+                      <button onClick={generateCaptureKey} disabled={captureKeyBusy}
+                        className="text-xs text-amber-600 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 transition disabled:opacity-50">
+                        {captureKeyBusy ? 'Membuat…' : '↻ Regenerate (key lama mati)'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={generateCaptureKey} disabled={captureKeyBusy}
+                      className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
+                      {captureKeyBusy ? 'Membuat…' : 'Generate Capture Key'}
+                    </button>
+                  )}
+                </div>
               </section>
 
               <section>
