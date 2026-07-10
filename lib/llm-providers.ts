@@ -9,6 +9,7 @@ export type LLMProvider =
   | 'ollama'
   | '9router'
   | 'claude-cli'
+  | 'custom'      // OpenAI-compatible endpoint: user supplies baseUrl + apiKey (DeepSeek/LM Studio/vLLM/…)
 
 export const DEFAULT_MODELS: Record<LLMProvider, string> = {
   anthropic:    'claude-haiku-4-5-20251001',
@@ -21,6 +22,7 @@ export const DEFAULT_MODELS: Record<LLMProvider, string> = {
   ollama:       'llama3.2',
   '9router':    'gemini/gemini-2.0-flash-lite',
   'claude-cli': 'claude',
+  custom:       '',
 }
 
 export const PROVIDER_LABELS: Record<LLMProvider, string> = {
@@ -34,6 +36,7 @@ export const PROVIDER_LABELS: Record<LLMProvider, string> = {
   ollama:       'Ollama (lokal, no key)',
   '9router':    '9Router (lokal proxy, no key)',
   'claude-cli': 'Claude Code CLI (pakai subscription)',
+  custom:       'Custom (OpenAI-compatible)',
 }
 
 export const PROVIDER_KEY_HINTS: Record<LLMProvider, { label: string; placeholder: string; hint: string; noKey?: boolean; free?: boolean }> = {
@@ -47,6 +50,7 @@ export const PROVIDER_KEY_HINTS: Record<LLMProvider, { label: string; placeholde
   ollama:       { label: '',                    placeholder: '',                 hint: 'ollama.com — install lokal', noKey: true, free: true },
   '9router':    { label: '',                    placeholder: '',                 hint: '9router jalan di localhost:20128', noKey: true, free: true },
   'claude-cli': { label: '',                    placeholder: '',                 hint: 'Butuh Claude Code CLI terinstall & sudah login', noKey: true, free: true },
+  custom:       { label: 'API Key',             placeholder: 'sk-…',            hint: 'endpoint OpenAI-compatible pilihan Anda (isi Base URL + model di Settings)' },
 }
 
 export const FREE_PROVIDERS: LLMProvider[] = ['groq', 'openrouter', 'ollama', 'google', '9router', 'claude-cli']

@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, jsonb, timestamp, date, index, uniqueIndex, customType } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, boolean, jsonb, timestamp, date, index, uniqueIndex, customType, primaryKey } from 'drizzle-orm/pg-core'
 
 // pgvector column type — drizzle-kit emits `vector(768)` via dataType().
 // Driver format is the pgvector text literal: "[0.1,0.2,...]"
@@ -133,10 +133,13 @@ export const userSettings = pgTable('user_settings', {
 
 // ── task_chats ───────────────────────────────────────────────────────────────
 // Per-conversation chat history (Create new + bubble general-chat).
-// Replaces file-based task-chats/*.json. Multi-user ready via userId.
+// PK is COMPOSITE (id, user_id): surface-generated ids are deterministic
+// (incoming-<opTaskId> etc.), so two users chatting the same OP ticket share
+// the same id — a single-column PK made them one row, which both leaked
+// history across accounts and let users overwrite each other's chats.
 export const taskChats = pgTable('task_chats', {
-  id:         text('id').primaryKey(),
-  userId:     integer('user_id').references(() => users.id),
+  id:         text('id').notNull(),
+  userId:     integer('user_id').notNull().references(() => users.id),
   title:      text('title').notNull().default('Untitled'),
   taskType:   text('task_type').default('general'), // session | incoming | new | general | idea | plan
   opTaskId:   integer('op_task_id'),
@@ -147,6 +150,7 @@ export const taskChats = pgTable('task_chats', {
   createdAt:  timestamp('created_at').defaultNow().notNull(),
   updatedAt:  timestamp('updated_at').defaultNow().notNull(),
 }, (t) => [
+  primaryKey({ columns: [t.id, t.userId] }),
   index('task_chats_user_updated_idx').on(t.userId, t.updatedAt),
 ])
 

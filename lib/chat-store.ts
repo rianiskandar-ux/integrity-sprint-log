@@ -1,5 +1,5 @@
 import { db, taskChats } from './db'
-import { eq, desc } from 'drizzle-orm'
+import { eq, desc, and } from 'drizzle-orm'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -20,9 +20,12 @@ export interface TaskChat {
   updatedAt: string
 }
 
-// userId stays null until real users exist (Phase 1a auth). Column is FK to users(id);
-// users table is empty now, so forcing an id would violate the constraint.
-const DEFAULT_USER_ID = null as number | null
+// Every function is scoped by userId — found 2026-07-10 (real 2-account test):
+// the list route returned the whole table and every saved row had userId NULL,
+// so teammates saw the owner's entire chat history. PK is now (id, user_id):
+// surface-generated ids are deterministic (e.g. incoming-6004), so two users
+// chatting on the same OP ticket produce the SAME id — a single-column PK
+// would make them silently overwrite each other's history.
 
 function rowToChat(r: typeof taskChats.$inferSelect): TaskChat {
   return {
@@ -39,8 +42,10 @@ function rowToChat(r: typeof taskChats.$inferSelect): TaskChat {
   }
 }
 
-export async function getTaskChat(id: string): Promise<TaskChat | null> {
-  const rows = await db.select().from(taskChats).where(eq(taskChats.id, id)).limit(1)
+export async function getTaskChat(id: string, userId: number): Promise<TaskChat | null> {
+  const rows = await db.select().from(taskChats)
+    .where(and(eq(taskChats.id, id), eq(taskChats.userId, userId)))
+    .limit(1)
   return rows[0] ? rowToChat(rows[0]) : null
 }
 
@@ -48,9 +53,9 @@ export async function getTaskChat(id: string): Promise<TaskChat | null> {
 // generated different ids for the same ticket (sprinttask-N, banner-N,
 // incoming-N, …) — this lets load/save converge on ONE row per ticket instead
 // of creating a new row per surface.
-export async function getTaskChatByOpTask(opTaskId: number): Promise<TaskChat | null> {
+export async function getTaskChatByOpTask(opTaskId: number, userId: number): Promise<TaskChat | null> {
   const rows = await db.select().from(taskChats)
-    .where(eq(taskChats.opTaskId, opTaskId))
+    .where(and(eq(taskChats.opTaskId, opTaskId), eq(taskChats.userId, userId)))
     .orderBy(desc(taskChats.updatedAt))
     .limit(1)
   return rows[0] ? rowToChat(rows[0]) : null
@@ -66,11 +71,11 @@ function stripPlaceholders(messages: ChatMessage[]): ChatMessage[] {
   })
 }
 
-export async function saveTaskChat(chat: TaskChat): Promise<TaskChat> {
+export async function saveTaskChat(chat: TaskChat, userId: number): Promise<TaskChat> {
   const now = new Date()
   const values = {
     id:         chat.id,
-    userId:     DEFAULT_USER_ID,
+    userId,
     title:      chat.title,
     taskType:   chat.taskType,
     opTaskId:   chat.opTaskId ?? null,
@@ -81,7 +86,7 @@ export async function saveTaskChat(chat: TaskChat): Promise<TaskChat> {
     updatedAt:  now,
   }
   await db.insert(taskChats).values(values).onConflictDoUpdate({
-    target: taskChats.id,
+    target: [taskChats.id, taskChats.userId],
     set: {
       title:      values.title,
       taskType:   values.taskType,
@@ -93,7 +98,7 @@ export async function saveTaskChat(chat: TaskChat): Promise<TaskChat> {
       updatedAt:  now,
     },
   })
-  const saved = await getTaskChat(chat.id)
+  const saved = await getTaskChat(chat.id, userId)
   return saved ?? { ...chat, updatedAt: now.toISOString() }
 }
 
@@ -101,8 +106,9 @@ export async function appendMessage(
   id: string,
   meta: Omit<TaskChat, 'messages' | 'createdAt' | 'updatedAt'>,
   msg: ChatMessage,
+  userId: number,
 ): Promise<TaskChat> {
-  const existing = await getTaskChat(id)
+  const existing = await getTaskChat(id, userId)
   const nowIso = new Date().toISOString()
   const chat: TaskChat = existing ?? {
     ...meta,
@@ -111,14 +117,16 @@ export async function appendMessage(
     updatedAt: nowIso,
   }
   chat.messages.push(msg)
-  return saveTaskChat(chat)
+  return saveTaskChat(chat, userId)
 }
 
-export async function getAllTaskChats(): Promise<TaskChat[]> {
-  const rows = await db.select().from(taskChats).orderBy(desc(taskChats.updatedAt))
-  // Defensive: id is the PK, but a corrupted unique index once produced
-  // physical duplicates. Keep only the newest row per id (rows are already
-  // ordered by updatedAt desc) so the UI never renders duplicate entries.
+export async function getAllTaskChats(userId: number): Promise<TaskChat[]> {
+  const rows = await db.select().from(taskChats)
+    .where(eq(taskChats.userId, userId))
+    .orderBy(desc(taskChats.updatedAt))
+  // Defensive: a corrupted unique index once produced physical duplicates.
+  // Keep only the newest row per id (rows are already ordered by updatedAt
+  // desc) so the UI never renders duplicate entries.
   const seen = new Set<string>()
   const unique: typeof rows = []
   for (const r of rows) {
@@ -129,6 +137,6 @@ export async function getAllTaskChats(): Promise<TaskChat[]> {
   return unique.map(rowToChat)
 }
 
-export async function deleteTaskChat(id: string): Promise<void> {
-  await db.delete(taskChats).where(eq(taskChats.id, id))
+export async function deleteTaskChat(id: string, userId: number): Promise<void> {
+  await db.delete(taskChats).where(and(eq(taskChats.id, id), eq(taskChats.userId, userId)))
 }

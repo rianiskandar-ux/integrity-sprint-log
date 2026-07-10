@@ -22,10 +22,14 @@ export interface InquiryItem {
   updatedAt: string | null
 }
 
-// In-memory cache — query 112 is a global saved view, same for everyone who
-// can see it, so we key on nothing but the query id itself.
+// In-memory cache, keyed PER USER. This used to be a single global entry on
+// the assumption query 112 renders identically for everyone — wrong twice
+// over: the query runs under the caller's own OP token (visibility/filters
+// can differ per account), and the first user to load within the TTL window
+// was serving THEIR result to every other account (found in the first real
+// 2-account test).
 const TTL_MS = 5 * 60 * 1000
-let cache: { at: number; items: InquiryItem[] } | null = null
+const cacheByUid = new Map<number, { at: number; items: InquiryItem[] }>()
 
 interface OpLink { title?: string; href?: string }
 interface OpElement {
@@ -113,11 +117,13 @@ export async function GET() {
   const base  = ctx?.opBaseUrl || process.env.OP_BASE_URL || ''
   if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
-  if (cache && Date.now() - cache.at < TTL_MS) {
+  const cacheKey = ctx?.uid ?? 0  // 0 = single-user/env-token mode
+  const cached = cacheByUid.get(cacheKey)
+  if (cached && Date.now() - cached.at < TTL_MS) {
     return NextResponse.json({
       ok: true,
-      items: cache.items,
-      fetchedAt: cache.at,
+      items: cached.items,
+      fetchedAt: cached.at,
       currentUserId: ctx?.opUserId ?? null,
     })
   }
@@ -125,12 +131,13 @@ export async function GET() {
   const auth = 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
   const items = await fetchQueryResults(base, auth)
 
-  cache = { at: Date.now(), items }
+  const fresh = { at: Date.now(), items }
+  cacheByUid.set(cacheKey, fresh)
 
   return NextResponse.json({
     ok: true,
     items,
-    fetchedAt: cache.at,
+    fetchedAt: fresh.at,
     currentUserId: ctx?.opUserId ?? null,
   })
 }

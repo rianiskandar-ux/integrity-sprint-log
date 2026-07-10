@@ -25,6 +25,11 @@ async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: s
   }
   const apiKey = row.personalLlmApiKey ? decrypt(row.personalLlmApiKey) : ''
   if (!apiKey) return null
+  if (row.personalLlmProvider === 'custom') {
+    // OpenAI-compatible endpoint of their choosing — needs both base and key.
+    if (!row.personalLlmBaseUrl) return null
+    return { provider: 'custom', apiKey, model: row.personalLlmModel, baseUrl: row.personalLlmBaseUrl }
+  }
   return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel, baseUrl: null }
 }
 
@@ -282,6 +287,7 @@ function getDefaultModel(provider: string): string {
     '9router':  'claude-sonnet-4-6',
     tokenrouter:'MiniMax-M3',
     openmodel:  'deepseek-v4-flash',
+    custom:     '',  // model is required in personal settings for custom
   }
   return map[provider] ?? 'gpt-4o-mini'
 }

@@ -57,6 +57,13 @@
       "when": 1783673014168,
       "tag": "0007_massive_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783690562157,
+      "tag": "0008_awesome_kat_farrell",
+      "breakpoints": true
     }
   ]
 }

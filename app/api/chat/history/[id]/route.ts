@@ -1,31 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTaskChat, getTaskChatByOpTask, saveTaskChat, deleteTaskChat, type TaskChat } from '@/lib/chat-store'
+import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
 
+// All reads/writes/deletes are scoped to the session user's uid — chat ids are
+// deterministic per surface (incoming-<n> etc.), so without scoping a user
+// could read or overwrite another user's chat just by hitting the same id.
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
-  let chat = await getTaskChat(id)
+  let chat = await getTaskChat(id, ctx.uid)
   // Fallback: the same OP ticket may have been chatted under a different
   // surface-specific id (sprinttask-N vs banner-N vs incoming-N). Reuse that
   // history instead of presenting a fresh chat.
   if (!chat) {
     const opTaskId = Number(req.nextUrl.searchParams.get('opTaskId'))
-    if (Number.isFinite(opTaskId) && opTaskId > 0) chat = await getTaskChatByOpTask(opTaskId)
+    if (Number.isFinite(opTaskId) && opTaskId > 0) chat = await getTaskChatByOpTask(opTaskId, ctx.uid)
   }
   return NextResponse.json({ chat })
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const body = await req.json() as Partial<TaskChat>
   let targetId = id
-  let existing = await getTaskChat(id)
-  // One chat row per OP ticket: if this id has no row yet but the ticket
-  // already has a chat (under another surface id), save into THAT row instead
-  // of creating a duplicate.
+  let existing = await getTaskChat(id, ctx.uid)
+  // One chat row per OP ticket (per user): if this id has no row yet but the
+  // ticket already has a chat (under another surface id), save into THAT row
+  // instead of creating a duplicate.
   if (!existing && typeof body.opTaskId === 'number' && body.opTaskId > 0) {
-    const byOp = await getTaskChatByOpTask(body.opTaskId)
+    const byOp = await getTaskChatByOpTask(body.opTaskId, ctx.uid)
     if (byOp) { existing = byOp; targetId = byOp.id }
   }
   const now = new Date().toISOString()
@@ -41,12 +50,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
-  const saved = await saveTaskChat(chat)
+  const saved = await saveTaskChat(chat, ctx.uid)
   return NextResponse.json({ chat: saved })
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
-  await deleteTaskChat(id)
+  await deleteTaskChat(id, ctx.uid)
   return NextResponse.json({ ok: true })
 }

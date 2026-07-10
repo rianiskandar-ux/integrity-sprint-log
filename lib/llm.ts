@@ -17,6 +17,7 @@ export type LLMProvider =
   | 'ollama'
   | '9router'
   | 'claude-cli'
+  | 'custom'      // any OpenAI-compatible endpoint: user supplies baseUrl + apiKey (DeepSeek, LM Studio, vLLM, …)
 
 export interface LLMConfig {
   provider:  LLMProvider
@@ -37,6 +38,7 @@ export const DEFAULT_MODELS: Record<LLMProvider, string> = {
   ollama:      process.env.OLLAMA_CHAT_MODEL || 'qwen2.5:3b',
   '9router':   'gemini/gemini-2.0-flash-lite',
   'claude-cli': 'claude',
+  custom:      '',   // no sensible default — model name is required in settings
 }
 
 export const PROVIDER_LABELS: Record<LLMProvider, string> = {
@@ -50,6 +52,7 @@ export const PROVIDER_LABELS: Record<LLMProvider, string> = {
   ollama:      'Ollama (local, no key)',
   '9router':   '9Router (local proxy, no key)',
   'claude-cli': 'Claude Code CLI (pakai subscription, lokal only)',
+  custom:      'Custom (OpenAI-compatible: DeepSeek/LM Studio/vLLM/dll)',
 }
 
 export const FREE_PROVIDERS: LLMProvider[] = ['groq', 'openrouter', 'ollama', '9router', 'claude-cli']
@@ -71,6 +74,10 @@ export async function callLLM(prompt: string, config: LLMConfig): Promise<string
       return callClaudeCLI(prompt, model !== 'claude' ? model : undefined, config.effort)
 
     // OpenAI-compatible providers
+    case 'custom':
+      if (!base) throw new Error('Custom provider butuh Base URL (diset di Settings)')
+      if (!model) throw new Error('Custom provider butuh nama model (diset di Settings)')
+      return callOpenAICompat(prompt, model, config.apiKey, base)
     case 'openai':
     case 'groq':
     case 'openrouter':

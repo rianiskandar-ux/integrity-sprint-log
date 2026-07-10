@@ -61,9 +61,21 @@ export async function POST(req: NextRequest) {
   if (!PERSONAL_PROVIDERS.includes(provider as LLMProvider)) {
     return NextResponse.json({ error: `Provider "${provider}" tidak dikenal.` }, { status: 400 })
   }
+
+  // An empty apiKey keeps the stored one (the UI's "biarkan kosong kalau tidak
+  // ganti") — previously the server unconditionally 400'd on an empty key, so
+  // changing just the model forced re-entering the key.
+  const existing = (await db.select().from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]
+  const hasStoredKey = !!existing?.personalLlmApiKey
+
   if (provider === 'ollama') {
     if (!baseUrl) return NextResponse.json({ error: 'Base URL Ollama wajib diisi (contoh: http://192.168.1.50:11434)' }, { status: 400 })
-  } else if (!apiKey) {
+  } else if (provider === 'custom') {
+    // Any OpenAI-compatible endpoint (DeepSeek, LM Studio, vLLM, …): needs all three.
+    if (!baseUrl) return NextResponse.json({ error: 'Base URL wajib diisi (contoh: https://api.deepseek.com/v1)' }, { status: 400 })
+    if (!apiKey && !hasStoredKey) return NextResponse.json({ error: 'API key wajib diisi' }, { status: 400 })
+    if (!model)   return NextResponse.json({ error: 'Nama model wajib diisi (contoh: deepseek-chat)' }, { status: 400 })
+  } else if (!apiKey && !hasStoredKey) {
     return NextResponse.json({ error: 'apiKey wajib diisi' }, { status: 400 })
   }
 
@@ -73,19 +85,23 @@ export async function POST(req: NextRequest) {
   // custom ollama baseUrl end-to-end until this feature. Normalize here so
   // whatever the teammate types (with or without /v1, with or without a
   // trailing slash) resolves the same way the built-in ollama path already does.
+  // For 'custom' we only trim the trailing slash — some servers want /v1, some
+  // don't, so the URL is stored as typed.
   const normalizedBaseUrl = provider === 'ollama'
     ? baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1'
-    : baseUrl
+    : provider === 'custom'
+      ? baseUrl.replace(/\/+$/, '')
+      : baseUrl
 
-  const encKey = apiKey ? encrypt(apiKey) : null
-  const existing = (await db.select().from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]
+  // Empty key + one already stored → keep the stored (still-encrypted) value.
+  const encKey = apiKey ? encrypt(apiKey) : (hasStoredKey && provider !== 'ollama' ? existing!.personalLlmApiKey : null)
 
   if (existing) {
     await db.update(userSettings).set({
       personalLlmProvider: provider,
       personalLlmApiKey:   encKey,
       personalLlmModel:    model || null,
-      personalLlmBaseUrl:  provider === 'ollama' ? normalizedBaseUrl : null,
+      personalLlmBaseUrl:  ['ollama', 'custom'].includes(provider) ? normalizedBaseUrl : null,
       updatedAt:           new Date(),
     }).where(eq(userSettings.userId, ctx.uid))
   } else {
@@ -94,11 +110,11 @@ export async function POST(req: NextRequest) {
       personalLlmProvider: provider,
       personalLlmApiKey:   encKey,
       personalLlmModel:    model || null,
-      personalLlmBaseUrl:  provider === 'ollama' ? normalizedBaseUrl : null,
+      personalLlmBaseUrl:  ['ollama', 'custom'].includes(provider) ? normalizedBaseUrl : null,
     })
   }
 
-  return NextResponse.json({ ok: true, provider, model: model || null, baseUrl: provider === 'ollama' ? normalizedBaseUrl : null })
+  return NextResponse.json({ ok: true, provider, model: model || null, baseUrl: ['ollama', 'custom'].includes(provider) ? normalizedBaseUrl : null })
 }
 
 // DELETE — clear the current user's personal LLM config (revert to none).

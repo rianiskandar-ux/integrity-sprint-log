@@ -5,6 +5,7 @@ import path from 'path'
 import { loadCache, rebuildCache } from '@/lib/op-cache'
 import { getTelegramConfig, sendTelegram, notifIncoming, notifSprintDeadline } from '@/lib/telegram'
 import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { userSettings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
@@ -45,12 +46,26 @@ export async function POST(req: Request) {
   const row = rows[0]
   const userName = row?.opUserName ?? ''
 
-  // Resolve watchedProjects from: request body → userSettings → op-mode.json → defaults
+  // Resolve watchedProjects: request body → userSettings row. The op-mode.json /
+  // hardcoded fallback is OWNER-ONLY — it is the owner's own project list, and
+  // letting non-owners fall through to it meant every new teammate's cache got
+  // built against the owner's project selection.
   let projects: string[] = body.projects ?? null
-  if (!projects && row?.watchedProjects?.length) projects = row.watchedProjects as string[]
-  if (!projects) {
-    const mode = readMode()
-    projects = mode?.watchedProjects ?? ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
+  if (projects?.length) {
+    // Persist the explicit selection so the next rebuild (auto-sync sends no
+    // body) uses THEIR list — watched projects were localStorage-only before,
+    // so they never survived a browser change and the DB column stayed empty.
+    await db.update(userSettings).set({ watchedProjects: projects, updatedAt: new Date() })
+      .where(eq(userSettings.userId, uid)).catch(() => {})
+  }
+  if (!projects?.length && row?.watchedProjects?.length) projects = row.watchedProjects as string[]
+  if (!projects?.length) {
+    if (isOwnerUid(uid)) {
+      const mode = readMode()
+      projects = mode?.watchedProjects ?? ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
+    } else {
+      projects = []  // teammate with nothing configured: pick projects in Settings first
+    }
   }
 
   // SECURITY: ignore client-supplied body.userId — always use the session's OP user id.

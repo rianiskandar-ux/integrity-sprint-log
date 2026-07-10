@@ -107,13 +107,15 @@ export const OP_PROJECTS: OPProject[] = [
 
 export const DEFAULT_SETTINGS: UserSettings = {
   // No real-person defaults — identity comes from the authenticated session (/api/auth/me),
-  // not localStorage. A fresh browser must not impersonate anyone.
+  // not localStorage. A fresh browser must not impersonate anyone. That includes
+  // watchedProjects: it used to default to the OWNER's project list, so every
+  // new teammate silently inherited the owner's project selection.
   userId: 0,
   userName: '',
   userHref: '',
   defaultAccountableId: null,
   defaultProjectIdentifier: 'integritys-websites',
-  watchedProjects: ['integritys-websites', 'know-your-vendor-kyv'],
+  watchedProjects: [],
   defaultVersionId: null,
   opApiToken: '',
   setupDone: false,

@@ -128,6 +128,12 @@ export default function SetupWizard({ onDone }: Props) {
       opApiToken: useServerToken ? '' : apiToken.trim(),
       setupDone: true,
     })
+    // Persist per-account too — localStorage alone is per-browser only.
+    fetch('/api/settings/watched-projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ watchedProjects: selectedProjects }),
+    }).catch(() => {})
     saveAppConfig(loadAppConfig())
     onDone()
   }

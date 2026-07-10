@@ -31,6 +31,11 @@ async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: s
   }
   const apiKey = row.personalLlmApiKey ? decrypt(row.personalLlmApiKey) : ''
   if (!apiKey) return null
+  if (row.personalLlmProvider === 'custom') {
+    // OpenAI-compatible endpoint of their choosing — needs both base and key.
+    if (!row.personalLlmBaseUrl) return null
+    return { provider: 'custom', apiKey, model: row.personalLlmModel, baseUrl: row.personalLlmBaseUrl }
+  }
   return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel, baseUrl: null }
 }
 

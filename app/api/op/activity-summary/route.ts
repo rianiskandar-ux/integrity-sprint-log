@@ -54,6 +54,7 @@ async function gatherTaskContext(
   opTaskId: number,
   opBase: string,
   opToken: string,
+  uid: number | null,
 ): Promise<string[]> {
   const sections: string[] = []
 
@@ -87,9 +88,9 @@ async function gatherTaskContext(
     }
   } catch { /* skip */ }
 
-  // 3) ISL sessions bound to this ticket, latest 5
+  // 3) ISL sessions bound to this ticket, latest 5 (scoped to the caller)
   try {
-    const all = await getAllSessions()
+    const all = await getAllSessions(uid)
     const mine = all.filter(s => s.opTaskId === opTaskId).slice(0, 5)
     if (mine.length) {
       const lines = mine.map(s =>
@@ -98,9 +99,10 @@ async function gatherTaskContext(
     }
   } catch { /* skip */ }
 
-  // 4) Latest task chat for this ticket, last 10 messages
+  // 4) Latest task chat for this ticket, last 10 messages (caller's own chat)
   try {
-    const chat = await getTaskChatByOpTask(opTaskId)
+    if (uid == null) throw new Error('no uid')
+    const chat = await getTaskChatByOpTask(opTaskId, uid)
     if (chat && chat.messages.length) {
       const lines = chat.messages.slice(-10).map(m =>
         `${m.role === 'user' ? 'User' : 'Assistant'}: ${String(m.content ?? '').slice(0, 500)}`)
@@ -163,7 +165,7 @@ export async function POST(req: Request) {
     if (mode === 'task-note') {
       const OP_TOKEN = ctx?.opToken || process.env.OP_API_TOKEN || ''
       const OP_BASE  = ctx?.opBaseUrl || process.env.OP_BASE_URL || ''
-      const sections = await gatherTaskContext(opTaskId, OP_BASE, OP_TOKEN)
+      const sections = await gatherTaskContext(opTaskId, OP_BASE, OP_TOKEN, ctx?.uid ?? null)
       const summary  = await generateTaskNote(opTaskId, sections, (body.statusTo ?? '').trim() || undefined)
       if (!summary) return NextResponse.json({ error: 'AI returned no note' }, { status: 502 })
       return NextResponse.json({ ok: true, summary })

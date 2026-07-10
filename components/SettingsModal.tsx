@@ -63,8 +63,10 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
 
   // Personal AI provider (Phase 1a multi-user): teammate's own cloud provider + key,
   // separate from the owner-only Claude CLI above. 'ollama' is allowed here — it's
-  // their OWN LAN-reachable Ollama (baseUrl, no API key), never the owner's local one.
-  const PERSONAL_PROVIDERS = ['openai', 'google', 'groq', 'openrouter', 'mistral', 'together', 'ollama'] as const
+  // their OWN LAN-reachable Ollama (baseUrl, no API key), never the owner's local
+  // one. 'custom' = any OpenAI-compatible endpoint (DeepSeek/LM Studio/vLLM/dll):
+  // baseUrl + API key + model, semuanya milik user sendiri.
+  const PERSONAL_PROVIDERS = ['openai', 'google', 'groq', 'openrouter', 'mistral', 'together', 'ollama', 'custom'] as const
   const [personalIsOwner, setPersonalIsOwner] = useState<boolean | null>(null)
   const [personalProvider, setPersonalProvider] = useState<string>('openai')
   const [personalModel, setPersonalModel] = useState('')
@@ -90,6 +92,10 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
     setPersonalError('')
     if (personalProvider === 'ollama') {
       if (!personalBaseUrl.trim()) { setPersonalError('Base URL Ollama wajib diisi (contoh: http://192.168.1.50:11434).'); return }
+    } else if (personalProvider === 'custom') {
+      if (!personalBaseUrl.trim()) { setPersonalError('Base URL wajib diisi (contoh: https://api.deepseek.com/v1).'); return }
+      if (!personalApiKey.trim() && !personalApiKeySet) { setPersonalError('API key wajib diisi.'); return }
+      if (!personalModel.trim()) { setPersonalError('Nama model wajib diisi (contoh: deepseek-chat).'); return }
     } else if (!personalApiKey.trim()) {
       setPersonalError('API key wajib diisi.'); return
     }
@@ -160,6 +166,13 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
       fetch('/api/op/users?q=').then(r => r.json()).then(d => setAllUsers((d.users ?? []).map((u: { id: number; name: string }) => ({ id: u.id, name: u.name })))).catch(() => {})
       loadPersonalLLM()
       loadCaptureKey()
+      // Server-side watched projects win over localStorage — the account's
+      // selection must follow the user across browsers/machines.
+      fetch('/api/settings/watched-projects').then(r => r.json()).then(d => {
+        if (Array.isArray(d.watchedProjects) && d.watchedProjects.length) {
+          setSettings(prev => prev ? { ...prev, watchedProjects: d.watchedProjects } : prev)
+        }
+      }).catch(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -188,7 +201,17 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
   }
 
   function handleSave() {
-    if (settings) saveSettings(settings)
+    if (settings) {
+      saveSettings(settings)
+      // Also persist watched projects server-side (per account) — localStorage
+      // alone is per-browser, so on any other machine the selection was lost
+      // and cache rebuilds fell back to defaults.
+      fetch('/api/settings/watched-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ watchedProjects: settings.watchedProjects ?? [] }),
+      }).catch(() => {})
+    }
     if (appConfig) saveAppConfig(appConfig)
     setSaved(true)
     setTimeout(() => { onSaved(); onClose() }, 800)
@@ -386,19 +409,26 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                     <label className="block">
                       <span className={lbl}>Provider</span>
                       <select value={personalProvider} onChange={(e) => setPersonalProvider(e.target.value)} className={sel}>
-                        {PERSONAL_PROVIDERS.map((p) => <option key={p} value={p}>{p === 'ollama' ? 'ollama (lokal Anda sendiri)' : p}</option>)}
+                        {PERSONAL_PROVIDERS.map((p) => (
+                          <option key={p} value={p}>
+                            {p === 'ollama' ? 'ollama (lokal Anda sendiri)' : p === 'custom' ? 'custom (OpenAI-compatible: DeepSeek/LM Studio/vLLM/dll)' : p}
+                          </option>
+                        ))}
                       </select>
                     </label>
-                    {personalProvider === 'ollama' ? (
+                    {(personalProvider === 'ollama' || personalProvider === 'custom') && (
                       <label className="block">
-                        <span className={lbl}>Base URL Ollama Anda</span>
+                        <span className={lbl}>{personalProvider === 'ollama' ? 'Base URL Ollama Anda' : 'Base URL endpoint'}</span>
                         <input value={personalBaseUrl} onChange={(e) => setPersonalBaseUrl(e.target.value)}
-                          placeholder="http://192.168.1.50:11434" className={inp} />
+                          placeholder={personalProvider === 'ollama' ? 'http://192.168.1.50:11434' : 'https://api.deepseek.com/v1'} className={inp} />
                         <span className="text-[11px] text-gray-400 mt-1 block">
-                          Ollama harus jalan di mesin Anda dan reachable dari server ISL (LAN, bukan localhost mesin Anda sendiri). Tidak perlu API key.
+                          {personalProvider === 'ollama'
+                            ? 'Ollama harus jalan di mesin Anda dan reachable dari server ISL (LAN, bukan localhost mesin Anda sendiri). Tidak perlu API key.'
+                            : 'Endpoint apapun yang berperilaku seperti API OpenAI — layanan cloud (DeepSeek dll) atau server AI yang Anda host sendiri. Harus reachable dari server ISL.'}
                         </span>
                       </label>
-                    ) : (
+                    )}
+                    {personalProvider !== 'ollama' && (
                       <label className="block">
                         <span className={lbl}>API Key {personalApiKeySet && <span className="text-emerald-500 font-normal">(tersimpan ✓ — isi ulang untuk mengganti)</span>}</span>
                         <input type="password" value={personalApiKey} onChange={(e) => setPersonalApiKey(e.target.value)}
@@ -406,9 +436,9 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                       </label>
                     )}
                     <label className="block">
-                      <span className={lbl}>Model (opsional)</span>
+                      <span className={lbl}>Model {personalProvider === 'custom' ? '(wajib)' : '(opsional)'}</span>
                       <input value={personalModel} onChange={(e) => setPersonalModel(e.target.value)}
-                        placeholder="default otomatis" className={inp} />
+                        placeholder={personalProvider === 'custom' ? 'contoh: deepseek-chat' : 'default otomatis'} className={inp} />
                     </label>
                     {personalError && <p className="text-xs text-red-500">{personalError}</p>}
                     <div className="flex items-center gap-2">
@@ -484,7 +514,7 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                       onClick={async () => {
                         if (!settings) return
                         setSyncing(true)
-                        const res = await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projects: settings.watchedProjects?.length ? settings.watchedProjects : ['integritys-websites', 'know-your-vendor-kyv'] }) })
+                        const res = await fetch('/api/op/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projects: settings.watchedProjects ?? [] }) })
                         const d = await res.json()
                         setCacheStatus({ lastSync: d.lastSync, tasks: d.myOpenTasks?.length ?? 0, stories: d.userStories?.length ?? 0, incoming: d.incomingTasks?.length ?? 0 })
                         setSyncing(false)

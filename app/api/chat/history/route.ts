@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getAllTaskChats } from '@/lib/chat-store'
+import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
-  const all = await getAllTaskChats()
+  // Scoped per user — this used to return the WHOLE table, so every teammate
+  // saw the owner's entire chat history (found in the first real 2-account test).
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const all = await getAllTaskChats(ctx.uid)
   const chats = all.map(c => ({
     id: c.id,
     title: c.title,
