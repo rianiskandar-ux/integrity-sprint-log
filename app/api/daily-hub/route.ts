@@ -11,8 +11,11 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
     const ctx  = await getRequestContext()
+    // Login required — getAllSessions/getAllKBEntries(undefined) return every
+    // user's hub items (the POST/PATCH handlers below already gate; GET didn't).
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const hubSessions = (await getAllSessions(ctx?.uid)).filter(s =>
+    const hubSessions = (await getAllSessions(ctx.uid)).filter(s =>
       (s.pushStatus === 'hub' || s.pushStatus === 'live') && s.taskStatus !== 'backlog'
     )
     const kbEntries = (await getAllKBEntries(ctx?.uid)).filter(e => e.triageStatus === 'hub')

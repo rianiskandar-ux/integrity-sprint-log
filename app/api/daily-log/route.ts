@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
+
+export const runtime = 'nodejs'
 
 const SPRINT_DIR = process.env.SPRINT_OUTPUT_DIR
   ?? path.join(process.env.CACHE_DATA_DIR ?? process.cwd(), 'daily-sprints')
@@ -87,6 +91,12 @@ function parseMarkdown(raw: string, date: string): DailyLogEntry {
 }
 
 export async function GET(req: Request) {
+  // The daily-log markdown files under SPRINT_DIR are the OWNER's shared work
+  // log (only the owner writes them; teammates are DB-backed elsewhere).
+  // Owner-only so a teammate can't read the owner's day-by-day activity.
+  const ctx = await getRequestContext()
+  if (!isOwnerUid(ctx?.uid)) return NextResponse.json({ entries: [], total: 0 })
+
   const url    = new URL(req.url)
   const date   = url.searchParams.get('date')   // specific date
   const limit  = parseInt(url.searchParams.get('limit') ?? '14')

@@ -16,8 +16,11 @@ function timeToMinutes(t: string): number {
 export async function POST(req: Request) {
   const { wpId, statusId, percentDone, spentTimeStr, estimatedMins, addSpentMins, userSettings } = await req.json()
   const ctx   = await getRequestContext()
-  const token = userSettings?.opApiToken || ctx?.opToken || ''
-  const base  = ctx?.opBaseUrl || ''
+  // Session identity only — ignore any client-supplied OP token override.
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  void userSettings
+  const token = ctx.opToken
+  const base  = ctx.opBaseUrl
   if (!token || !base || !wpId) return NextResponse.json({ error: 'Missing config' }, { status: 400 })
 
   const headers = {

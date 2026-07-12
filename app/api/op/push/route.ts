@@ -124,8 +124,11 @@ export async function POST(req: Request) {
     const { title, time, bullets, date, userSettings } = payload
 
     const ctx   = await getRequestContext()
-    const token = userSettings.opApiToken || ctx?.opToken || ''
-    const base  = ctx?.opBaseUrl || ''
+    // Session identity only — ignore any client-supplied OP token override.
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    void userSettings.opApiToken
+    const token = ctx.opToken
+    const base  = ctx.opBaseUrl
     if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
     const project  = detectProject(title, bullets)

@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { getLLMConfig } from '@/lib/llm'
 import type { LLMProvider } from '@/lib/llm-providers'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
 
 // GET /api/llm/models?provider=groq&key=gsk_...
 // Uses saved config if no query params provided
 export async function GET(req: Request) {
+  // Login required — without params this reads the owner's saved LLM config.
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { searchParams } = new URL(req.url)
   const qProvider = searchParams.get('provider') as LLMProvider | null
   const qKey      = searchParams.get('key') ?? ''

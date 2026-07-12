@@ -58,6 +58,7 @@ async function hardDelete(base: string, token: string, wpId: number): Promise<{ 
 }
 
 export async function DELETE(req: Request) {
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { searchParams } = new URL(req.url)
     const draftId = searchParams.get('draftId')
@@ -103,6 +104,7 @@ export async function DELETE(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { draftId, taskStatus } = await req.json()
     if (!draftId || !taskStatus) return NextResponse.json({ error: 'draftId and taskStatus required' }, { status: 400 })
@@ -123,6 +125,7 @@ export async function PATCH(req: Request) {
 }
 
 export async function GET() {
+  if (!(await getRequestContext())) return NextResponse.json({ log: [], total: 0 })
   try {
     const raw    = fs.existsSync(DRAFTS_FILE) ? JSON.parse(fs.readFileSync(DRAFTS_FILE, 'utf-8')) : []
     const drafts = Array.isArray(raw) ? raw : (raw.drafts ?? [])

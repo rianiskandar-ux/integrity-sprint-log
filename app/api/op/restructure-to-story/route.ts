@@ -11,8 +11,12 @@ import { getRequestContext } from '@/lib/request-auth'
 
 export async function POST(req: Request) {
   const ctx = await getRequestContext()
-  const OP_TOKEN = ctx?.opToken || process.env.OP_API_TOKEN || ''
-  const OP_BASE  = ctx?.opBaseUrl || process.env.OP_BASE_URL || ''
+  // Login required — this route creates a User Story and re-parents existing OP
+  // work packages. Without the gate an unauthenticated LAN caller hit the env
+  // owner-token fallback and mutated OP structure as the owner.
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const OP_TOKEN = ctx.opToken
+  const OP_BASE  = ctx.opBaseUrl
   if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
   const body = await req.json() as {
@@ -39,7 +43,8 @@ export async function POST(req: Request) {
     'Content-Type': 'application/json',
   }
   const date = new Date().toISOString().slice(0, 10)
-  const userId = body.userId ?? ctx?.opUserId ?? 0
+  // Assignee = the authenticated caller. Never trust body.userId (client-controlled).
+  const userId = ctx.opUserId ?? 0
 
   // If no sprint was explicitly given, inherit it from the first existing
   // ticket being wrapped — otherwise the new US ends up with NO version at

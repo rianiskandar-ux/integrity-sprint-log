@@ -10,8 +10,11 @@ function toISODuration(minutes: number): string {
 export async function POST(req: Request) {
   try {
     const ctx = await getRequestContext()
-    const OP_TOKEN = ctx?.opToken || ''
-    const OP_BASE  = ctx?.opBaseUrl || ''
+    // Login required — without it this inserted sessions with userId=null, which
+    // then surfaced in every user's status-sync.
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const OP_TOKEN = ctx.opToken
+    const OP_BASE  = ctx.opBaseUrl
     const body = await req.json() as {
       title: string
       durationMins: number
@@ -33,7 +36,7 @@ export async function POST(req: Request) {
     const bullets = note?.trim() ? [note.trim()] : ['Manual quick log — no automated session']
     await saveSession({
       id,
-      userId:        ctx?.uid ?? null,
+      userId:        ctx.uid,
       date,
       title: title.trim(),
       bullets,

@@ -11,8 +11,10 @@ export async function GET(req: Request) {
     const endDateParam   = searchParams.get('endDate') ?? ''
 
     const ctx      = await getRequestContext()
-    const sessions = await getAllSessions(ctx?.uid)
-    const cache    = loadCache(ctx?.uid)
+    // Login required — getAllSessions(undefined) returns every user's sessions.
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const sessions = await getAllSessions(ctx.uid)
+    const cache    = loadCache(ctx.uid)
 
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null
     const allSprints    = (cache.sprints ?? []) as { id: number; name: string; startDate: string; endDate: string; status: string; projectIdentifier: string; isCurrent: boolean }[]

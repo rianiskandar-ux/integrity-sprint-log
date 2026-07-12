@@ -24,8 +24,11 @@ export async function POST(req: Request) {
   try {
     const { wpId, duration, date, title, userSettings } = await req.json()
     const ctx   = await getRequestContext()
-    const token = userSettings?.opApiToken || ctx?.opToken || ''
-    const base  = ctx?.opBaseUrl || ''
+    // Session identity only — ignore any client-supplied OP token override.
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    void userSettings
+    const token = ctx.opToken
+    const base  = ctx.opBaseUrl
     if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
     if (!wpId) return NextResponse.json({ error: 'wpId required' }, { status: 400 })
 

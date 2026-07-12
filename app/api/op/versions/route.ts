@@ -8,8 +8,9 @@ export async function GET(req: Request) {
   const projectId = searchParams.get('project') ?? 'integritys-websites'
 
   const ctx = await getRequestContext()
-  const token = ctx?.opToken || process.env.OP_API_TOKEN
-  const base  = ctx?.opBaseUrl || process.env.OP_BASE_URL
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const token = ctx.opToken
+  const base  = ctx.opBaseUrl
 
   if (!token || !base) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 

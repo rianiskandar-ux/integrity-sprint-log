@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
+
+// NOTE: context-drafts.json is a single global file (no per-uid keying) left
+// over from the pre-multiuser draft-card flow. The live capture pipeline now
+// writes to the sessions table (/api/isl/sessions) instead, and DraftCard is
+// no longer mounted, so this store is effectively dormant. Rather than a full
+// per-uid rework of a dead feature, every handler is auth-gated so an
+// unauthenticated LAN caller can't read or mutate it. If the draft-card flow
+// is ever revived for the team, drafts must be keyed per uid first.
 
 const DATA_DIR = process.env.CACHE_DATA_DIR ?? process.cwd()
 const DRAFTS_FILE = path.join(DATA_DIR, 'context-drafts.json')
@@ -81,6 +92,7 @@ function cleanup(drafts: ContextDraft[]): ContextDraft[] {
 
 // GET — return all pending drafts
 export async function GET() {
+  if (!(await getRequestContext())) return NextResponse.json({ drafts: [], draft: null, count: 0 })
   try {
     let drafts = loadDrafts()
     const cleaned = cleanup(drafts)
@@ -96,6 +108,7 @@ export async function GET() {
 
 // POST — create new draft or update existing draft by sessionId
 export async function POST(req: Request) {
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const body = await req.json()
     const drafts = cleanup(loadDrafts())
@@ -179,6 +192,7 @@ export async function POST(req: Request) {
 
 // PATCH — update specific draft by id (for editing in DraftCard modal)
 export async function PATCH(req: Request) {
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const body = await req.json()
     const { id, ...updates } = body
@@ -198,6 +212,7 @@ export async function PATCH(req: Request) {
 
 // DELETE — discard specific draft (?id=xxx) or all pending (no params)
 export async function DELETE(req: Request) {
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')

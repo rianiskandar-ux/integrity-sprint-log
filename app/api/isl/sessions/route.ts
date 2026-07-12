@@ -14,8 +14,13 @@ export async function GET(req: Request) {
     const status   = searchParams.get('status')
     const validate = searchParams.get('needsValidation')
 
+    // Login required — getAllSessions(undefined) would return EVERY user's
+    // sessions. Machine key (Launcher Aryo report) resolves to the owner's set.
     const ctx = await getRequestContext()
-    let sessions = await getAllSessions(ctx?.uid)
+    const captureUid = await resolveCaptureUid(req.headers.get('x-kafi-key'))
+    const uid = ctx?.uid ?? captureUid
+    if (uid == null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let sessions = await getAllSessions(uid)
 
     if (taskId)   sessions = sessions.filter(s => s.opTaskId === Number(taskId))
     if (status)   sessions = sessions.filter(s => s.pushStatus === status)

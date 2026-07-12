@@ -5,12 +5,15 @@ export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
-  const userToken = searchParams.get('token') ?? ''
   const userId    = searchParams.get('userId') ?? ''
 
+  // Login required. Previously accepted a ?token= query param and fell back to
+  // the env owner token — an unauthenticated LAN caller could list the owner's
+  // OP projects, and a token in the URL leaks into logs. Use the session only.
   const ctx = await getRequestContext()
-  const token = userToken || ctx?.opToken || process.env.OP_API_TOKEN!
-  const base  = ctx?.opBaseUrl || process.env.OP_BASE_URL!
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const token = ctx.opToken
+  const base  = ctx.opBaseUrl
   const auth  = Buffer.from(`apikey:${token}`).toString('base64')
 
   const filters = userId

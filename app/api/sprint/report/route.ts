@@ -17,7 +17,9 @@ function fmtMins(m: number) {
 export async function GET() {
   try {
     const ctx      = await getRequestContext()
-    const sessions = await getAllSessions(ctx?.uid)
+    // Login required — getAllSessions(undefined) returns EVERY user's sessions.
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const sessions = await getAllSessions(ctx.uid)
     const cache    = loadCache(ctx?.uid)
     const userCfg  = loadUserConfig()
 
@@ -98,6 +100,8 @@ export async function GET() {
 
 // POST /api/sprint/report — generate AI narrative from report data
 export async function POST(req: NextRequest) {
+  // Login required — narrative generation runs on the owner's LLM config.
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const cfg = getLLMConfig()
   if (!cfg) {
     return new Response(JSON.stringify({ error: 'AI not configured' }), { status: 400 })

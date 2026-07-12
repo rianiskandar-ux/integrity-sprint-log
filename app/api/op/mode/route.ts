@@ -1,9 +1,22 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
+
+export const runtime = 'nodejs'
 
 const DATA_DIR  = process.env.CACHE_DATA_DIR ?? process.cwd()
 const MODE_FILE = path.join(DATA_DIR, 'op-mode.json')
+
+// op-mode.json is a single GLOBAL config (test/live sandbox, project, epic,
+// story map) that drives the owner's OP sync. It is owner-only: a non-owner
+// (or unauthenticated LAN caller) must never be able to flip mode or repoint
+// the project and disrupt sync. Reads are harmless/global.
+async function requireOwner() {
+  const ctx = await getRequestContext()
+  return isOwnerUid(ctx?.uid)
+}
 
 // TEST sandbox — fixed, always scrum-project
 const TEST_CONFIG = {
@@ -24,6 +37,7 @@ export async function GET() {
 
 // PATCH — update only specific fields (e.g. autoSync, mode) without full reset
 export async function PATCH(req: Request) {
+  if (!(await requireOwner())) return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   const body    = await req.json()
   const current = readMode()
   const updated = { ...current, ...body, updatedAt: new Date().toISOString() }
@@ -35,6 +49,7 @@ export async function PATCH(req: Request) {
 // POST body for LIVE:  { mode: 'live', project: string, userId: number, epicId?: number, stories?: {...} }
 // POST body for flags: { mode: 'live'|'test', autoSync: true } — partial update supported
 export async function POST(req: Request) {
+  if (!(await requireOwner())) return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   const body    = await req.json()
   const current = readMode()
   const { mode } = body

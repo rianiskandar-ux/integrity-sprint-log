@@ -16,8 +16,10 @@ export async function GET(req: Request) {
   if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
 
   const ctx = await getRequestContext()
+  // Login required — getAllSessions(undefined) returns EVERY user's sessions.
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const islSessions = (await getAllSessions(ctx?.uid))
+  const islSessions = (await getAllSessions(ctx.uid))
     .filter(s => s.opTaskId === taskId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(s => ({

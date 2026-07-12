@@ -3,7 +3,8 @@ import { db } from '@/lib/db'
 import { sessions, agentLogs, cases, events } from '@/lib/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import { getTimer } from '@/lib/work-timer'
-import { OWNER_UID } from '@/lib/auth'
+import { OWNER_UID, isOwnerUid } from '@/lib/auth'
+import { getRequestContext } from '@/lib/request-auth'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -45,7 +46,15 @@ function fmtAgo(mins: number): string {
   return h > 0 ? (m > 0 ? `${h}j ${m}m lalu` : `${h}j lalu`) : `${m}m lalu`
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  // This dashboard aggregates OWNER-scoped agent status (owner's cache/timer +
+  // today's sessions across sources) — owner tooling. Reachable by: the owner's
+  // own session, or the cross-app Launcher Aryo report via machine key. Any
+  // other logged-in teammate or unauthenticated LAN caller is refused.
+  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')
+  if (!machineAuth && !isOwnerUid((await getRequestContext())?.uid)) {
+    return NextResponse.json({ error: 'Owner only' }, { status: 403 })
+  }
   const today = new Date().toISOString().slice(0, 10)
   const agents: Agent[] = []
 

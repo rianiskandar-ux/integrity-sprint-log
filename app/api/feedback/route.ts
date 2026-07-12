@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadUserConfig } from '@/lib/user-config'
+import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
 
@@ -7,6 +8,8 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || ''
 const FEEDBACK_TO    = process.env.FEEDBACK_EMAIL  || 'rian.iskandar108@gmail.com'
 
 export async function POST(req: NextRequest) {
+  // Login required — otherwise any LAN caller can spam the owner's feedback inbox.
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { name, role, rating, message, category } = await req.json() as {
     name: string; role?: string; rating?: number
     message: string; category?: string

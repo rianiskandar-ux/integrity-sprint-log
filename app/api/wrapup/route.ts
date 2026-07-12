@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { callLLM, getLLMConfig } from '@/lib/llm'
 import { callLocalLLM } from '@/lib/local-llm'
+import { getRequestContext } from '@/lib/request-auth'
+
+export const runtime = 'nodejs'
 
 // Constrained decoding schema — full JSON Schema WAJIB (format:'json' saja tidak
 // cukup untuk model 3B). Markdown summary dirakit server-side dari JSON ini,
@@ -15,6 +18,8 @@ const WRAPUP_FORMAT = {
 } as const
 
 export async function POST(req: Request) {
+  // Login required — falls back to the owner's LLM config if local Ollama is down.
+  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { sessions, date } = await req.json()
   if (!sessions?.length) return NextResponse.json({ error: 'No sessions' }, { status: 400 })
 

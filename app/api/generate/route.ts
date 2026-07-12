@@ -15,6 +15,9 @@ const OP_PROJECTS = [
 
 export async function POST(req: Request) {
   const ctx = await getRequestContext()
+  // Login required — getAllSessions(undefined) would pull every user's sessions
+  // into the generated daily-sprint output.
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { date, force } = await req.json()
   const today = date ?? new Date().toISOString().slice(0, 10)
   const dir = getSprintDir()

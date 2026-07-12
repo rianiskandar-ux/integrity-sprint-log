@@ -159,8 +159,14 @@ function clusterIntoTasks(sessionTitle: string, bullets: string[], totalMins: nu
 
 export async function POST(req: Request) {
   const ctx = await getRequestContext()
-  const OP_TOKEN = ctx?.opToken || process.env.OP_API_TOKEN || ''
-  const OP_BASE  = ctx?.opBaseUrl || process.env.OP_BASE_URL || ''
+  // Login required. Without this gate an unauthenticated LAN caller reached the
+  // env owner-token fallback below and created/commented/logged-time in OP AS
+  // THE OWNER, and getAllSessions(undefined) returned every user's sessions.
+  // (Single-user mode still works: getRequestContext synthesizes a ctx whose
+  // opToken IS the env token, so no explicit env fallback is needed here.)
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const OP_TOKEN = ctx.opToken
+  const OP_BASE  = ctx.opBaseUrl
   if (!OP_BASE || !OP_TOKEN) return NextResponse.json({ error: 'OP not configured' }, { status: 500 })
 
   const body = await req.json() as {
