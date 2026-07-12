@@ -1,7 +1,22 @@
 import { NextResponse } from 'next/server'
 import { loadUserConfig, saveUserConfig, getOpBaseUrl } from '@/lib/user-config'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 
-export async function GET() {
+export const runtime = 'nodejs'
+
+// user-config is the OWNER's single global config (file-based, pre-multiuser).
+// Teammates use per-user userSettings instead. Owner-or-machine-key only —
+// in single-user mode getRequestContext synthesizes the owner uid, so this
+// stays open there. (Middleware lets header-present machine calls through, so
+// this route must validate the key value itself, not just presence.)
+async function allowed(req: Request): Promise<boolean> {
+  if (req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')) return true
+  return isOwnerUid((await getRequestContext())?.uid)
+}
+
+export async function GET(req: Request) {
+  if (!(await allowed(req))) return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   const cfg = loadUserConfig()
   // Never expose keys in full — mask them
   return NextResponse.json({
@@ -21,6 +36,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!(await allowed(req))) return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   try {
     const body = await req.json()
     const { displayName, opToken, anthropicKey, llmProvider, llmApiKey, llmModel, skipValidation } = body
@@ -62,6 +78,7 @@ export async function POST(req: Request) {
 
 // PATCH — partial update (settings page)
 export async function PATCH(req: Request) {
+  if (!(await allowed(req))) return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   try {
     const body = await req.json()
     const cfg = saveUserConfig(body)
