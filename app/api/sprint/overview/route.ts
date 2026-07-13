@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     }
 
     // OP stats for this sprint
-    type WP = { id: number; subject: string; versionId?: number | null; status?: string; estimatedTime?: string | null; spentTime?: string | null }
+    type WP = { id: number; subject: string; sprintId?: number | null; status?: string; estimatedTime?: string | null; spentTime?: string | null }
     const myOpen   = (cache.myOpenTasks   ?? []) as WP[]
     const myClosed = (cache.myClosedTasks ?? []) as WP[]
 
@@ -78,8 +78,8 @@ export async function GET(req: Request) {
       return (Number(m[1] ?? 0) * 24) + Number(m[2] ?? 0) + (Number(m[3] ?? 0) / 60)
     }
 
-    const opOpen   = targetSprint ? myOpen.filter(t => t.versionId === targetSprint!.id) : []
-    const opClosed = targetSprint ? myClosed.filter(t => t.versionId === targetSprint!.id) : []
+    const opOpen   = targetSprint ? myOpen.filter(t => t.sprintId === targetSprint!.id) : []
+    const opClosed = targetSprint ? myClosed.filter(t => t.sprintId === targetSprint!.id) : []
     const opAll    = [...opOpen, ...opClosed]
 
     const opTotalEst   = opAll.reduce((a, t) => a + parseIsoDur(t.estimatedTime), 0)

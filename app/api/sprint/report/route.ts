@@ -24,13 +24,13 @@ export async function GET() {
     const userCfg  = loadUserConfig()
 
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null
-    const myOpen   = (cache.myOpenTasks   ?? []) as unknown as { id: number; subject: string; versionId?: number | null; status?: string; project?: { name: string } | string }[]
-    const myClosed = (cache.myClosedTasks ?? []) as unknown as { id: number; subject: string; versionId?: number | null; status?: string; project?: { name: string } | string }[]
+    const myOpen   = (cache.myOpenTasks   ?? []) as unknown as { id: number; subject: string; sprintId?: number | null; status?: string; project?: { name: string } | string }[]
+    const myClosed = (cache.myClosedTasks ?? []) as unknown as { id: number; subject: string; sprintId?: number | null; status?: string; project?: { name: string } | string }[]
 
     // Sprint stats
-    const sprintDone  = currentSprint ? myClosed.filter(t => t.versionId === currentSprint.id) : []
-    const sprintOpen  = currentSprint ? myOpen.filter(t => t.versionId === currentSprint.id)   : []
-    const backlog     = myOpen.filter(t => !t.versionId)
+    const sprintDone  = currentSprint ? myClosed.filter(t => t.sprintId === currentSprint.id) : []
+    const sprintOpen  = currentSprint ? myOpen.filter(t => t.sprintId === currentSprint.id)   : []
+    const backlog     = myOpen.filter(t => !t.sprintId)
 
     // Sessions in current sprint date range
     const sprintSessions = currentSprint

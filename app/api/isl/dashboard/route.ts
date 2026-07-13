@@ -34,18 +34,18 @@ export async function GET() {
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null
 
     // Sprint progress: count my open tasks in current sprint
-    const myOpen   = (cache.myOpenTasks   ?? []) as { versionId?: number | null }[]
-    const myClosed = (cache.myClosedTasks ?? []) as { versionId?: number | null }[]
+    const myOpen   = (cache.myOpenTasks   ?? []) as { sprintId?: number | null }[]
+    const myClosed = (cache.myClosedTasks ?? []) as { sprintId?: number | null }[]
     const sprintStats = currentSprint ? (() => {
-      const done  = myClosed.filter(t => t.versionId === currentSprint.id).length
-      const open  = myOpen.filter(t => t.versionId === currentSprint.id).length
+      const done  = myClosed.filter(t => t.sprintId === currentSprint.id).length
+      const open  = myOpen.filter(t => t.sprintId === currentSprint.id).length
       const total = done + open
       return total > 0 ? { total, done, pct: Math.round(done / total * 100) } : null
     })() : null
 
     // Backlog — my open tasks with no sprint/version assigned
     const staleTasks = myOpen.filter(
-      (t: { versionId?: number | null }) => !t.versionId
+      (t: { sprintId?: number | null }) => !t.sprintId
     ) as { id: number; subject: string }[]
 
     // Today's activity

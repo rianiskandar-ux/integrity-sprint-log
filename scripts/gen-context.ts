@@ -39,11 +39,11 @@ async function main() {
     s.startDate <= today && s.endDate >= today
   ) ?? null
 
-  const myOpen   = (cache.myOpenTasks   ?? []) as { id: number; subject: string; versionId?: number | null; status?: string; islStatus?: string }[]
-  const myClosed = (cache.myClosedTasks ?? []) as { id: number; subject: string; versionId?: number | null }[]
+  const myOpen   = (cache.myOpenTasks   ?? []) as { id: number; subject: string; sprintId?: number | null; status?: string; islStatus?: string }[]
+  const myClosed = (cache.myClosedTasks ?? []) as { id: number; subject: string; sprintId?: number | null }[]
 
-  const sprintOpen   = currentSprint ? myOpen.filter(t => t.versionId === currentSprint.id) : []
-  const sprintClosed = currentSprint ? myClosed.filter(t => t.versionId === currentSprint.id) : []
+  const sprintOpen   = currentSprint ? myOpen.filter(t => t.sprintId === currentSprint.id) : []
+  const sprintClosed = currentSprint ? myClosed.filter(t => t.sprintId === currentSprint.id) : []
   const sprintTotal  = sprintOpen.length + sprintClosed.length
   const sprintPct    = sprintTotal > 0 ? Math.round(sprintClosed.length / sprintTotal * 100) : 0
   const daysLeft     = currentSprint
@@ -61,7 +61,7 @@ async function main() {
 
   const todaySessions = allSessions.filter(s => s.date === today && s.pushStatus === 'pushed')
   const todayMins     = todaySessions.reduce((a, s) => a + (s.actualMins ?? s.estimatedMins ?? 0), 0)
-  const backlog       = myOpen.filter(t => !t.versionId).slice(0, 8)
+  const backlog       = myOpen.filter(t => !t.sprintId).slice(0, 8)
 
   const lines: string[] = [
     `# ISL Context — Auto-generated ${now.toISOString().slice(0, 16).replace('T', ' ')} WIB`,

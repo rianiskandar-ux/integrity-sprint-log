@@ -94,11 +94,11 @@ export async function POST(req: Request) {
       const sprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) as { name: string; endDate: string } | undefined
       if (sprint) {
         const daysLeft = Math.max(0, Math.floor((new Date(sprint.endDate).getTime() - Date.now()) / 86400000))
-        const myOpen   = ((cache.myOpenTasks ?? []) as { versionId?: number | null; id?: number }[])
-        const myClosed = ((cache.myClosedTasks ?? []) as { versionId?: number | null; id?: number }[])
-        const sprintId = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent)?.id
-        const done  = myClosed.filter(t => t.versionId === sprintId).length
-        const open  = myOpen.filter(t => t.versionId === sprintId).length
+        const myOpen   = ((cache.myOpenTasks ?? []) as { sprintId?: number | null; id?: number }[])
+        const myClosed = ((cache.myClosedTasks ?? []) as { sprintId?: number | null; id?: number }[])
+        const currentSprintId = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent)?.id
+        const done  = myClosed.filter(t => t.sprintId === currentSprintId).length
+        const open  = myOpen.filter(t => t.sprintId === currentSprintId).length
         const pct   = done + open > 0 ? Math.round(done / (done + open) * 100) : 0
         if (daysLeft === 1 || daysLeft === 3) {
           sendTelegram(notifSprintDeadline(sprint.name, daysLeft, pct), tg).catch(() => {})
