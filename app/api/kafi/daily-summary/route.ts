@@ -30,9 +30,11 @@ export async function GET(req: Request) {
     // or activity captured via git-capture instead) — so on a day where work
     // DID happen but no session has stopped yet, this report would otherwise
     // wrongly say "no activity today" even though sessions (e.g. git-capture)
-    // already show it in the Hub queue.
-    db.select({ title: sessions.title, source: sessions.source }).from(sessions)
-      .where(eq(sessions.date, today)),
+    // already show it in the Hub queue. Scoped to OWNER_UID like the two
+    // queries above — this route is the OWNER's personal daily report; without
+    // this filter a teammate's own sessions today would mix in unlabeled.
+    db.select({ title: sessions.title, source: sessions.source, bullets: sessions.bullets }).from(sessions)
+      .where(and(eq(sessions.date, today), eq(sessions.userId, OWNER_UID))),
   ])
 
   return NextResponse.json({
@@ -41,7 +43,7 @@ export async function GET(req: Request) {
     taskMemory:    memory,
     kafiPushCount: kafiSessions.length,
     fallbackActivity: (logs.length === 0 && memory.length === 0)
-      ? allTodaySessions.map(s => ({ title: s.title, source: s.source ?? 'unknown' }))
+      ? allTodaySessions.map(s => ({ title: s.title, source: s.source ?? 'unknown', bullets: s.bullets ?? [] }))
       : [],
     hasData:       logs.length > 0 || memory.length > 0 || allTodaySessions.length > 0,
   })
