@@ -29,6 +29,9 @@ services:
     # mapping here. Override OP_HOST_IP in .env if the OP server IP changes.
     extra_hosts:
       - "tokek.integrity-asia.com:${OP_HOST_IP:-10.30.40.147}"
+      # Sama server fisik dengan tokek.integrity-asia.com (satu IP office, beda
+      # hostname/SNI) — kena masalah DNS internal yang sama, fix yang sama.
+      - "chat.43210.org:${CHAT_LLM_HOST_IP:-10.30.40.147}"
       # Custom dns: di bawah bikin embedded DNS Docker kelewat — pin host gateway
       # manual supaya container bisa reach Ollama di host (embedding lokal).
       - "host.docker.internal:host-gateway"
