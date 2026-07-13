@@ -58,13 +58,33 @@ export async function POST(req: Request) {
     }
   }
 
-  // 3) Upsert userSettings (simpan token terenkripsi)
+  // 2.5) Auto-derive the user's OWN watched projects from their OP memberships,
+  // so a teammate lands in a populated, usable app without visiting Settings.
+  // Previously first-login always used the OWNER's hardcoded project list, so a
+  // teammate working on other projects saw an empty Incoming/task list.
+  let derivedProjects: string[] = []
+  try {
+    const filters = encodeURIComponent(JSON.stringify([{ member: { operator: '=', values: [String(opUserId)] } }]))
+    const projRes = await fetch(`${base}/api/v3/projects?filters=${filters}&pageSize=50`, {
+      headers: { Authorization: auth }, signal: AbortSignal.timeout(10000),
+    }).catch(() => null)
+    if (projRes?.ok) {
+      const data = await projRes.json() as { _embedded?: { elements?: { identifier?: string }[] } }
+      derivedProjects = (data._embedded?.elements ?? []).map(p => p.identifier).filter((x): x is string => !!x)
+    }
+  } catch { /* fall back below */ }
+
+  // 3) Upsert userSettings (simpan token terenkripsi). Only overwrite
+  // watchedProjects on FIRST setup (empty) — never clobber a returning user's
+  // manual project choices.
   const encToken = encrypt(opToken)
   const existingSettings = (await db.select().from(userSettings).where(eq(userSettings.userId, userRow.id)).limit(1))[0]
+  const existingWatched = (existingSettings?.watchedProjects as string[] | null) ?? []
+  const watchedToSet = existingWatched.length ? existingWatched : derivedProjects
   if (existingSettings) {
-    await db.update(userSettings).set({ opApiToken: encToken, opUserId, opUserName: name, setupDone: true, updatedAt: new Date() }).where(eq(userSettings.userId, userRow.id))
+    await db.update(userSettings).set({ opApiToken: encToken, opUserId, opUserName: name, setupDone: true, watchedProjects: watchedToSet, updatedAt: new Date() }).where(eq(userSettings.userId, userRow.id))
   } else {
-    await db.insert(userSettings).values({ userId: userRow.id, opApiToken: encToken, opUserId, opUserName: name, setupDone: true })
+    await db.insert(userSettings).values({ userId: userRow.id, opApiToken: encToken, opUserId, opUserName: name, setupDone: true, watchedProjects: watchedToSet })
   }
 
   // 4) Set session cookie
@@ -75,12 +95,14 @@ export async function POST(req: Request) {
     maxAge: Math.floor(USER_TTL_MS / 1000),
   })
 
-  // 5) Auto-rebuild cache in background on first login (non-blocking)
+  // 5) Auto-rebuild cache in background on first login (non-blocking), using
+  // the user's OWN projects (their memberships). Fall back to the common shared
+  // projects only if OP returned no memberships, so the app is never empty.
   const existingCache = loadCache(userRow.id)
   if (!existingCache.lastSync) {
-    const defaultProjects = ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
+    const projectsForCache = watchedToSet.length ? watchedToSet : ['integritys-websites', 'know-your-vendor-kyv', 'scrum-project']
     setImmediate(() => {
-      rebuildCache(opToken, base, defaultProjects, opUserId, name, userRow.id).catch(() => {/* silent */})
+      rebuildCache(opToken, base, projectsForCache, opUserId, name, userRow.id).catch(() => {/* silent */})
     })
   }
 

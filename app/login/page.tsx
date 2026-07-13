@@ -52,9 +52,16 @@ export default function LoginPage() {
             <input type="password" autoFocus value={opToken} onChange={e => setOpToken(e.target.value)}
               placeholder="OP API Token"
               className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <p className="text-[10px] text-gray-400 leading-relaxed">
-              Ambil token: OpenProject → My account → Access tokens → API. Token disimpan terenkripsi & jadi identitasmu.
-            </p>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed bg-gray-50 dark:bg-gray-800/60 rounded-lg p-2.5 space-y-1">
+              <p className="font-semibold text-gray-600 dark:text-gray-300">Belum punya token? Sekali saja:</p>
+              <ol className="list-decimal ml-3.5 space-y-0.5">
+                <li>Buka <a href="https://tokek.integrity-asia.com/my/access_token" target="_blank" rel="noopener"
+                  className="text-blue-600 dark:text-blue-400 underline font-medium">halaman Access Token OP →</a></li>
+                <li>Di bagian <strong>API</strong>, klik <strong>+ Token</strong> lalu copy</li>
+                <li>Paste di kolom atas, klik Masuk</li>
+              </ol>
+              <p className="text-gray-400">Token disimpan terenkripsi &amp; jadi identitasmu. Setelah masuk, project &amp; task-mu muncul otomatis.</p>
+            </div>
             {err && <p className="text-[11px] text-red-500 text-center">{err}</p>}
             <button type="submit" disabled={loading || !opToken}
               className="w-full py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-40"
