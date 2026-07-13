@@ -80,8 +80,10 @@ export default function ChatBubble() {
     }).catch(() => {})
   }, [])
 
-  // Claude CLI is local and always usable, regardless of the saved Settings provider
-  const ready = aiProvider === 'claude-cli' ? true : aiReady
+  // Readiness must be derived from /api/ai-chat's caller-aware model list, not aiReady
+  // (that comes from the OWNER-ONLY /api/user-config, which 403s for a non-owner and
+  // would falsely mark them "not ready" even with their own personal provider configured).
+  const ready = aiProvider === 'claude-cli' ? true : !!aiModels[aiProvider]?.length
 
   // Load chat history from server on mount
   useEffect(() => {
@@ -271,8 +273,12 @@ export default function ChatBubble() {
               </div>
               {ready === false && (
                 <div className="w-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2 space-y-1.5">
-                  <p className="text-[10px] font-bold text-red-700 dark:text-red-300">Provider ini butuh API key</p>
-                  <p className="text-[9px] text-red-600 dark:text-red-400">Pilih <strong>Claude CLI (gratis)</strong> di dropdown Model di atas — tidak perlu API key.</p>
+                  <p className="text-[10px] font-bold text-red-700 dark:text-red-300">Belum ada provider AI yang siap dipakai</p>
+                  <p className="text-[9px] text-red-600 dark:text-red-400">
+                    {aiModels['claude-cli']
+                      ? <>Pilih <strong>Claude CLI (gratis)</strong> di dropdown Model di atas — tidak perlu API key.</>
+                      : <>Set provider + API key/Base URL Anda di Settings → 🔑 Model AI Pribadi.</>}
+                  </p>
                 </div>
               )}
               {ready && (
