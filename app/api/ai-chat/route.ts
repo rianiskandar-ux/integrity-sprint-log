@@ -76,14 +76,14 @@ export async function GET() {
   }
   if (shared) { models.tokenrouter = []; models.openmodel = ['deepseek-v4-flash'] }
 
-  // Personal provider: a non-owner teammate's own configured provider (set via
-  // Settings → 🔑 Model AI Pribadi). Shown ONLY in their own picker, never to others.
-  if (!owner) {
-    const personal = await getPersonalLLM(ctx)
-    if (personal) {
-      const model = personal.model || DEFAULT_MODELS[personal.provider as LLMProvider] || personal.provider
-      models[personal.provider] = [model]
-    }
+  // Personal provider: the caller's own configured provider (set via Settings →
+  // 🔑 Model AI Pribadi). Shown ONLY in their own picker, never to others — this
+  // now includes the owner too, as an ADDITIONAL option alongside claude-cli/ollama
+  // above (e.g. owner's own local LLM server), not a replacement for them.
+  const personal = await getPersonalLLM(ctx)
+  if (personal) {
+    const model = personal.model || DEFAULT_MODELS[personal.provider as LLMProvider] || personal.provider
+    models[personal.provider] = [model]
   }
 
   if (!shared) return NextResponse.json({ models })
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
   // EXCEPT: a non-owner using their OWN configured personal provider is always
   // allowed — that call uses their own key, not the owner's credentials.
   const { ctx, owner } = await callerCtx()
-  const personal = owner ? null : await getPersonalLLM(ctx)
+  const personal = await getPersonalLLM(ctx)
   const isPersonalCall = !!personal && personal.provider === body.provider
   if (!owner && !isPersonalCall) {
     const blocked = ['claude-cli', 'ollama'].includes(body.provider)

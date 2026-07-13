@@ -390,16 +390,12 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
 
               <section>
                 <h3 className={sec}>🔑 Model AI Pribadi</h3>
-                {personalIsOwner ? (
-                  <div className={card}>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Anda owner — pakai Claude CLI/Ollama bawaan, tidak perlu ini.
-                    </p>
-                  </div>
-                ) : (
+                {(
                   <div className={`${card} space-y-3`}>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Pakai provider AI &amp; API key Anda sendiri (mis. Gemini/OpenAI) untuk chat AI di ISL — terpisah dari kredensial owner instance.
+                      {personalIsOwner
+                        ? 'Opsional — default Anda tetap Claude CLI/Ollama bawaan, gratis. Provider di bawah ini jadi pilihan TAMBAHAN di dropdown model chat (mis. LLM lokal/kantor sendiri, DeepSeek, dll), tidak menggantikan yang sudah ada.'
+                        : 'Pakai provider AI & API key Anda sendiri (mis. Gemini/OpenAI) untuk chat AI di ISL — terpisah dari kredensial owner instance.'}
                     </p>
                     {personalConfigured && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400">

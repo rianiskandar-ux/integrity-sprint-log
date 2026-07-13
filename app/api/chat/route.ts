@@ -52,8 +52,10 @@ export async function POST(req: NextRequest) {
   // Build ISL context first — needed to resolve a non-owner's personal provider key.
   const ctx      = await getRequestContext()
   const nonOwner = process.env.ISL_MULTIUSER === '1' && !isOwnerUid(ctx?.uid)
-  const personal = nonOwner ? await getPersonalLLM(ctx) : null
-  // Non-owner selecting THEIR OWN configured provider — always allowed, uses their own key.
+  // Resolve for anyone (owner included) — the owner's own configured provider is now
+  // an ADDITIONAL option alongside claude-cli/ollama, not gated to non-owners only.
+  const personal = await getPersonalLLM(ctx)
+  // Caller selecting THEIR OWN configured provider — always allowed, uses their own key.
   const isPersonalCall = !!personal && body.provider === personal.provider
 
   // Resolve the effective provider/key/model. A per-chat override (body.provider)
