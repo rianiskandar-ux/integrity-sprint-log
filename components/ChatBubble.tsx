@@ -60,7 +60,24 @@ export default function ChatBubble() {
       const parts = [d.llmModel && d.llmModel !== 'claude' ? d.llmModel : 'default', d.llmEffort].filter(Boolean)
       setCliDefault(parts.join(' · '))
     }).catch(() => setAiReady(false))
-    fetch('/api/ai-chat').then(r => r.json()).then(d => { if (d.models) setAiModels(d.models) }).catch(() => {})
+    // /api/user-config above is OWNER-ONLY (global engine config) — for a non-owner it
+    // 403s and never corrects the hardcoded 'claude-cli' default above. /api/ai-chat's
+    // model list is the authoritative, caller-aware source (works for owner AND
+    // non-owner) — if the current provider isn't actually in it, switch to whatever
+    // IS available instead of silently submitting a provider the caller can't use.
+    fetch('/api/ai-chat').then(r => r.json()).then(d => {
+      if (!d.models) return
+      setAiModels(d.models)
+      setAiProvider(prevProvider => {
+        if (d.models[prevProvider]?.length) return prevProvider
+        const firstProvider = Object.keys(d.models)[0]
+        if (firstProvider) {
+          setAiModel(d.models[firstProvider][0])
+          return firstProvider
+        }
+        return prevProvider
+      })
+    }).catch(() => {})
   }, [])
 
   // Claude CLI is local and always usable, regardless of the saved Settings provider

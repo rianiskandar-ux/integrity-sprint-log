@@ -71,9 +71,24 @@ export default function TaskChatModal({ task, onClose, onPushed, onAddToQueue, e
   const [aiModels,   setAiModels]   = useState<Record<string, string[]>>({ 'claude-cli': ['claude'] })
 
   useEffect(() => {
+    // Model list is caller-aware (owner vs non-owner) — the hardcoded 'claude-cli'
+    // default above only works for the owner. If it's not actually in the returned
+    // list (non-owner without claude-cli access), switch to whatever IS available.
     fetch('/api/ai-chat')
       .then(r => r.json())
-      .then(d => { if (d.models) setAiModels(d.models) })
+      .then(d => {
+        if (!d.models) return
+        setAiModels(d.models)
+        setAiProvider(prevProvider => {
+          if (d.models[prevProvider]?.length) return prevProvider
+          const firstProvider = Object.keys(d.models)[0]
+          if (firstProvider) {
+            setAiModel(d.models[firstProvider][0])
+            return firstProvider
+          }
+          return prevProvider
+        })
+      })
       .catch(() => {})
   }, [])
 

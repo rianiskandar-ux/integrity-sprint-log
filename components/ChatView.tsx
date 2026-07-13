@@ -49,19 +49,20 @@ export default function ChatView() {
   const abortRef  = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    fetch('/api/user-config')
+    // /api/user-config is OWNER-ONLY (global engine config) — it 403s for a non-owner,
+    // which forced aiReady=false even when they'd already configured their own personal
+    // provider. /api/ai-chat's model list is caller-aware (owner or non-owner alike).
+    fetch('/api/ai-chat')
       .then(r => r.json())
       .then(d => {
-        const ready = d.llmApiKeySet || d.llmProvider === 'ollama'
-        setAiReady(ready)
-        if (d.llmProvider) {
-          const labels: Record<string, string> = {
-            anthropic: 'Claude', openai: 'GPT', google: 'Gemini',
-            groq: 'Groq', openrouter: 'OpenRouter', mistral: 'Mistral',
-            together: 'Together AI', ollama: 'Ollama',
-          }
-          setAiName(`ISL · ${labels[d.llmProvider] ?? d.llmProvider}`)
+        const providers = d.models ? Object.keys(d.models) : []
+        setAiReady(providers.length > 0)
+        const labels: Record<string, string> = {
+          anthropic: 'Claude', openai: 'GPT', google: 'Gemini', groq: 'Groq',
+          openrouter: 'OpenRouter', mistral: 'Mistral', together: 'Together AI',
+          ollama: 'Ollama', custom: 'Custom', 'claude-cli': 'Claude CLI',
         }
+        if (providers[0]) setAiName(`ISL · ${labels[providers[0]] ?? providers[0]}`)
       })
       .catch(() => setAiReady(false))
   }, [])

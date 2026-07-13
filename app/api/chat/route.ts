@@ -56,7 +56,10 @@ export async function POST(req: NextRequest) {
   // an ADDITIONAL option alongside claude-cli/ollama, not gated to non-owners only.
   const personal = await getPersonalLLM(ctx)
   // Caller selecting THEIR OWN configured provider — always allowed, uses their own key.
-  const isPersonalCall = !!personal && body.provider === personal.provider
+  // Also true when a non-owner sent no explicit provider at all (defaulted to personal
+  // below) — otherwise the block-check further down would wrongly reject their own
+  // ollama/etc. just because it's normally an owner-only provider name.
+  const isPersonalCall = !!personal && (body.provider === personal.provider || (!body.provider && nonOwner))
 
   // Resolve the effective provider/key/model. A per-chat override (body.provider)
   // wins over the global Settings config so the model picker inside each chat works.
@@ -74,6 +77,14 @@ export async function POST(req: NextRequest) {
     else if (provider === 'openmodel')   apiKey = process.env.AI_CHAT_OM_KEY || ''
     else                                 apiKey = getLLMConfig()?.apiKey || ''
     model = body.model || getDefaultModel(provider)
+  } else if (nonOwner && personal) {
+    // No explicit provider chosen (e.g. ChatsView's "Create New" flow never sends one) —
+    // getLLMConfig() below is the OWNER's global engine config, which a non-owner can't
+    // use anyway. Default to their own personal provider instead of always 403-ing here.
+    provider = personal.provider
+    apiKey   = personal.apiKey
+    model    = personal.model || getDefaultModel(provider)
+    baseUrlOverride = personal.baseUrl ?? undefined
   } else {
     const cfg = getLLMConfig()
     if (!cfg) {

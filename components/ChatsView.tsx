@@ -126,8 +126,12 @@ export default function ChatsView() {
   }
 
   useEffect(() => {
-    fetch('/api/user-config').then(r => r.json()).then(d => {
-      setAiReady(d.llmApiKeySet || ['ollama', '9router', 'claude-cli'].includes(d.llmProvider))
+    // /api/user-config is OWNER-ONLY (global engine config) — it 403s for a non-owner,
+    // which forced aiReady=false and disabled the compose box even when they'd already
+    // configured their own personal provider. /api/ai-chat's model list is caller-aware
+    // and reflects what's ACTUALLY usable (owner or non-owner alike).
+    fetch('/api/ai-chat').then(r => r.json()).then(d => {
+      setAiReady(!!d.models && Object.keys(d.models).length > 0)
     }).catch(() => setAiReady(false))
   }, [])
 
