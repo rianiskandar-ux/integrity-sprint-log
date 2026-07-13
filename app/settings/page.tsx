@@ -170,7 +170,11 @@ export default function SettingsPage() {
               <select value={llmProvider}
                 onChange={e => { setLlmProvider(e.target.value as LLMProvider); setLlmApiKey(''); setLlmModel(''); setAvailModels([]) }}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1">
-                {(Object.keys(PROVIDER_KEY_HINTS) as LLMProvider[]).map(key => (
+                {/* 'custom' excluded — this global config has no Base URL field/storage,
+                    so it can never actually reach a custom endpoint (falls through to
+                    OpenAI's real API with the wrong key). Use Settings → 🔑 Model AI
+                    Pribadi (the modal, not this page) for a custom OpenAI-compatible provider. */}
+                {(Object.keys(PROVIDER_KEY_HINTS) as LLMProvider[]).filter(k => k !== 'custom').map(key => (
                   <option key={key} value={key}>
                     {PROVIDER_LABELS[key]}{FREE_PROVIDERS.includes(key) ? ' ✦ gratis' : ''}
                   </option>

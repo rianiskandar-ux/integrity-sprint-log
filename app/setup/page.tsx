@@ -146,7 +146,10 @@ export default function SetupPage() {
                   disabled={loading}
                 >
                   <option value="" disabled>— Select AI provider —</option>
-                  {(Object.keys(PROVIDER_KEY_HINTS) as Provider[]).map(key => (
+                  {/* 'custom' excluded — this global config has no Base URL field/storage,
+                      so it can never actually reach a custom endpoint. Use Settings →
+                      🔑 Model AI Pribadi for a custom OpenAI-compatible provider instead. */}
+                  {(Object.keys(PROVIDER_KEY_HINTS) as Provider[]).filter(k => k !== 'custom').map(key => (
                     <option key={key} value={key}>
                       {PROVIDER_LABELS[key]}{FREE_PROVIDERS.includes(key) ? ' ✦ free' : ''}
                     </option>
