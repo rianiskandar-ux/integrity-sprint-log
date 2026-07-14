@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: isl
       POSTGRES_USER: isl
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-isl-local-2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "127.0.0.1:5432:5432"     # localhost only — tidak accessible dari jaringan luar
     volumes:
@@ -61,12 +61,15 @@ services:
       # dan hasilnya persist di sini. Tidak perlu reinstall manual lagi tiap rebuild.
       - isl-claude-cli:/opt/claude-cli
     environment:
-      - DATABASE_URL=postgresql://isl:${POSTGRES_PASSWORD:-isl-local-2026}@postgres:5432/isl
+      - DATABASE_URL=postgresql://isl:${POSTGRES_PASSWORD}@postgres:5432/isl
       - OP_BASE_URL=${OP_BASE_URL:-https://tokek.integrity-asia.com}
       - OP_PROJECT_ID=${OP_PROJECT_ID:-integritys-websites}
       - OP_API_TOKEN=${OP_API_TOKEN:-}
       - NEXTAUTH_URL=http://localhost:4891
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-isl-local-secret-2026}
+      # NEXTAUTH_SECRET removed 2026-07-14 — dead: this repo doesn't use
+      # NextAuth, and lib/session-token.ts (the only place that ever read it)
+      # now requires ISL_ENCRYPTION_KEY directly instead of falling through
+      # this + a hardcoded literal.
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_LOGIN_HINT=${GOOGLE_LOGIN_HINT:-}

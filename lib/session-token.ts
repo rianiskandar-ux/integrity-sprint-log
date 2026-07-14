@@ -25,8 +25,15 @@ function fromB64url(str: string): Uint8Array {
   return bytes
 }
 
+// NEXTAUTH_SECRET was a misleading name here (this repo doesn't use NextAuth)
+// and the hardcoded 'isl-fallback-sign-key' literal was the exact same
+// weak-default antipattern as the old KAFI_API_KEY/ISL_ENCRYPTION_KEY
+// placeholders — a known string, visible in source, silently signing every
+// session/PIN-gate token if the real key were ever unset. Fail loud instead.
 function secret(): string {
-  return process.env.ISL_ENCRYPTION_KEY || process.env.NEXTAUTH_SECRET || 'isl-fallback-sign-key'
+  const key = process.env.ISL_ENCRYPTION_KEY
+  if (!key) throw new Error('ISL_ENCRYPTION_KEY is required (session/PIN-gate token signing)')
+  return key
 }
 
 async function hmacKey(): Promise<CryptoKey> {
