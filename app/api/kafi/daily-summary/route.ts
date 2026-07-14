@@ -7,7 +7,7 @@ import { OWNER_UID } from '@/lib/auth'
 export const runtime = 'nodejs'
 
 function verifyKey(req: Request): boolean {
-  const key = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+  const key = process.env.KAFI_API_KEY
   return req.headers.get('x-kafi-key') === key
 }
 

@@ -14,7 +14,7 @@ const LUNA_SUGGESTIONS = ['push_existing', 'new_task', 'delete', 'keep'] as cons
 
 // ── Auth: machine key OR browser session — same dual pattern as events/log ───
 async function isAuthed(req: NextRequest): Promise<boolean> {
-  const key = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+  const key = process.env.KAFI_API_KEY
   const machineAuth =
     req.headers.get('x-kafi-key') === key ||
     new URL(req.url).searchParams.get('key') === key

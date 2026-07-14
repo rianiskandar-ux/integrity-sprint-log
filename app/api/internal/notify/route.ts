@@ -3,7 +3,7 @@ import { sendTelegram, getTelegramConfig } from '@/lib/telegram'
 
 // Relay Telegram untuk service eksternal (Launcher/Nara) — pakai bot ISL yang
 // sudah dikonfigurasi, jadi service lain tidak perlu simpan token sendiri.
-const KAFI_KEY = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+const KAFI_KEY = process.env.KAFI_API_KEY
 
 function authed(req: Request): boolean {
   const url = new URL(req.url)

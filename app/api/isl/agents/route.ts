@@ -51,7 +51,7 @@ export async function GET(req: Request) {
   // today's sessions across sources) — owner tooling. Reachable by: the owner's
   // own session, or the cross-app Launcher Aryo report via machine key. Any
   // other logged-in teammate or unauthenticated LAN caller is refused.
-  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')
+  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY)
   if (!machineAuth && !isOwnerUid((await getRequestContext())?.uid)) {
     return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   }

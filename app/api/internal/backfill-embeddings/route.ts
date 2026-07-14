@@ -7,7 +7,7 @@ import { upsertEmbedding, hybridSearch, type EmbeddingSourceType } from '@/lib/e
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-const KAFI_KEY = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+const KAFI_KEY = process.env.KAFI_API_KEY
 
 function authed(req: Request): boolean {
   const url = new URL(req.url)

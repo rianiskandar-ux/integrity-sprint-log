@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   // Machine auth: launcher-dashboard's Aryo report calls this cross-app with no
   // session cookie. Without this it always 401s — the report's "Sprint Status"
   // section showing permanent "—" dashes was this, not a data problem.
-  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')
+  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY)
   if (!ctx && !machineAuth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const OP_TOKEN = ctx?.opToken || (machineAuth ? process.env.OP_API_TOKEN : '') || ''

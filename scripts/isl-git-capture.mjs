@@ -25,7 +25,7 @@ import { execSync } from 'child_process'
 import { existsSync } from 'fs'
 
 const ISL_URL  = process.env.ISL_URL      || 'http://localhost:4891'
-const KAFI_KEY = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+const KAFI_KEY = process.env.KAFI_API_KEY
 const SINCE_DAYS = Number(process.env.GIT_CAPTURE_SINCE_DAYS || 2)
 const DRY = process.argv.includes('--dry-run')
 

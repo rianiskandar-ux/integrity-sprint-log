@@ -33,7 +33,7 @@ interface OpenRouterModel {
 
 // ── Auth: browser session OR machine key (weekly cron calls headless) ───────
 async function resolveAuth(req: NextRequest): Promise<{ uid: number } | null> {
-  const key = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+  const key = process.env.KAFI_API_KEY
   const machineAuth =
     req.headers.get('x-kafi-key') === key ||
     new URL(req.url).searchParams.get('key') === key

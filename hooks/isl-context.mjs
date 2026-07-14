@@ -242,7 +242,7 @@ async function fetchCorrections(title, bullets) {
   try {
     const q = encodeURIComponent(`${title} ${bullets.join(' ')}`)
     const res = await fetch(`${ISL_URL}/api/arka/corrections?query=${q}&limit=3`, {
-      headers: { 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
+      headers: { 'x-kafi-key': process.env.KAFI_API_KEY },
       signal: AbortSignal.timeout(3500),
     })
     if (!res.ok) return []
@@ -638,7 +638,7 @@ Return ONLY valid JSON, no markdown, no extra text:
     try {
       await fetch(`${ISL_URL}/api/events/log`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
+        headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
         body: JSON.stringify({ agent: 'arka', event: brain === 'ollama' ? 'summary_local' : 'summary_fallback' }),
         signal: AbortSignal.timeout(3000),
       })
@@ -939,14 +939,14 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     tokenUsage: tokenSummary,
     relatedOldTaskId: relatedOldId,
     ticketBinding,
-  }, { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' })
+  }, { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY })
 
   // Append to Daily Log — fire and forget. x-kafi-key: per-user captureKey
   // (teammate's own hook) or the global default (owner) — drives attribution.
   const logDate = new Date().toISOString().slice(0, 10)
   fetch(`${ISL_URL}/api/daily-log/append`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY || 'kafi-bridge-2026' },
+    headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
     body: JSON.stringify({ title, bullets, date: logDate, sessionId }),
   }).catch(() => {})
 

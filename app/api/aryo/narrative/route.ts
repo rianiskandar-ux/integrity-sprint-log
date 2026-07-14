@@ -26,7 +26,7 @@ interface AgendaItem { title: string; startTime: string; project: string }
 
 export async function GET(req: Request) {
   const ctx = await getRequestContext()
-  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')
+  const machineAuth = req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY)
   if (!ctx && !machineAuth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const uid = ctx?.uid ?? (machineAuth ? OWNER_UID : null)
 

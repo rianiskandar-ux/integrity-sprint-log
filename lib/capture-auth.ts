@@ -12,7 +12,7 @@ import { OWNER_UID } from '@/lib/auth'
 // by middleware (edge runtime), which can't carry a pg Pool import.
 export async function resolveCaptureUid(key: string | null | undefined): Promise<number | null> {
   if (!key) return null
-  if (key === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')) return OWNER_UID
+  if (key === (process.env.KAFI_API_KEY)) return OWNER_UID
   try {
     const row = (await db.select({ userId: userSettings.userId })
       .from(userSettings)

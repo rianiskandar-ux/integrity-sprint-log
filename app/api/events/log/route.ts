@@ -15,7 +15,7 @@ const KNOWN_AGENTS: ReadonlySet<string> = new Set(['arka', 'luna', 'aryo', 'kafi
 
 // ── Auth: machine key (hooks/host-side callers) OR browser session — EITHER ──
 async function isAuthed(req: NextRequest): Promise<boolean> {
-  const key = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+  const key = process.env.KAFI_API_KEY
   const machineAuth =
     req.headers.get('x-kafi-key') === key ||
     new URL(req.url).searchParams.get('key') === key

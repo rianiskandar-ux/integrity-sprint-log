@@ -11,7 +11,7 @@ export const runtime = 'nodejs'
 // stays open there. (Middleware lets header-present machine calls through, so
 // this route must validate the key value itself, not just presence.)
 async function allowed(req: Request): Promise<boolean> {
-  if (req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY || 'kafi-bridge-2026')) return true
+  if (req.headers.get('x-kafi-key') === (process.env.KAFI_API_KEY)) return true
   return isOwnerUid((await getRequestContext())?.uid)
 }
 

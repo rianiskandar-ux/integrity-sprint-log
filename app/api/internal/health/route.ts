@@ -3,7 +3,7 @@ import { loadCache } from '@/lib/op-cache'
 
 export const runtime = 'nodejs'
 
-const KAFI_KEY = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+const KAFI_KEY = process.env.KAFI_API_KEY
 const STALE_HOURS = 26 // alert if OP cache older than this
 
 export async function GET(req: Request) {

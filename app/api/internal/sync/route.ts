@@ -8,7 +8,7 @@ import { getOpBaseUrl } from '@/lib/user-config'
 
 export const runtime = 'nodejs'
 
-const KAFI_KEY = process.env.KAFI_API_KEY || 'kafi-bridge-2026'
+const KAFI_KEY = process.env.KAFI_API_KEY
 
 // POST /api/internal/sync?key=<kafi-key>
 // Triggers OP cache rebuild for a given uid without requiring browser session.

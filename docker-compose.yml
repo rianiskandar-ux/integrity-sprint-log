@@ -89,6 +89,10 @@ services:
       - ISL_TIMER_KEY=${ISL_TIMER_KEY:-}
       # Embedding lokal via Ollama di host (nomic-embed-text, 768 dim)
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Inter-service machine key (Launcher <-> ISL cross-app calls, git-capture
+      # script, Claude Code hook). No hardcoded fallback here — must come from
+      # .env (see .env's own KAFI_API_KEY comment for why this was rotated).
+      - KAFI_API_KEY=${KAFI_API_KEY}
       # AI Chat providers (server-side only, tidak expose ke client)
       - AI_CHAT_TR_KEY=${AI_CHAT_TR_KEY:-}
       - AI_CHAT_TR_BASE=${AI_CHAT_TR_BASE:-https://api.tokenrouter.com/v1}
