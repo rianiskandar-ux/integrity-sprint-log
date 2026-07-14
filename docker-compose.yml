@@ -74,9 +74,11 @@ services:
       - SPRINT_OUTPUT_DIR=/app/daily-sprints
       - AUTH_DATA_DIR=/app/auth-data
       - CACHE_DATA_DIR=/app/data
-      # At-rest encryption for secrets in user-config.json (AES-256-GCM).
-      # Override via .env for your own key. Changing it makes existing ciphertext unreadable.
-      - ISL_ENCRYPTION_KEY=${ISL_ENCRYPTION_KEY:-isl-local-aes-key-change-me-2026}
+      # At-rest encryption for secrets in user-config.json (AES-256-GCM). Must
+      # come from .env — no fallback default here (the old one was the literal
+      # placeholder "change-me", never actually changed). Changing this value
+      # makes existing ciphertext unreadable — see .env's own comment.
+      - ISL_ENCRYPTION_KEY=${ISL_ENCRYPTION_KEY}
       # Lightweight PIN gate. EMPTY = gate disabled (lockout-safe). Set to enable login.
       - ISL_ACCESS_PIN=${ISL_ACCESS_PIN:-}
       # Multi-user mode: tiap orang login pakai OP API token sendiri. 1 = aktif.
