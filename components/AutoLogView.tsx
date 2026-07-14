@@ -10,6 +10,7 @@ import {
   Link, AlertTriangle, Calendar, User, Sparkles, Building2,
   Circle, Check, ExternalLink, Loader2, RefreshCw, X,
   Play, Landmark, ChevronDown, ChevronRight, Clock, CalendarDays, Folder,
+  RotateCcw,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -255,7 +256,7 @@ function EditSessionModal({
 
 // ── Session Detail Popup ──────────────────────────────────────────────────────
 function SessionDetailPopup({
-  session, opUrl, opStatus, onClose, onStatusChange, onUndo, onImprove, onSyncStatus, onConfirm, onEdit,
+  session, opUrl, opStatus, onClose, onStatusChange, onUndo, onResetToPending, onImprove, onSyncStatus, onConfirm, onEdit,
 }: {
   session: Session
   opUrl: string
@@ -263,6 +264,7 @@ function SessionDetailPopup({
   onClose: () => void
   onStatusChange: (id: string, status: string) => void
   onUndo: (session: Session) => void
+  onResetToPending: (session: Session) => void
   onImprove: (session: Session) => void
   onSyncStatus: (taskId: number, islStatus: string) => void
   onConfirm?: (id: string) => void
@@ -431,10 +433,19 @@ function SessionDetailPopup({
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-600 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950 transition">
               <Sparkles size={12} /> Improve
             </button>
-            <button onClick={() => { onUndo(session); onClose() }}
-              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-              <CornerDownLeft size={12} /> Backlog
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {session.opTaskId && (
+                <button onClick={() => { onResetToPending(session); onClose() }}
+                  title="Balikin ke Push Queue di ISL saja — tiket/comment/worklog yang sudah dibuat di OP TIDAK disentuh/dihapus."
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                  <RotateCcw size={12} /> Re-queue
+                </button>
+              )}
+              <button onClick={() => { onUndo(session); onClose() }}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                <CornerDownLeft size={12} /> Backlog
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -929,6 +940,23 @@ export default function AutoLogView() {
     }
   }
 
+  // ISL-only undo: back to Push Queue for redo, OP left completely untouched
+  // (no status change, no delete, no new comment) — for when the push itself
+  // was fine but you want to redo/relink without touching what's already there.
+  async function doResetToPending(session: Session) {
+    if (!confirm(`Balikin "${session.title}" ke Push Queue?\n\nTiket/comment/worklog yang sudah dibuat di OP #${session.opTaskId} TIDAK akan disentuh sama sekali.`)) return
+    const r = await fetch(`/api/isl/sessions/${session.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pushStatus: 'pending', undoneAt: new Date().toISOString() }),
+    }).then(r => r.json()).catch(() => ({ error: 'Network error' }))
+    if (r.ok) {
+      setSessions(prev => prev.map(s => s.id === session.id ? { ...s, pushStatus: 'pending' } : s))
+      showToast('Balik ke Push Queue — OP tidak diubah')
+    } else {
+      showToast(`Error: ${r.error ?? 'Failed'}`)
+    }
+  }
+
   async function doImprove(session: Session) {
     setImprovingId(session.id)
     showToast('Improving with AI…')
@@ -988,6 +1016,7 @@ export default function AutoLogView() {
           onClose={() => setDetail(null)}
           onStatusChange={doStatusChange}
           onUndo={doUndo}
+          onResetToPending={doResetToPending}
           onImprove={doImprove}
           onSyncStatus={doSyncStatus}
           onConfirm={doConfirm}
