@@ -13,10 +13,20 @@ export const runtime = 'nodejs'
 
 type AgentStatus = 'active' | 'idle' | 'issue'
 
+// 'agent' = acts autonomously off a real event (a hook/capture writes new
+// state without a human clicking anything each time). 'monitor' = reports
+// current state only — the underlying action (OP sync, starting a timer,
+// triaging the hub) is actually a human/page-load-triggered step elsewhere;
+// this entry just reflects it. Distinguishing these was Rian's own call after
+// noticing "Dira" et al look like continuously-working agents but are really
+// idle status displays most of the time (2026-07-15).
+type AgentKind = 'agent' | 'monitor'
+
 interface Agent {
   id: string
   name: string
   role: string
+  kind: AgentKind
   description: string
   status: AgentStatus
   statusText: string
@@ -90,14 +100,14 @@ export async function GET(req: Request) {
     }
 
     agents.push({
-      id: 'arka', name: 'Arka', role: 'Session Recorder',
+      id: 'arka', kind: 'agent', name: 'Arka', role: 'Session Recorder',
       description: 'Merekam semua sesi kerja Claude ke ISL Hub',
       status, statusText, detail,
       lastActive: latestSession?.createdAt?.toISOString() ?? null,
     })
   } catch {
     agents.push({
-      id: 'arka', name: 'Arka', role: 'Session Recorder',
+      id: 'arka', kind: 'agent', name: 'Arka', role: 'Session Recorder',
       description: 'Merekam semua sesi kerja Claude ke ISL Hub',
       status: 'issue', statusText: 'Error', detail: 'Tidak bisa baca data sesi', lastActive: null,
     })
@@ -131,14 +141,14 @@ export async function GET(req: Request) {
     }
 
     agents.push({
-      id: 'rendi', name: 'Rendi', role: 'Sprint Guard',
+      id: 'rendi', kind: 'monitor', name: 'Rendi', role: 'Sprint Guard',
       description: 'Pantau sprint progress & sinkronisasi data OP',
       status, statusText, detail,
       lastActive: lastUpdated,
     })
   } catch {
     agents.push({
-      id: 'rendi', name: 'Rendi', role: 'Sprint Guard',
+      id: 'rendi', kind: 'monitor', name: 'Rendi', role: 'Sprint Guard',
       description: 'Pantau sprint progress & sinkronisasi data OP',
       status: 'issue', statusText: 'Error', detail: 'Gagal baca op-cache', lastActive: null,
     })
@@ -175,13 +185,13 @@ export async function GET(req: Request) {
     }
 
     agents.push({
-      id: 'dira', name: 'Dira', role: 'Timekeeper',
+      id: 'dira', kind: 'monitor', name: 'Dira', role: 'Timekeeper',
       description: 'Catat waktu kerja & auto-push time entry ke OP',
       status, statusText, detail, lastActive,
     })
   } catch {
     agents.push({
-      id: 'dira', name: 'Dira', role: 'Timekeeper',
+      id: 'dira', kind: 'monitor', name: 'Dira', role: 'Timekeeper',
       description: 'Catat waktu kerja & auto-push time entry ke OP',
       status: 'issue', statusText: 'Error', detail: 'Tidak bisa baca timer', lastActive: null,
     })
@@ -232,14 +242,14 @@ export async function GET(req: Request) {
     })
 
     agents.push({
-      id: 'luna', name: 'Luna', role: 'Hub Curator',
+      id: 'luna', kind: 'monitor', name: 'Luna', role: 'Hub Curator',
       description: 'Kelola antrian sesi di Daily Hub untuk triage',
       status, statusText, detail, lastActive,
       meta: count > 0 ? { pendingSessions } : undefined,
     })
   } catch {
     agents.push({
-      id: 'luna', name: 'Luna', role: 'Hub Curator',
+      id: 'luna', kind: 'monitor', name: 'Luna', role: 'Hub Curator',
       description: 'Kelola antrian sesi di Daily Hub untuk triage',
       status: 'issue', statusText: 'Error', detail: 'Tidak bisa query hub', lastActive: null,
     })
@@ -273,14 +283,14 @@ export async function GET(req: Request) {
     }
 
     agents.push({
-      id: 'kafi', name: 'Kafi', role: 'Field Agent',
+      id: 'kafi', kind: 'agent', name: 'Kafi', role: 'Field Agent',
       description: 'Capture aktivitas Claude Code luar ISL → kirim ke Arka via Hub',
       status, statusText, detail,
       lastActive: lastKafi?.createdAt?.toISOString() ?? null,
     })
   } catch {
     agents.push({
-      id: 'kafi', name: 'Kafi', role: 'Field Agent',
+      id: 'kafi', kind: 'agent', name: 'Kafi', role: 'Field Agent',
       description: 'Capture aktivitas Claude Code luar ISL → kirim ke Arka via Hub',
       status: 'idle', statusText: 'Standby', detail: 'Belum ada data capture', lastActive: null,
     })
