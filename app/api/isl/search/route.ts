@@ -20,6 +20,11 @@ export interface SearchResult {
 export async function GET(req: Request) {
   try {
     const ctx = await getRequestContext()
+    // Without this, an unauthenticated caller (middleware only checks that
+    // x-kafi-key is PRESENT, not valid, for this route) got uid=null below,
+    // which disabled the per-user filter entirely on all 4 queries below —
+    // searching EVERY user's sessions/KB/task-memory/daily-logs, not just theirs.
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { searchParams } = new URL(req.url)
     const q = searchParams.get('q')?.trim()
     if (!q || q.length < 2) {
@@ -31,7 +36,7 @@ export async function GET(req: Request) {
 
     // plainto_tsquery handles multi-word queries safely (no special char injection)
     const tsq = sql`plainto_tsquery('simple', ${q})`
-    const uid = ctx?.uid ?? null
+    const uid = ctx.uid
     const results: SearchResult[] = []
 
     // ── sessions ──────────────────────────────────────────────────────────────

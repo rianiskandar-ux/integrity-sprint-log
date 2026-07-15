@@ -50,11 +50,17 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
   const [incomingCount, setIncomingCount] = useState(0)
   const [queueCount, setQueueCount]       = useState(0)
   const [logExpanded, setLogExpanded]     = useState(() => LOG_VIEWS.has(view))
+  // /settings is the legacy OWNER-ONLY global-config page (AI engine, Telegram,
+  // Postgres-backed personal settings live in the Settings modal instead) —
+  // it was linked here unconditionally, so a teammate landed on a page where
+  // nothing loaded and nothing saved. Hide it for non-owners.
+  const [isOwner, setIsOwner] = useState(true)
 
   useEffect(() => {
     const c = loadAppConfig()
     setAppName(c.appName)
     setAppLogo(c.appLogo)
+    fetch('/api/auth/me').then(r => r.json()).then(d => setIsOwner(!d.multiUser || !!d.isOwner)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -297,14 +303,16 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
 
       {/* Bottom — Settings / Admin Console / Feedback */}
       <div className={`${open ? 'px-3 py-2' : 'px-2 py-2'} space-y-0.5`} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <a
-          href="/settings"
-          title="Settings"
-          className="flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
-        >
-          <Settings size={14} />
-          {open && <span className="text-[10px]">Settings</span>}
-        </a>
+        {isOwner && (
+          <a
+            href="/settings"
+            title="Settings"
+            className="flex items-center gap-2 text-blue-100/50 hover:text-white transition rounded px-1 py-1 hover:bg-white/10"
+          >
+            <Settings size={14} />
+            {open && <span className="text-[10px]">Settings</span>}
+          </a>
+        )}
         <button
           onClick={openAdminConsole}
           title="Admin Console (PIN-gated terminal + Quick Fix, opens in new tab)"

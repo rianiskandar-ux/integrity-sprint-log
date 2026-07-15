@@ -56,7 +56,13 @@ export async function POST(req: Request) {
     const existing = body.sessionId ? await getSessionBySessionId(body.sessionId) : null
 
     if (existing) {
-      if (ctx?.uid && existing.userId != null && existing.userId !== ctx.uid)
+      // Was `ctx?.uid && ...` — only checked ownership for cookie-authenticated
+      // callers, so a machine-auth caller (per-user captureKey, ctx is null by
+      // definition) skipped this check ENTIRELY and could overwrite ANY other
+      // user's existing session by a matching/guessed sessionId. Check against
+      // whichever identity actually authenticated this request.
+      const callerUid = ctx?.uid ?? captureUid
+      if (callerUid && existing.userId != null && existing.userId !== callerUid)
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       const updated: SessionLog = {
         ...existing,

@@ -85,12 +85,20 @@ export async function POST(req: Request) {
 // PATCH /api/daily-hub — triage: move session to queue/backlog/discard
 export async function PATCH(req: Request) {
   try {
+    // Was missing entirely (unlike POST/GET in this same file) — an
+    // unauthenticated caller (middleware only checks x-kafi-key PRESENCE for
+    // this route) got patchCtx=null, so getAllSessions(undefined) returned
+    // EVERY user's sessions and kbId updates had no ownership check at all,
+    // letting anyone triage/discard any user's session or KB entry by id.
+    const patchCtx = await getRequestContext()
+    if (process.env.ISL_MULTIUSER === '1' && !patchCtx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const body = await req.json()
     const { sessionId, kbId, action, sprintTarget } = body
     // action: 'queue' | 'backlog' | 'discard'
 
     if (sessionId) {
-      const patchCtx    = await getRequestContext()
       const allSessions = await getAllSessions(patchCtx?.uid)
       const session = allSessions.find(s => s.id === sessionId || s.sessionId === sessionId)
       if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -106,7 +114,13 @@ export async function PATCH(req: Request) {
     }
 
     if (kbId) {
-      const { updateKBEntry } = await import('@/lib/kb-store')
+      const { updateKBEntry, getAllKBEntries } = await import('@/lib/kb-store')
+      // updateKBEntry itself takes no uid — verify ownership via the already
+      // uid-scoped getAllKBEntries before allowing the mutation.
+      const own = await getAllKBEntries(patchCtx?.uid)
+      if (!own.some(e => e.id === kbId)) {
+        return NextResponse.json({ error: 'KB entry not found' }, { status: 404 })
+      }
       await updateKBEntry(kbId, {
         triageStatus: action === 'queue' ? 'queue'
           : action === 'backlog' ? 'backlog'

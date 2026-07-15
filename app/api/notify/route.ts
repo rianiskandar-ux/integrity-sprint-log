@@ -7,10 +7,21 @@ export async function POST(req: Request) {
   try {
     const { type, data } = await req.json()
 
-    const ctx     = await getRequestContext()
+    // Was `ctx?.uid ?? OWNER_UID` — an unauthenticated caller (middleware only
+    // checks x-kafi-key PRESENCE, not validity, for this route) could trigger
+    // the OWNER's own connected Gmail account to send arbitrary HTML content
+    // (built from unsanitized request data below) with no session at all.
+    const ctx = await getRequestContext()
+    if (process.env.ISL_MULTIUSER === '1' && !ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const uid     = ctx?.uid ?? OWNER_UID
     const profile = loadProfile(uid)
-    const to      = profile?.email ?? 'rian.iskandar108@gmail.com'
+    // Hardcoded personal email removed — if the resolved user has no Google
+    // profile connected, there's nowhere safe to send this; fail rather than
+    // fall back to a fixed personal address baked into source.
+    const to = profile?.email
+    if (!to) return NextResponse.json({ ok: false, error: 'No Google profile connected for this user' })
 
     if (type === 'validation_needed') {
       const { title, taskId, sessionId, aiStatus, actualMins } = data

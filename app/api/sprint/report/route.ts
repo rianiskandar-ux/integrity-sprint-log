@@ -1,11 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAllSessions } from '@/lib/session-store'
 import { loadCache } from '@/lib/op-cache'
-import { getRequestContext } from '@/lib/request-auth'
+import { getRequestContext, type RequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 import { loadUserConfig } from '@/lib/user-config'
 import { getLLMConfig } from '@/lib/llm'
+import { db, userSettings } from '@/lib/db'
+import { eq } from 'drizzle-orm'
+import { decrypt } from '@/lib/crypto'
 
 export const runtime = 'nodejs'
+
+/** Same shape/logic as app/api/chat/route.ts's getPersonalLLM() (duplicated
+ *  per-route in this codebase rather than shared — matching existing convention). */
+async function getPersonalLLM(ctx: RequestContext | null): Promise<{ provider: string; apiKey: string; model: string | null; baseUrl: string | null } | null> {
+  if (!ctx) return null
+  const row = (await db.select().from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]
+  if (!row?.personalLlmProvider || row.personalLlmProvider === 'claude-cli') return null
+  if (row.personalLlmProvider === 'ollama') {
+    if (!row.personalLlmBaseUrl) return null
+    return { provider: 'ollama', apiKey: '', model: row.personalLlmModel, baseUrl: row.personalLlmBaseUrl }
+  }
+  const apiKey = row.personalLlmApiKey ? decrypt(row.personalLlmApiKey) : ''
+  if (!apiKey) return null
+  if (row.personalLlmProvider === 'custom') {
+    if (!row.personalLlmBaseUrl) return null
+    return { provider: 'custom', apiKey, model: row.personalLlmModel, baseUrl: row.personalLlmBaseUrl }
+  }
+  return { provider: row.personalLlmProvider, apiKey, model: row.personalLlmModel, baseUrl: null }
+}
 
 function fmtMins(m: number) {
   if (m < 60) return `${m}m`
@@ -22,6 +45,15 @@ export async function GET() {
     const sessions = await getAllSessions(ctx.uid)
     const cache    = loadCache(ctx?.uid)
     const userCfg  = loadUserConfig()
+    // hasAI/user previously always reflected the OWNER's global config/name for
+    // every caller — a non-owner teammate with their own personal provider (or
+    // none at all) saw the owner's state instead of their own.
+    const owner = isOwnerUid(ctx.uid)
+    const personalForGet = owner ? null : await getPersonalLLM(ctx)
+    const hasAI = owner ? !!getLLMConfig() : !!personalForGet
+    const callerName = owner
+      ? (userCfg.displayName ?? 'Team Member')
+      : ((await db.select({ n: userSettings.opUserName }).from(userSettings).where(eq(userSettings.userId, ctx.uid)).limit(1))[0]?.n ?? 'Team Member')
 
     const currentSprint = (cache.sprints ?? []).find((s: { isCurrent: boolean }) => s.isCurrent) ?? null
     const myOpen   = (cache.myOpenTasks   ?? []) as unknown as { id: number; subject: string; sprintId?: number | null; status?: string; project?: { name: string } | string }[]
@@ -72,7 +104,7 @@ export async function GET() {
 
     return NextResponse.json({
       sprint:   currentSprint,
-      user:     userCfg.displayName ?? 'Team Member',
+      user:     callerName,
       stats: {
         done:       sprintDone.length,
         open:       sprintOpen.length,
@@ -91,7 +123,7 @@ export async function GET() {
                       .map(([id, v]) => ({ id: Number(id), subject: v.subject, mins: v.mins, fmt: fmtMins(v.mins) })),
       byDate:       Object.entries(byDate).sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, ...v, fmt: fmtMins(v.mins) })),
       incoming:     incomingTasks.length,
-      hasAI:        !!getLLMConfig(),
+      hasAI,
     })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
@@ -100,11 +132,27 @@ export async function GET() {
 
 // POST /api/sprint/report — generate AI narrative from report data
 export async function POST(req: NextRequest) {
-  // Login required — narrative generation runs on the owner's LLM config.
-  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const cfg = getLLMConfig()
-  if (!cfg) {
-    return new Response(JSON.stringify({ error: 'AI not configured' }), { status: 400 })
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Was unconditionally getLLMConfig() (the OWNER's global engine) for ANY
+  // logged-in caller — a non-owner's narrative request silently consumed the
+  // owner's API key/credits, and conversely a non-owner who HAD configured
+  // their own personal provider got "AI not configured" whenever the owner's
+  // global config was absent. Mirrors app/api/chat/route.ts's fix.
+  const owner    = isOwnerUid(ctx.uid)
+  const personal = owner ? null : await getPersonalLLM(ctx)
+  let provider: string, apiKey: string, model: string, baseUrlOverride: string | undefined
+  if (owner) {
+    const ownerCfg = getLLMConfig()
+    if (!ownerCfg) return new Response(JSON.stringify({ error: 'AI not configured' }), { status: 400 })
+    provider = ownerCfg.provider; apiKey = ownerCfg.apiKey
+    model    = ownerCfg.model || DEFAULT_MODELS[ownerCfg.provider]
+  } else if (personal) {
+    provider = personal.provider; apiKey = personal.apiKey
+    model    = personal.model || DEFAULT_MODELS[personal.provider] || ''
+    baseUrlOverride = personal.baseUrl ?? undefined
+  } else {
+    return new Response(JSON.stringify({ error: 'AI not configured — set provider + API key sendiri di Settings.' }), { status: 400 })
   }
 
   const { reportData, format } = await req.json() as {
@@ -153,11 +201,10 @@ ${reportData.incoming > 0 ? `Incoming tasks from OP: ${reportData.incoming}` : '
     weekly: `Generate a weekly work summary based on this sprint data:\n\n${context}\n\nInclude: Weekly Highlights, Tasks Completed, Ongoing Work, Time Investment summary. Professional tone suitable for manager reporting.`,
   }
 
-  const model    = cfg.model || DEFAULT_MODELS[cfg.provider]
   const messages = [{ role: 'user', content: prompts[format] ?? prompts['sprint-review'] }]
 
   try {
-    const stream = await callStream(cfg.provider, cfg.apiKey, model, systemPrompt, messages)
+    const stream = await callStream(provider, apiKey, model, systemPrompt, messages, baseUrlOverride)
     return new Response(stream, {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Transfer-Encoding': 'chunked', 'Cache-Control': 'no-cache' },
     })
@@ -175,7 +222,8 @@ const DEFAULT_MODELS: Record<string, string> = {
   mistral: 'mistral-small-latest', together: 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', ollama: 'llama3.2',
 }
 
-function resolveBase(provider: string): string {
+function resolveBase(provider: string, override?: string): string {
+  if (override) return override
   const map: Record<string, string> = {
     openai: 'https://api.openai.com/v1', groq: 'https://api.groq.com/openai/v1',
     openrouter: 'https://openrouter.ai/api/v1', mistral: 'https://api.mistral.ai/v1',
@@ -184,7 +232,7 @@ function resolveBase(provider: string): string {
   return map[provider] ?? 'https://api.openai.com/v1'
 }
 
-async function callStream(provider: string, apiKey: string, model: string, system: string, messages: { role: string; content: string }[]): Promise<ReadableStream<Uint8Array>> {
+async function callStream(provider: string, apiKey: string, model: string, system: string, messages: { role: string; content: string }[], baseUrlOverride?: string): Promise<ReadableStream<Uint8Array>> {
   const enc = new TextEncoder()
   if (provider === 'anthropic') {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -206,7 +254,7 @@ async function callStream(provider: string, apiKey: string, model: string, syste
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
     return new ReadableStream({ start(c) { c.enqueue(enc.encode(text)); c.close() } })
   }
-  const base = resolveBase(provider)
+  const base = resolveBase(provider, baseUrlOverride)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
   const res = await fetch(`${base}/chat/completions`, {

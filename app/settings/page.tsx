@@ -25,21 +25,40 @@ export default function SettingsPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [error,   setError]   = useState('')
+  // This page is the OWNER-ONLY global-config surface (/api/user-config 403s
+  // for anyone else). It was linked to every user regardless — Sidebar now
+  // hides the link, but a non-owner hitting the URL directly previously saw a
+  // silently-blank form (no r.ok check) that also silently failed on save.
+  const [forbidden, setForbidden] = useState(false)
 
   useEffect(() => {
-    fetch('/api/user-config').then(r => r.json()).then(d => {
+    fetch('/api/user-config').then(async r => {
+      if (r.status === 403) { setForbidden(true); return }
+      const d = await r.json()
       setDisplayName(d.displayName ?? '')
       setOpBaseUrl(d.opBaseUrl ?? '')
       setLlmProvider((d.llmProvider as LLMProvider) || 'anthropic')
       setLlmModel(d.llmModel ?? '')
       setOpTokenSet(d.opTokenSet || d.opTokenSource === 'env')
       setLlmKeySet(d.llmApiKeySet || d.anthropicKeySource === 'env')
-    })
+    }).catch(() => setForbidden(true))
     fetch('/api/op/mode').then(r => r.json()).then(d => {
       setOpMode(d.mode === 'test' ? 'test' : 'live')
       setAutoSync(!!d.autoSync)
     }).catch(() => {})
   }, [])
+
+  if (forbidden) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#f0f4f8' }}>
+        <div className="max-w-sm bg-white rounded-xl shadow-sm p-6 text-center space-y-2">
+          <p className="text-sm font-semibold text-gray-700">Halaman ini khusus owner instance.</p>
+          <p className="text-xs text-gray-500">Pengaturan pribadi Anda (AI provider, dll) ada di tombol <strong>Settings</strong> pada aplikasi utama.</p>
+          <a href="/" className="inline-block mt-2 text-xs text-blue-600 underline">← Kembali ke ISL</a>
+        </div>
+      </div>
+    )
+  }
 
   // Auto-fetch models when provider has a saved key
   useEffect(() => {

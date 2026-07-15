@@ -120,13 +120,10 @@ export default function AppShell({
         if (cur) setOpSprintName(cur.name)
       })
       .catch(() => {})
-
-    // Auto-sync cache on startup if enabled
-    fetch('/api/op/mode').then(r => r.json()).then(d => {
-      if (d.autoSync) {
-        fetch('/api/op/cache', { method: 'POST' }).catch(() => {})
-      }
-    }).catch(() => {})
+    // Redundant global-owner-flag-driven auto-sync branch removed here — the
+    // staleness-based sync below (>5 min, per-user) already covers startup
+    // refresh for everyone, without depending on an owner-only, owner-global
+    // "Auto Sync Cache" setting that a teammate can neither see nor change.
   }, [])
 
   useEffect(() => {

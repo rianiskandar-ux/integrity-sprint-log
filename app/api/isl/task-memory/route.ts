@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { taskMemory } from '@/lib/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { getRequestContext } from '@/lib/request-auth'
-import { OWNER_UID } from '@/lib/auth'
+import { resolveCaptureUid } from '@/lib/capture-auth'
 import { randomUUID } from 'crypto'
 
 export const runtime = 'nodejs'
@@ -23,12 +23,20 @@ export async function POST(req: Request) {
     if (!body.opTaskId || !body.title) {
       return NextResponse.json({ error: 'opTaskId and title required' }, { status: 400 })
     }
+    // Was `ctx?.uid ?? OWNER_UID` — unlike its sibling daily-log/append, this
+    // never checked the per-user captureKey at all, so a teammate's own hook
+    // capture always got misattributed to the owner, AND any caller with a
+    // missing/invalid x-kafi-key (middleware only checks presence) could
+    // write task-memory rows as the owner. resolveCaptureUid handles both the
+    // legitimate global-key-=-owner case and per-user keys; fail closed
+    // otherwise, matching daily-log/append's fix.
+    const captureUid = await resolveCaptureUid(req.headers.get('x-kafi-key'))
+    const uid = ctx?.uid ?? captureUid
+    if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const id = `${body.sessionId?.slice(0, 8) ?? randomUUID().slice(0, 8)}-${body.opTaskId}`
     await db.insert(taskMemory).values({
       id,
-      // Tanpa session (hook/terminal lokal) → attribute ke OWNER, sama seperti
-      // daily-log/append — kalau NULL, Kafi daily-summary tidak melihatnya.
-      userId:    ctx?.uid ?? OWNER_UID,
+      userId:    uid,
       opTaskId:  body.opTaskId,
       sessionId: body.sessionId ?? null,
       date:      body.date ?? new Date().toISOString().slice(0, 10),

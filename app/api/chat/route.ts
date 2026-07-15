@@ -50,7 +50,16 @@ export async function POST(req: NextRequest) {
   }
 
   // Build ISL context first — needed to resolve a non-owner's personal provider key.
-  const ctx      = await getRequestContext()
+  const ctx = await getRequestContext()
+  // Was missing entirely: an unauthenticated caller (middleware only checks
+  // x-kafi-key PRESENCE for this route) got ctx=null, which disabled every
+  // uid-scoped filter below (getAllSessions, searchRelevantHistory,
+  // hybridSearch all fall back to "no filter" on a null/undefined uid) —
+  // leaking every user's pending sessions and search history into the
+  // system prompt for anyone who could reach this route unauthenticated.
+  if (process.env.ISL_MULTIUSER === '1' && !ctx) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+  }
   const nonOwner = process.env.ISL_MULTIUSER === '1' && !isOwnerUid(ctx?.uid)
   // Resolve for anyone (owner included) — the owner's own configured provider is now
   // an ADDITIONAL option alongside claude-cli/ollama, not gated to non-owners only.
@@ -103,9 +112,13 @@ export async function POST(req: NextRequest) {
   // EXCEPT isPersonalCall: that's the teammate's own key, always allowed.
   if (nonOwner && !isPersonalCall) {
     const sharedOk = process.env.ISL_SHARED_PROVIDERS === '1'
-    const blocked  = ['claude-cli', 'ollama'].includes(provider)
-      || (!sharedOk && ['tokenrouter', 'openmodel'].includes(provider))
-    if (blocked) {
+    // Allowlist, not blocklist: the old blocklist (['claude-cli','ollama'] +
+    // conditionally tokenrouter/openmodel) let a non-owner send
+    // body.provider='anthropic' (or openai/google/groq/...) straight through
+    // to the L78 `getLLMConfig()?.apiKey` branch — the OWNER's cloud API key
+    // — since those provider names were never on the blocklist at all.
+    const allowed = sharedOk && ['tokenrouter', 'openmodel'].includes(provider)
+    if (!allowed) {
       return new Response(JSON.stringify({ error: `Provider "${provider}" memakai kredensial owner instance. Set provider + API key sendiri di Settings.` }), { status: 403 })
     }
   }

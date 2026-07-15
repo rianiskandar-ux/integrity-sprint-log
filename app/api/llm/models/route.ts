@@ -2,14 +2,15 @@ import { NextResponse } from 'next/server'
 import { getLLMConfig } from '@/lib/llm'
 import type { LLMProvider } from '@/lib/llm-providers'
 import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 
 // GET /api/llm/models?provider=groq&key=gsk_...
 // Uses saved config if no query params provided
 export async function GET(req: Request) {
-  // Login required — without params this reads the owner's saved LLM config.
-  if (!(await getRequestContext())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await getRequestContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { searchParams } = new URL(req.url)
   const qProvider = searchParams.get('provider') as LLMProvider | null
   const qKey      = searchParams.get('key') ?? ''
@@ -21,11 +22,17 @@ export async function GET(req: Request) {
   if (qProvider && qKey) {
     provider = qProvider
     apiKey   = qKey
-  } else {
+  } else if (isOwnerUid(ctx.uid)) {
+    // The no-params fallback reads the OWNER's global saved config — this
+    // route's only caller (app/settings/page.tsx) is itself owner-gated now,
+    // but a non-owner could still hit this endpoint directly with a valid
+    // session cookie, so gate it here too rather than relying on the UI.
     const cfg = getLLMConfig()
     if (!cfg) return NextResponse.json({ models: [], error: 'No LLM configured' })
     provider = cfg.provider
     apiKey   = cfg.apiKey
+  } else {
+    return NextResponse.json({ models: [], error: 'Sertakan provider + key sendiri (fitur ini owner-only tanpa parameter)' }, { status: 403 })
   }
 
   try {

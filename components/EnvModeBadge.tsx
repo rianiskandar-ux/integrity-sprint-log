@@ -15,11 +15,15 @@ export default function EnvModeBadge() {
   const { t } = useI18n()
   const [state, setState] = useState<ModeState>({ mode: 'test' })
   const [toggling, setToggling] = useState(false)
+  // POST/PATCH /api/op/mode is owner-only — a non-owner previously saw this
+  // control, went through the confirm() dialog, and had it silently do
+  // nothing (403 swallowed). Hide it instead now that GET reports ownership.
+  const [isOwner, setIsOwner] = useState(true)
 
   useEffect(() => {
     fetch('/api/op/mode')
       .then(r => r.json())
-      .then(d => setState({ mode: d.mode, project: d.project }))
+      .then(d => { setState({ mode: d.mode, project: d.project }); setIsOwner(!!d.owner) })
       .catch(() => {})
   }, [])
 
@@ -59,16 +63,18 @@ export default function EnvModeBadge() {
 
   const isTest = state.mode === 'test'
   const label  = isTest ? 'TEST' : 'LIVE'
-  const tooltip = isTest
-    ? t('envmode.test_tooltip')
-    : t('envmode.live_tooltip', { project: state.project ?? 'project' })
+  const tooltip = !isOwner
+    ? 'Dikontrol owner instance'
+    : isTest
+      ? t('envmode.test_tooltip')
+      : t('envmode.live_tooltip', { project: state.project ?? 'project' })
 
   return (
     <button
-      onClick={toggle}
-      disabled={toggling}
+      onClick={isOwner ? toggle : undefined}
+      disabled={toggling || !isOwner}
       title={tooltip}
-      className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition disabled:opacity-50 ${
+      className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition disabled:opacity-50 ${!isOwner ? 'cursor-default' : ''} ${
         isTest
           ? 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900'
           : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900'

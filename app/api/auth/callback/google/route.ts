@@ -13,9 +13,16 @@ export async function GET(req: Request) {
   if (!code) return NextResponse.json({ error: 'No code' }, { status: 400 })
 
   // Which user is connecting — from the OAuth state (set by /api/auth/google), or
-  // the session cookie, else the owner. Drives the per-user token/profile file.
+  // the session cookie, else the owner (single-user mode only — see below).
   const stateUid = Number(searchParams.get('state'))
   const ctx = await getRequestContext()
+  // Multi-user mode: never silently attribute to OWNER_UID here — this route
+  // is public (exempt from middleware) precisely because it's the OAuth
+  // redirect target, so a caller with no state and no session must not be
+  // able to save a Google connection into the owner's slot.
+  if (process.env.ISL_MULTIUSER === '1' && !(Number.isFinite(stateUid) && stateUid > 0) && !ctx) {
+    return NextResponse.redirect(new URL('/login', PUBLIC_URL))
+  }
   const uid = (Number.isFinite(stateUid) && stateUid > 0) ? stateUid : (ctx?.uid ?? OWNER_UID)
 
   try {

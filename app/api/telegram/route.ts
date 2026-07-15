@@ -1,8 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendTelegram, getTelegramConfig, notifIncoming, notifPushQueue, notifPushed, notifSprintDeadline, notifSessionLogged } from '@/lib/telegram'
 import { loadUserConfig, saveUserConfig } from '@/lib/user-config'
+import { getRequestContext } from '@/lib/request-auth'
+import { isOwnerUid } from '@/lib/auth'
 
 export const runtime = 'nodejs'
+
+// This config is the single OWNER-global Telegram config (loadUserConfig/
+// saveUserConfig — same file as /api/user-config). No owner gate existed on
+// any handler here: any logged-in teammate could silently overwrite or
+// disable the owner's bot token/chat ID (PATCH), read the owner's chatId +
+// masked token (GET), or have their "test" ping delivered via/to the owner's
+// Telegram instead of their own (the old `cfg.x || data?.x` order below).
+async function requireOwner(): Promise<boolean> {
+  const ctx = await getRequestContext()
+  return isOwnerUid(ctx?.uid)
+}
 
 // POST /api/telegram — send a notification
 export async function POST(req: NextRequest) {
@@ -12,11 +25,12 @@ export async function POST(req: NextRequest) {
     test?: boolean
   }
 
-  // Test ping — use saved config, fallback to data from request
+  // Test ping — caller-supplied credentials win (a teammate testing their OWN
+  // token/chatId should never silently ping the owner's Telegram instead).
   if (test) {
     const cfg = loadUserConfig()
-    const botToken = cfg.telegramBotToken || (data?.botToken as string) || ''
-    const chatId   = cfg.telegramChatId   || (data?.chatId   as string) || ''
+    const botToken = (data?.botToken as string) || cfg.telegramBotToken || ''
+    const chatId   = (data?.chatId   as string) || cfg.telegramChatId   || ''
     if (!botToken || !chatId) return NextResponse.json({ ok: false, reason: 'missing token or chatId' })
     const ok = await sendTelegram(
       `✅ <b>ISL Notifier connected!</b>\n\nHai <b>${cfg.displayName || 'Rian'}</b> 👋\nNotifikasi ISL sudah aktif di device ini.\n\n<i>Integrity Sprint Log</i>`,
@@ -55,6 +69,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/telegram — save config (only update botToken if provided)
 export async function PATCH(req: NextRequest) {
+  if (!(await requireOwner())) return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   const { botToken, chatId, enabled } = await req.json()
   const update: Record<string, unknown> = {
     telegramChatId:  chatId  ?? '',
@@ -67,6 +82,7 @@ export async function PATCH(req: NextRequest) {
 
 // GET /api/telegram — get current config (masked)
 export async function GET() {
+  if (!(await requireOwner())) return NextResponse.json({ error: 'Owner only' }, { status: 403 })
   const cfg = loadUserConfig()
   return NextResponse.json({
     enabled:      cfg.telegramEnabled,

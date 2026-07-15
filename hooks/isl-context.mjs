@@ -333,7 +333,7 @@ function appendTaskMemory(taskId, title, bullets, date, actualMins, sessionId) {
   // POST to ISL task_memory API (Postgres) — primary storage
   fetch(`${ISL_URL}/api/isl/task-memory`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
     body: JSON.stringify({ opTaskId: taskId, title, bullets, date, actualMins, sessionId }),
   }).catch(() => {})
 
@@ -954,7 +954,7 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
   if (needsValidation && taskId) {
     fetch(`${ISL_URL}/api/notify`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
       body: JSON.stringify({
         type: 'validation_needed',
         data: { title, taskId, sessionId, aiStatus, actualMins },

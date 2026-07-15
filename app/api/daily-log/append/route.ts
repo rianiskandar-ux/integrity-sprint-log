@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { getRequestContext } from '@/lib/request-auth'
-import { isOwnerUid, OWNER_UID } from '@/lib/auth'
+import { isOwnerUid } from '@/lib/auth'
 import { resolveCaptureUid } from '@/lib/capture-auth'
 import { db } from '@/lib/db'
 import { dailyLogs } from '@/lib/db/schema'
@@ -67,11 +67,15 @@ export async function POST(req: Request) {
     const ctx = await getRequestContext()
     const today = date ?? new Date().toISOString().slice(0, 10)
 
-    // Tanpa session (hook Claude Code / terminal lokal) → attribute via captureKey
-    // (per-user, teammate's own hook) → fallback OWNER. Kalau dibiarkan NULL,
-    // Kafi daily-summary (filter per-userId) tidak pernah melihat log dari hook.
+    // Tanpa session (hook Claude Code / terminal lokal) → attribute via captureKey.
+    // resolveCaptureUid ALREADY returns OWNER_UID when the key is the legitimate
+    // global key — the old trailing `?? OWNER_UID` was a separate, dangerous
+    // fallback that fired for a MISSING or INVALID key too (middleware only
+    // checks x-kafi-key PRESENCE, not validity), letting anyone write daily-log
+    // entries as the owner. Fail closed instead.
     const captureUid = await resolveCaptureUid(req.headers.get('x-kafi-key'))
-    const uid = ctx?.uid ?? captureUid ?? OWNER_UID
+    const uid = ctx?.uid ?? captureUid
+    if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     // Always write to Postgres (all users)
     const cleanBulletsForDB = (bullets ?? []).filter(b => b.trim())

@@ -8,7 +8,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { getAllSessions, getSessionsByStatus } from '../lib/session-store'
+import { getAllSessions } from '../lib/session-store'
 import { getAllKBEntries } from '../lib/kb-store'
 import { loadCache } from '../lib/op-cache'
 import { loadUserConfig } from '../lib/user-config'
@@ -18,16 +18,21 @@ const ROOT      = path.resolve(__dirname, '..')
 const OUT_FILE  = path.join(ROOT, 'CLAUDE.md')
 
 async function main() {
-  const [allSessions, pendingSessions, hubSessions, kbEntries, cache, userCfg] = await Promise.all([
-    getAllSessions(),
-    getSessionsByStatus('pending'),
-    getSessionsByStatus('hub'),
-    getAllKBEntries(),
-    // Owner's per-user cache. After the global-cache removal, loadCache() with no
-    // uid returns EMPTY — load the owner's file explicitly (ISL_OWNER_UID, default 1).
-    Promise.resolve(loadCache(Number(process.env.ISL_OWNER_UID ?? 1))),
+  const OWNER_UID = Number(process.env.ISL_OWNER_UID ?? 1)
+  // getAllSessions/getAllKBEntries were called with NO uid — unlike loadCache
+  // right below (already scoped when the global-cache removal happened), this
+  // pulled EVERY user's sessions/KB entries into CLAUDE.md, a file read by
+  // Claude Code on the owner's own machine every session. getSessionsByStatus
+  // had no uid param at all (its only caller), so pending/hub are now derived
+  // from the already-scoped allSessions instead of a separate unscoped call.
+  const [allSessions, kbEntries, cache, userCfg] = await Promise.all([
+    getAllSessions(OWNER_UID),
+    getAllKBEntries(OWNER_UID),
+    Promise.resolve(loadCache(OWNER_UID)),
     Promise.resolve(loadUserConfig()),
   ])
+  const pendingSessions = allSessions.filter(s => s.pushStatus === 'pending')
+  const hubSessions     = allSessions.filter(s => s.pushStatus === 'hub')
 
   const now   = new Date()
   const today = now.toISOString().slice(0, 10)

@@ -32,7 +32,9 @@ function readMode() {
 }
 
 export async function GET() {
-  return NextResponse.json(readMode())
+  // owner flag so clients (EnvModeBadge) can hide/disable the toggle for
+  // non-owners instead of showing a control whose PATCH/POST 403s silently.
+  return NextResponse.json({ ...readMode(), owner: await requireOwner() })
 }
 
 // PATCH — update only specific fields (e.g. autoSync, mode) without full reset
