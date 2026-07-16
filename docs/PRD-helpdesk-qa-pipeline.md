@@ -381,12 +381,24 @@ Baseline honesty: first two weeks of Phase 0 double as **baseline measurement** 
 
 ---
 
-## 15. Open Questions (need answers before Phase 0)
+## 15. Open Questions
 
-1. **OP scope:** which project(s) do Yudhi's reports land in? Existing `integritys-websites`, or a dedicated helpdesk project? Which WP types count as intake (Bug only? Support? Feature)?
-2. **Vera targets (Phase 2):** which app first — eduverif / empverif / KYV / internal? Does a staging environment with a test account exist for it? (No staging = Vera is read-only-prod or blocked.)
-3. **Dedicated OP agent account:** can the OP admin create an `ISL Helpdesk` user, or do we start under Rian's token + signature?
-4. **Aufa's OP permissions:** can she set severity/assignee on these tickets today?
+**Answered 2026-07-16 (Rian):**
+
+1. **OP scope — RESOLVED.** Not project-scoped, not type-scoped. "Inquiries" is OP saved query `id=112` (`https://tokek.integrity-asia.com/work_packages?query_id=112`), public/global, `includeSubprojects: true`, no project filter at all. Its actual filter is:
+   - `Status = open`
+   - `Author IN [Putri Pertiwi (25), Bayu Utomo (19), Tiara Azzani (23), Deria Putri (22), Yudhi Hamzah (20), Wahyuningsih Azhahra (27)]`
+
+   So Tika's intake scope = **any open work package, any project, any type, authored by one of these 6 people** — not filtered by project or WP type as originally assumed in §6.1. Yudhi is one of six, not the only reporter. Tika should either poll this exact query (`GET /api/v3/queries/112` for the filter, then run it) or replicate the equivalent filter directly (`authorId IN [...], status=open`) — replicating is safer long-term (doesn't silently break if someone edits query 112 in the OP UI).
+
+2. **Vera targets (Phase 2) — STILL OPEN.** Which app first, and does it have a staging environment + test account? Blocks Phase 2 scoping entirely (no staging = Vera can't safely run). Everything in Phase 0/1 (Tika) is unblocked and can proceed without this answer.
+
+3. **Dedicated OP agent account — SUPERSEDED**, see §16 revision below: no bot account. Aufa acts under her own existing OP account (same as Zaky/Athallah/Ijal use their own tokens in ISL) plus her own ISL login.
+
+4. **Aufa's OP permissions — answered via workflow design**, see §16 revision: reject happens directly in OP under her own account (so whatever OP permissions she already has apply); approve happens in ISL, not OP, so no new OP permission is needed for that half.
+
+**Still open:**
+
 5. **Thresholds sign-off:** 5d reminder / 14d status update / 30d escalation — Rian to confirm or adjust.
 6. **Yudhi briefing:** who tells him about the new automated replies, and when? (Recommended: Rian, casually, before Phase 1 — "the bot answers first so you get feedback faster.")
 
@@ -395,9 +407,20 @@ Baseline honesty: first two weeks of Phase 0 double as **baseline measurement** 
 ## 16. Explicit Design Decisions (so we don't re-litigate)
 
 1. **OP is the single source of truth.** ISL stores derived pipeline state only. If ISL's DB burned down, no ticket data is lost.
-2. **Aufa never needs ISL access.** Her whole workflow is OP comments + statuses. Keeps ISL single-user, no auth work, no exposure.
+2. ~~**Aufa never needs ISL access.**~~ **SUPERSEDED 2026-07-16** — see §16.1 below. This was written when ISL was still effectively single-user; multi-user login (own OP token per person) is now live and already used by 3 teammates, so the original reason (avoid auth work) no longer holds.
 3. **Reporter is never wrong by design.** All friction lands on agents, not on Yudhi.
 4. **Agents suggest, humans decide.** No auto-close, no auto-merge, no auto-reject. The pipeline compresses human decision time; it does not remove the human.
 5. **Templates over generated prose** for reporter-facing messages. Predictable tone beats clever wording.
 6. **Local-first LLM** per the established Phase-B division; Claude only where coding/English-prose quality demands it.
 7. **Phase gate after shadow mode** — real intake data decides whether Vera gets built.
+
+### 16.1 Revised Aufa/Vera flow (2026-07-16, replaces §7's OP-only assumption)
+
+Confirmed with Rian: Aufa gets her own ISL login (her own OP token, same onboarding as any teammate — no dedicated bot account needed, superseding open question #3). Her workflow moves partly into ISL:
+
+- **She logs into ISL herself** and picks which ticket to review from her own queue (not Rian's — a QA-scoped view, likely a filtered slice of the Helpdesk view from §6.5, showing only READY_FOR_QA / QA_REVIEW tickets).
+- **ISL shows her Vera's Playwright evidence** for that ticket (screenshot, log excerpt, the REPRODUCED/NOT REPRODUCED/INCONCLUSIVE verdict) plus a **suggested** reject/approve — Vera (the agent) suggests, Aufa (the human) decides. The suggestion is advisory text, not a pre-checked action — matches design decision #4, same human-in-the-loop pattern as Dira/Luna elsewhere in ISL.
+- **If she REJECTS:** handled directly in OP under her own account — she rejects the ticket in OP itself (not an ISL-side state). Whatever OP permissions her account already has apply; no new permission grant identified as necessary for this half.
+- **If she APPROVES:** the ticket flows into **ISL's existing Push Queue** (same triage → Push Queue → OP pipeline Daily Hub sessions already use) with a label such as `BUG PASS VALID`, so it lands in Rian's existing queue view instead of a brand-new "CONFIRMED" surface — reuses existing ISL machinery rather than building a parallel one.
+
+This means F5's Queue tab (§6.5) needs an Aufa-scoped view in addition to Rian's, and the "CONFIRMED" ticket delivery mechanism in §5/§10 changes from *OP comment + Telegram* to *Push Queue entry with a BUG PASS VALID label* — update those sections when Phase 3 implementation actually starts; not rewritten here to avoid re-litigating flow details before Phase 2 (Vera/staging, still blocked on open question #2) is even settled.
