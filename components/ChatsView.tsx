@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { MessageCircle, Plus, Sparkles, Lightbulb, Bot, AlertTriangle, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { MessageCircle, Plus, Sparkles, Lightbulb, Bot, AlertTriangle, Search, ChevronDown, ChevronRight, Layers } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -96,6 +96,8 @@ export default function ChatsView() {
   const [toast, setToast]       = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [candidates, setCandidates] = useState<{ text: string; kind: 'task' | 'note'; sel: boolean }[] | null>(null)
+  const [structuring, setStructuring] = useState(false)
+  const [lunaTopics, setLunaTopics] = useState<{ title: string; bullets: string[]; estimatedMins: number; reasoning: string | null; sel: boolean }[] | null>(null)
   // OP status per linked task id (batch-fetched) + current sprint name for the badge
   const [opStatuses, setOpStatuses] = useState<Record<number, OpTaskStatus>>({})
   const [currentSprintName, setCurrentSprintName] = useState<string | null>(null)
@@ -399,6 +401,58 @@ export default function ChatsView() {
     } else flash('Gagal kirim ke Daily Hub')
   }
 
+  // Luna: split the whole conversation into topics (conservative — merges when
+  // unsure) and get a Dira time estimate per topic, for review before sending.
+  async function structureIntoTopics() {
+    if (!messages.length || structuring) return flash('Chat masih kosong')
+    setStructuring(true)
+    try {
+      const transcript = messages.map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join('\n').slice(0, 8000)
+      const res = await fetch('/api/luna/structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript }),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok || !d?.topics?.length) { flash(d?.error ?? 'Gagal susun topik'); return }
+      setLunaTopics(d.topics.map((t: { title: string; bullets: string[]; estimatedMins: number; reasoning: string | null }) => ({ ...t, sel: true })))
+    } catch { flash('Gagal susun topik') }
+    finally { setStructuring(false) }
+  }
+
+  // One Hub session PER topic — each already-cohesive group flows through the
+  // existing triage → Push Queue → OP pipeline on its own, instead of one
+  // combined session where OP's keyword clustering would re-mix topics.
+  async function sendTopics() {
+    const sel = (lunaTopics ?? []).filter(t => t.sel && t.bullets.length > 0)
+    if (!sel.length) return flash('Pilih minimal 1 topik')
+    const baseTitle = activeTitle && activeTitle !== 'New conversation' ? activeTitle : 'Idea from chat'
+    let okCount = 0
+    for (const t of sel) {
+      const res = await fetch('/api/isl/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: `chat-${activeId}-${t.title.slice(0, 20)}-${Date.now().toString(36)}`,
+          title: `${baseTitle} — ${t.title}`,
+          bullets: t.bullets,
+          estimatedMins: t.estimatedMins,
+          pushStatus: 'hub',
+          autoPushed: false,
+          taskStatus: 'in_progress',
+          source: 'chat',
+        }),
+      }).then(r => r.json()).catch(() => null)
+      if (res?.ok) okCount++
+    }
+    if (okCount) {
+      flash(`${okCount} topik masuk Daily Hub — pilah lagi di sana`)
+      window.dispatchEvent(new CustomEvent('isl:session-updated'))
+      setLunaTopics(null)
+      loadList()
+    } else flash('Gagal kirim topik ke Daily Hub')
+  }
+
   // ── Archive & OP status derivations ──────────────────────────────────────────
   const statusFor = (c: ChatSummary): OpTaskStatus | undefined =>
     c.opTaskId ? opStatuses[c.opTaskId] : undefined
@@ -538,6 +592,11 @@ export default function ChatsView() {
                     className="px-3 py-1.5 rounded-md text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition">
                     <span className="flex items-center gap-1">{extracting ? 'Mengekstrak…' : <><Sparkles size={10} /> Ekstrak poin → task</>}</span>
                   </button>
+                  <button onClick={structureIntoTopics} disabled={structuring || !messages.length}
+                    title="Luna: kelompokkan seluruh sesi jadi topik (User Story), tiap topik dapat estimasi dari Dira → review → kirim ke Daily Hub 1 sesi per topik."
+                    className="px-3 py-1.5 rounded-md text-[10px] font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition">
+                    <span className="flex items-center gap-1">{structuring ? 'Menyusun…' : <><Layers size={10} /> Susun topik (Luna)</>}</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -662,6 +721,55 @@ export default function ChatsView() {
                   className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition">Batal</button>
                 <button onClick={sendSelected}
                   className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition">→ Kirim ke Daily Hub</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Luna: topic review panel */}
+      {lunaTopics && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setLunaTopics(null)}>
+          <div className="w-full max-w-lg max-h-[85%] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Review topik dari Luna</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Tiap topik jadi 1 sesi terpisah di Daily Hub. Estimasi dari Dira — edit kalau nggak pas, hapus topik yang nggak relevan.</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {lunaTopics.map((t, i) => (
+                <div key={i} className={`rounded-xl border transition ${
+                  t.sel ? 'border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20' : 'border-gray-100 dark:border-gray-800 opacity-50'
+                }`}>
+                  <label className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer">
+                    <input type="checkbox" checked={t.sel}
+                      onChange={() => setLunaTopics(prev => prev!.map((x, j) => j === i ? { ...x, sel: !x.sel } : x))}
+                      className="mt-0.5 accent-violet-600" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{t.title}</p>
+                      <ul className="mt-1 space-y-0.5">
+                        {t.bullets.map((b, bi) => (
+                          <li key={bi} className="text-[11px] text-gray-600 dark:text-gray-300 leading-snug">• {b}</li>
+                        ))}
+                      </ul>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <input type="number" min={5} step={5} value={t.estimatedMins}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setLunaTopics(prev => prev!.map((x, j) => j === i ? { ...x, estimatedMins: Number(e.target.value) || 0 } : x))}
+                          className="w-16 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[10px] text-gray-700 dark:text-gray-200" />
+                        <span className="text-[9px] text-gray-400">menit{t.reasoning ? ` · ${t.reasoning}` : ''}</span>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
+              <span className="text-[10px] text-gray-400">{lunaTopics.filter(t => t.sel).length} topik terpilih</span>
+              <div className="flex gap-2">
+                <button onClick={() => setLunaTopics(null)}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition">Batal</button>
+                <button onClick={sendTopics}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-violet-600 text-white hover:bg-violet-700 transition">→ Kirim ke Daily Hub</button>
               </div>
             </div>
           </div>
