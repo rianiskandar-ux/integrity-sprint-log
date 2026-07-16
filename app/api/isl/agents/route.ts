@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { sessions, agentLogs, cases, events } from '@/lib/db/schema'
+import { sessions, agentLogs, cases, events, helpdeskTickets } from '@/lib/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import { getTimer } from '@/lib/work-timer'
 import { OWNER_UID, isOwnerUid } from '@/lib/auth'
@@ -184,15 +184,18 @@ export async function GET(req: Request) {
       }
     }
 
+    // Still 'monitor': this STATUS entry reflects the timer (human-triggered).
+    // Dira's estimate feature (/api/dira/estimate) is real judgment but
+    // button-triggered, not autonomous — per the kind definition above.
     agents.push({
       id: 'dira', kind: 'monitor', name: 'Dira', role: 'Timekeeper',
-      description: 'Catat waktu kerja & auto-push time entry ke OP',
+      description: 'Catat waktu kerja & auto-push time entry ke OP · estimasi waktu tiket (AI, on-demand)',
       status, statusText, detail, lastActive,
     })
   } catch {
     agents.push({
       id: 'dira', kind: 'monitor', name: 'Dira', role: 'Timekeeper',
-      description: 'Catat waktu kerja & auto-push time entry ke OP',
+      description: 'Catat waktu kerja & auto-push time entry ke OP · estimasi waktu tiket (AI, on-demand)',
       status: 'issue', statusText: 'Error', detail: 'Tidak bisa baca timer', lastActive: null,
     })
   }
@@ -241,16 +244,18 @@ export async function GET(req: Request) {
       }
     })
 
+    // Still 'monitor' for the same reason as Dira: this entry reflects the hub
+    // queue; Luna's topic-structuring (/api/luna/structure) is button-triggered.
     agents.push({
       id: 'luna', kind: 'monitor', name: 'Luna', role: 'Hub Curator',
-      description: 'Kelola antrian sesi di Daily Hub untuk triage',
+      description: 'Kelola antrian sesi di Daily Hub untuk triage · susun topik dari chat + estimasi Dira (AI, on-demand)',
       status, statusText, detail, lastActive,
       meta: count > 0 ? { pendingSessions } : undefined,
     })
   } catch {
     agents.push({
       id: 'luna', kind: 'monitor', name: 'Luna', role: 'Hub Curator',
-      description: 'Kelola antrian sesi di Daily Hub untuk triage',
+      description: 'Kelola antrian sesi di Daily Hub untuk triage · susun topik dari chat + estimasi Dira (AI, on-demand)',
       status: 'issue', statusText: 'Error', detail: 'Tidak bisa query hub', lastActive: null,
     })
   }
@@ -293,6 +298,47 @@ export async function GET(req: Request) {
       id: 'kafi', kind: 'agent', name: 'Kafi', role: 'Field Agent',
       description: 'Capture aktivitas Claude Code luar ISL → kirim ke Arka via Hub',
       status: 'idle', statusText: 'Standby', detail: 'Belum ada data capture', lastActive: null,
+    })
+  }
+
+  // ── Tika — Helpdesk Triage (Phase 0 shadow mode) ──────────────────────────
+  // kind 'agent' per the definition above: the Launcher cron polls every 30min
+  // (08-18 weekdays) and Tika classifies/dedups tickets with real LLM judgment
+  // — new state gets written without a human clicking anything.
+  try {
+    const tickets = await db.select().from(helpdeskTickets)
+    const total    = tickets.length
+    const dupCount = tickets.filter(t => t.pipelineState === 'dup_suspect').length
+    const lastPoll = tickets.reduce<Date | null>((max, t) => (!max || t.updatedAt > max) ? t.updatedAt : max, null)
+
+    let status: AgentStatus = 'idle'
+    let statusText = 'Standby'
+    let detail = 'Belum ada tiket ter-scan'
+
+    if (lastPoll) {
+      const mins = minutesAgo(lastPoll.toISOString())
+      const detailBase = `${total} tiket dipantau · ${dupCount} dup suspect · poll ${fmtAgo(mins)}`
+      if (mins < 60) {
+        status = 'active'; statusText = 'Aktif'; detail = detailBase
+      } else if (mins < 4320) { // <3 hari — cron cuma jalan jam kerja, weekend wajar senyap
+        status = 'idle'; statusText = 'Idle'; detail = detailBase
+      } else {
+        status = 'issue'; statusText = 'Issue'
+        detail = `${detailBase} — cron kemungkinan mati`
+      }
+    }
+
+    agents.push({
+      id: 'tika', kind: 'agent', name: 'Tika', role: 'Helpdesk Triage',
+      description: 'Baca tiket Inquiries OP: klasifikasi, cek kelengkapan, deteksi duplikat (shadow mode — tidak menulis ke OP)',
+      status, statusText, detail,
+      lastActive: lastPoll?.toISOString() ?? null,
+    })
+  } catch {
+    agents.push({
+      id: 'tika', kind: 'agent', name: 'Tika', role: 'Helpdesk Triage',
+      description: 'Baca tiket Inquiries OP: klasifikasi, cek kelengkapan, deteksi duplikat (shadow mode — tidak menulis ke OP)',
+      status: 'issue', statusText: 'Error', detail: 'Tidak bisa baca helpdesk_tickets', lastActive: null,
     })
   }
 
