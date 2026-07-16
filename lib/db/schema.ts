@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, jsonb, timestamp, date, index, uniqueIndex, customType, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, boolean, jsonb, timestamp, date, real, index, uniqueIndex, customType, primaryKey } from 'drizzle-orm/pg-core'
 
 // pgvector column type — drizzle-kit emits `vector(768)` via dataType().
 // Driver format is the pgvector text literal: "[0.1,0.2,...]"
@@ -316,6 +316,55 @@ export const arkaCorrections = pgTable('arka_corrections', {
   createdAt:       timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   index('arka_corrections_created_idx').on(t.createdAt),
+])
+
+// ── helpdesk_tickets ───────────────────────────────────────────────────────────
+// Tika (Helpdesk & QA Validation Pipeline, PRD docs/PRD-helpdesk-qa-pipeline.md).
+// Phase 0 shadow mode: derived pipeline state only — OP stays source of truth
+// (PRD §16 decision #1). Intake scope = OP saved query 112 "Inquiries",
+// replicated as a direct filter (status=open AND author IN [named reporters])
+// rather than depended on live (PRD §15, resolved 2026-07-16). Not multi-tenant
+// (PRD NG5) — single global backlog Rian reviews, no userId column.
+export const helpdeskTickets = pgTable('helpdesk_tickets', {
+  id:               text('id').primaryKey(),              // hdt-<opWpId>
+  opWpId:           integer('op_wp_id').notNull().unique(),
+  subject:          text('subject').notNull(),
+  opType:           text('op_type'),                       // Bug | Task | ... (WP type name)
+  opProjectId:      text('op_project_id'),
+  opStatus:         text('op_status'),
+  authorOpUserId:   integer('author_op_user_id'),
+  authorName:       text('author_name'),
+  pipelineState:    text('pipeline_state').notNull().default('new'), // new | triaged | needs_info | dup_suspect | ready_for_qa
+  contentHash:      text('content_hash'),                  // subject+description+lockVersion — re-analyze only on real change
+  lastOpActivityAt: timestamp('last_op_activity_at'),
+  createdAt:        timestamp('created_at').defaultNow().notNull(),
+  updatedAt:        timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [
+  index('helpdesk_tickets_state_idx').on(t.pipelineState),
+])
+
+// One row per analysis run per ticket — kept as a log (not overwritten) so
+// Rian can review Tika's reasoning history during shadow mode tuning.
+export const ticketAnalyses = pgTable('ticket_analyses', {
+  id:        text('id').primaryKey(),                     // ta-<opWpId>-<kind>-<timestamp>
+  ticketId:  text('ticket_id').notNull().references(() => helpdeskTickets.id),
+  kind:      text('kind').notNull(),                       // classify | clarity | dedup
+  model:     text('model'),
+  result:    jsonb('result').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('ticket_analyses_ticket_idx').on(t.ticketId, t.kind),
+])
+
+export const ticketLinks = pgTable('ticket_links', {
+  id:            text('id').primaryKey(),                  // tl-<opWpId>-<relatedOpWpId>
+  ticketId:      text('ticket_id').notNull().references(() => helpdeskTickets.id),
+  relatedOpWpId: integer('related_op_wp_id').notNull(),
+  similarity:    real('similarity'),                        // cosine distance (lower = more similar)
+  status:        text('status').notNull().default('suspected'), // suspected | confirmed | rejected
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('ticket_links_ticket_idx').on(t.ticketId),
 ])
 
 // ── events ─────────────────────────────────────────────────────────────────────

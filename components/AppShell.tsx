@@ -25,6 +25,7 @@ import AutoLogIndicator from './AutoLogIndicator'
 import EnvModeBadge from './EnvModeBadge'
 import IncomingTasksPanel from './IncomingTasksPanel'
 import InquiriesPanel from './InquiriesPanel'
+import HelpdeskPanel from './HelpdeskPanel'
 import ScorecardPanel from './ScorecardPanel'
 import DocsPanel from './DocsPanel'
 import StaleBacklogView from './StaleBacklogView'
@@ -544,6 +545,7 @@ export default function AppShell({
           {view === 'dailylog'  && <DailyLogView />}
           {view === 'incoming' && <IncomingTasksPanel />}
           {view === 'inquiries' && <InquiriesPanel />}
+          {view === 'helpdesk' && <HelpdeskPanel />}
           {view === 'scorecard' && <ScorecardPanel />}
           {view === 'docs' && <DocsPanel />}
           {view === 'isldash'   && <div className="flex-1 min-h-0 overflow-hidden"><ISLDashboard onNavigate={v => navigate({ view: v })} onReport={() => setReportOpen(true)} /></div>}

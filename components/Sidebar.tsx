@@ -9,7 +9,7 @@ import {
   MessageSquarePlus, Brain, Inbox, Send, Mail,
   ClipboardList, Bot, BookOpen, Archive,
   Settings, Lock, MessageCircle, BarChart3, FileText,
-  ChevronLeft, ChevronRight, ChevronDown,
+  ChevronLeft, ChevronRight, ChevronDown, Bug,
 } from 'lucide-react'
 
 // Launcher Admin Console — PIN-gated terminal + Quick Fix, lives in the
@@ -28,7 +28,7 @@ function openAdminConsole() {
     .finally(() => clearTimeout(timeout))
 }
 
-const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'scorecard', 'docs', 'autolog', 'dailylog', 'backlog'])
+const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'scorecard', 'docs', 'autolog', 'dailylog', 'backlog', 'helpdesk'])
 const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
 
 interface Props {
@@ -219,6 +219,10 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <NavItem id="pushqueue" icon={<Send size={14} />}             label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"  indent={1} badge={queueCount} />
           <NavItem id="scorecard" icon={<BarChart3 size={14} />}        label="Scorecard"          shortcut="R" color="text-cyan-400"   indent={1} />
           <NavItem id="docs"      icon={<FileText size={14} />}        label="Dokumen"            shortcut="D" color="text-fuchsia-400" indent={1} />
+          {/* Owner-only — PRD NG5 (Helpdesk pipeline not multi-tenant), API 403s for non-owners */}
+          {isOwner && (
+            <NavItem id="helpdesk" icon={<Bug size={14} />}             label="Helpdesk (Tika)"    shortcut="T" color="text-red-400"     indent={1} />
+          )}
 
           {/* Log expandable group */}
           <div>
