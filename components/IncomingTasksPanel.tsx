@@ -5,7 +5,7 @@ import type { CachedWorkPackage } from '@/lib/op-cache'
 import { useI18n } from '@/lib/i18n'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import OpTaskModal from './OpTaskModal'
-import { Inbox, CalendarDays, CheckCircle2, Send, MessageCircle, Pencil, Info, RefreshCw, Play, PauseCircle, Layers, X, Plus, Trash2 } from 'lucide-react'
+import { Inbox, CalendarDays, CheckCircle2, Send, MessageCircle, Pencil, Info, RefreshCw, Play, PauseCircle, Layers, X, Plus, Trash2, Lightbulb } from 'lucide-react'
 
 const ISL_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   new:         { label: 'New',         color: 'text-gray-500',   dot: 'bg-gray-400' },
@@ -33,6 +33,32 @@ export default function IncomingTasksPanel() {
   const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set())
   const [pushedIds, setPushedIds] = useState<Set<number>>(new Set())
   const [nextSprint, setNextSprint] = useState<{ id: number; name: string } | null>(null)
+  // Dira's first real agentic capability (roadmap 2026-07-15): read a task's
+  // title/description, suggest a time estimate instead of the hardcoded
+  // 60-minute default. Per-task so multiple can be requested independently;
+  // never auto-applied — just shown for the human to use or ignore.
+  const [estimates, setEstimates] = useState<Record<number, { estimatedMins: number; reasoning: string } | 'loading' | 'error'>>({})
+
+  async function requestEstimate(task: CachedWorkPackage) {
+    setEstimates(prev => ({ ...prev, [task.id]: 'loading' }))
+    try {
+      const r = await fetch('/api/dira/estimate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // CachedWorkPackage doesn't cache the OP description field (unlike
+        // CachedEpic) — title-only for now. Adding it would need parseWP()
+        // extended + a cache resync; V1 intentionally stays this simple.
+        body: JSON.stringify({ title: task.subject }),
+      })
+      const d = await r.json()
+      if (r.ok && typeof d.estimatedMins === 'number') {
+        setEstimates(prev => ({ ...prev, [task.id]: { estimatedMins: d.estimatedMins, reasoning: d.reasoning ?? '' } }))
+      } else {
+        setEstimates(prev => ({ ...prev, [task.id]: 'error' }))
+      }
+    } catch {
+      setEstimates(prev => ({ ...prev, [task.id]: 'error' }))
+    }
+  }
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [restructureModal, setRestructureModal] = useState(false)
   const [restructureSubject, setRestructureSubject] = useState('')
@@ -319,6 +345,33 @@ export default function IncomingTasksPanel() {
                         #{task.id}
                       </a>
                       <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 leading-snug">{task.subject}</p>
+                    </div>
+
+                    {/* Dira's time estimate suggestion — request on demand, never auto-applied */}
+                    <div className="mt-1.5">
+                      {!estimates[task.id] && (
+                        <button
+                          onClick={() => requestEstimate(task)}
+                          className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 hover:text-amber-700 transition">
+                          <Lightbulb size={10} /> Estimasi Dira
+                        </button>
+                      )}
+                      {estimates[task.id] === 'loading' && (
+                        <span className="flex items-center gap-1 text-[10px] text-gray-400"><Lightbulb size={10} /> Dira membaca tiket...</span>
+                      )}
+                      {estimates[task.id] === 'error' && (
+                        <button onClick={() => requestEstimate(task)}
+                          className="flex items-center gap-1 text-[10px] text-red-500 hover:text-red-600 transition">
+                          <Lightbulb size={10} /> Gagal — coba lagi
+                        </button>
+                      )}
+                      {estimates[task.id] && estimates[task.id] !== 'loading' && estimates[task.id] !== 'error' && (
+                        <span
+                          title={(estimates[task.id] as { estimatedMins: number; reasoning: string }).reasoning}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-full px-2 py-0.5 cursor-help">
+                          <Lightbulb size={10} /> Dira: ~{(estimates[task.id] as { estimatedMins: number }).estimatedMins}m
+                        </span>
+                      )}
                     </div>
 
                     {/* Row 3: who sent + when */}
