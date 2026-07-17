@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { signToken, AUTH_COOKIE, SESSION_TTL_MS } from '@/lib/session-token'
+import { isSecureRequest } from '@/lib/request-proto'
 
 export const runtime = 'nodejs'
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   res.cookies.set(AUTH_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false, // LAN over http — https not used
+    secure: isSecureRequest(req), // true only when the client actually connected via HTTPS (nginx TLS)
     path: '/',
     maxAge: Math.floor(SESSION_TTL_MS / 1000),
   })

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getSessionUser, USER_COOKIE, multiUserEnabled, isOwnerUid } from '@/lib/auth'
+import { isSecureRequest } from '@/lib/request-proto'
 
 export const runtime = 'nodejs'
 
@@ -14,8 +15,8 @@ export async function GET() {
   })
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
   const res = NextResponse.json({ ok: true })
-  res.cookies.set(USER_COOKIE, '', { httpOnly: true, path: '/', maxAge: 0 })
+  res.cookies.set(USER_COOKIE, '', { httpOnly: true, secure: isSecureRequest(req), path: '/', maxAge: 0 })
   return res
 }

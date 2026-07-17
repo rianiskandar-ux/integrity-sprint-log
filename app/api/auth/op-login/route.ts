@@ -5,6 +5,7 @@ import { encrypt } from '@/lib/crypto'
 import { makeUserToken, USER_COOKIE, USER_TTL_MS } from '@/lib/auth'
 import { getOpBaseUrl } from '@/lib/user-config'
 import { loadCache, rebuildCache } from '@/lib/op-cache'
+import { isSecureRequest } from '@/lib/request-proto'
 
 export const runtime = 'nodejs'
 
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
   const token = await makeUserToken({ uid: userRow.id, name, opUserId })
   const res = NextResponse.json({ ok: true, user: { id: userRow.id, name, opUserId } })
   res.cookies.set(USER_COOKIE, token, {
-    httpOnly: true, sameSite: 'lax', secure: false, path: '/',
+    httpOnly: true, sameSite: 'lax', secure: isSecureRequest(req), path: '/',
     maxAge: Math.floor(USER_TTL_MS / 1000),
   })
 
