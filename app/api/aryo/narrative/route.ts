@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
-import { and, eq, gte } from 'drizzle-orm'
+import { and, eq, gte, lt } from 'drizzle-orm'
 import { db, sessions, agentEvents, arkaCorrections } from '@/lib/db'
 import { getRequestContext } from '@/lib/request-auth'
 import { OWNER_UID } from '@/lib/auth'
 import { callLLM, getLLMConfig } from '@/lib/llm'
 import { callLocalLLM } from '@/lib/local-llm'
+import { loadCache } from '@/lib/op-cache'
 
 export const runtime = 'nodejs'
 
@@ -13,13 +14,20 @@ export const runtime = 'nodejs'
 // N task terbuka) with zero process detail. Pulls the richer, currently-unused
 // data — agentEvents, session bullets, arkaCorrections — and asks an LLM to
 // narrate it. Local-first (Ollama), same pattern as app/api/wrapup/route.ts.
+//
+// standupNarrative (added 2026-07-17, Rian's request): a closing plain-
+// sentence summary for the PDF's last section, written to be read out loud
+// at TOMORROW MORNING's daily standup — "kemarin saya…, hari ini saya akan…,
+// ke depan…" in language non-technical teammates follow. The PDF generates
+// at 17:00 today, so "kemarin" (as spoken at the standup) = today's data.
 const NARRATIVE_FORMAT = {
   type: 'object',
   properties: {
     agentNarrative:     { type: 'string' },
     localWorkNarrative: { type: 'string' },
+    standupNarrative:   { type: 'string' },
   },
-  required: ['agentNarrative', 'localWorkNarrative'],
+  required: ['agentNarrative', 'localWorkNarrative', 'standupNarrative'],
 } as const
 
 interface AgendaItem { title: string; startTime: string; project: string }
@@ -32,14 +40,32 @@ export async function GET(req: Request) {
 
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
+  const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000)
 
-  const [todayEvents, todaySessions, todayCorrections] = await Promise.all([
+  const [todayEvents, todaySessions, todayCorrections, yesterdaySessions] = await Promise.all([
     db.select().from(agentEvents).where(gte(agentEvents.createdAt, todayStart)),
     uid != null
       ? db.select().from(sessions).where(and(eq(sessions.userId, uid), gte(sessions.createdAt, todayStart)))
       : db.select().from(sessions).where(gte(sessions.createdAt, todayStart)),
     db.select().from(arkaCorrections).where(gte(arkaCorrections.createdAt, todayStart)),
+    // Konteks tambahan buat standupNarrative — kalau hari ini sepi (misal
+    // laporan digenerate pagi), kerja kemarin tetap bisa diceritakan.
+    uid != null
+      ? db.select().from(sessions).where(and(eq(sessions.userId, uid), gte(sessions.createdAt, yesterdayStart), lt(sessions.createdAt, todayStart)))
+      : db.select().from(sessions).where(and(gte(sessions.createdAt, yesterdayStart), lt(sessions.createdAt, todayStart))),
   ])
+
+  // Rencana ke depan untuk standup: task terbuka milik user di sprint aktif
+  // (dari OP cache — data yang sama dengan menu Incoming/Sprint).
+  let openTaskLines = ''
+  try {
+    const cache = loadCache(uid ?? OWNER_UID)
+    const open = (cache.myOpenTasks ?? [])
+      .filter(t => !t.isClosed)
+      .sort((a, b) => (a.islStatus === 'in_progress' ? -1 : 1) - (b.islStatus === 'in_progress' ? -1 : 1))
+      .slice(0, 10)
+    openTaskLines = open.map(t => `- #${t.id} ${t.subject}${t.sprintName ? ` (${t.sprintName})` : ''}${t.islStatus === 'in_progress' ? ' [sedang dikerjakan]' : ''}`).join('\n')
+  } catch { /* cache kosong → bagian rencana dinarasikan dari sisa data */ }
 
   // Agenda: OP meetings in the next 7 days.
   let agenda: AgendaItem[] = []
@@ -60,10 +86,11 @@ export async function GET(req: Request) {
     }
   } catch { /* agenda is best-effort — report still works without it */ }
 
-  if (!todayEvents.length && !todaySessions.length && !todayCorrections.length) {
+  if (!todayEvents.length && !todaySessions.length && !todayCorrections.length && !yesterdaySessions.length) {
     return NextResponse.json({
       agentNarrative:     'Belum ada aktivitas agent tercatat hari ini.',
       localWorkNarrative: 'Belum ada aktivitas kerja lokal tercatat hari ini.',
+      standupNarrative:   'Belum ada aktivitas tercatat — tidak ada bahan standup untuk hari ini.',
       agenda,
     })
   }
@@ -73,36 +100,57 @@ export async function GET(req: Request) {
     (eventsByAgent[e.agent] ??= []).push(`${e.event}${e.meta && Object.keys(e.meta).length ? ' ' + JSON.stringify(e.meta) : ''}`)
   }
   const eventLines = Object.entries(eventsByAgent).map(([agent, evs]) => `${agent}: ${evs.join(', ')}`).join('\n')
+  // Bullets dinaikkan 3 → 8: bullets adalah detail proses yang sebenarnya —
+  // memotong ke 3 adalah sumber utama keluhan "laporan seperti singkatan".
   const sessionLines = todaySessions.map(s =>
-    `- [${s.source ?? 'unknown'}] ${s.title} (${s.pushStatus})${s.bullets?.length ? ': ' + s.bullets.slice(0, 3).join('; ') : ''}`
+    `- [${s.source ?? 'unknown'}] ${s.title} (${s.pushStatus})${s.bullets?.length ? ':\n  ' + s.bullets.slice(0, 8).join('\n  ') : ''}`
+  ).join('\n')
+  const yesterdayLines = yesterdaySessions.map(s =>
+    `- ${s.title}${s.bullets?.length ? ': ' + s.bullets.slice(0, 4).join('; ') : ''}`
   ).join('\n')
   const correctionLines = todayCorrections.map(c =>
     `- "${c.sessionTitle}": Arka tebak #${c.arkaGuessTaskId ?? 'hub'}, dikoreksi Rian ke #${c.correctedTaskId}`
   ).join('\n')
+  const agendaLines = agenda.map(a =>
+    `- ${new Date(a.startTime).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })} ${a.title}${a.project ? ` (${a.project})` : ''}`
+  ).join('\n')
 
-  const prompt = `Kamu adalah Aryo, agent manager yang merangkum aktivitas tim AI ISL untuk Rian (pemilik). Tulis dalam Bahasa Indonesia, natural dan detail (bukan poin generik atau angka doang), berdasarkan data mentah di bawah.
+  const prompt = `Kamu adalah Aryo, agent manager yang merangkum aktivitas tim AI ISL untuk Rian (pemilik). Tulis dalam Bahasa Indonesia, natural, PANJANG dan DETAIL — kalimat utuh yang bercerita, BUKAN poin singkat, BUKAN singkatan, BUKAN sekadar angka. Anggap pembacanya perlu paham konteks tanpa membuka sistem.
 
-Log event agent hari ini (arka=session recorder, luna=hub curator, rendi=sprint guard, dira=timekeeper, kafi=field agent, sage=AI news):
+Log event agent hari ini (arka=session recorder, luna=hub curator, rendi=sprint guard, dira=timekeeper, kafi=field agent, tika=helpdesk triage, sage=AI news):
 ${eventLines || '(tidak ada event tercatat)'}
 
-Sesi kerja hari ini (dari hook lokal Kafi / input manual Rian):
+Sesi kerja HARI INI (dari hook lokal Kafi / input manual Rian) — bullets di bawah judul adalah detail pekerjaannya:
 ${sessionLines || '(tidak ada sesi tercatat)'}
+
+Sesi kerja KEMARIN (konteks tambahan):
+${yesterdayLines || '(tidak ada)'}
 
 Koreksi Arka hari ini (tebakan task yang dibetulkan Rian saat triage):
 ${correctionLines || '(tidak ada koreksi)'}
 
-Tulis dua bagian:
-1. Narasi agent: jelaskan APA YANG SEBENARNYA DIKERJAKAN oleh agent-agent ISL hari ini berdasarkan data di atas — proses dan konteksnya, bukan cuma angka. Agent yang datanya kosong, sebut singkat idle.
-2. Narasi lokal: rangkum apa yang benar-benar Rian kerjakan secara lokal hari ini dari sesi kerja di atas, termasuk konteks/detail penting, bukan cuma judul.`
+Task terbuka Rian di sprint aktif (rencana kerja berikutnya):
+${openTaskLines || '(cache OP kosong)'}
 
-  const localRaw = await callLocalLLM(prompt, NARRATIVE_FORMAT)
+Agenda meeting 7 hari ke depan:
+${agendaLines || '(tidak ada)'}
+
+Tulis TIGA bagian:
+1. Narasi agent (minimal 2 paragraf): jelaskan APA YANG SEBENARNYA DIKERJAKAN oleh agent-agent ISL hari ini berdasarkan data di atas — proses dan konteksnya, bukan cuma angka. Agent yang datanya kosong, sebut singkat idle.
+2. Narasi lokal (minimal 2 paragraf): rangkum apa yang benar-benar Rian kerjakan secara lokal hari ini dari sesi kerja + bullets di atas — jelaskan pekerjaannya secara utuh dan konkret (apa yang dibangun/diperbaiki, di sistem apa, hasilnya apa), bukan cuma daftar judul.
+3. Narasi standup: paragraf yang siap DIBACAKAN Rian di daily standup BESOK PAGI, dalam bahasa yang dipahami orang non-teknis. Struktur wajib tiga kalimat-kelompok: (a) "Kemarin saya ..." — rangkum kerja hari ini dari data di atas; (b) "Hari ini saya akan ..." — dari task terbuka sprint + agenda terdekat; (c) "Ke depan ..." — arah kerja selanjutnya dari sisa task/agenda. Tulis mengalir sebagai satu paragraf utuh, bukan bullet.`
+
+  // 150s (bukan default 90s): tiga seksi naratif panjang — qwen 3B butuh
+  // waktu; 90s terbukti selalu timeout untuk beban ini (test 2026-07-17).
+  const localRaw = await callLocalLLM(prompt, NARRATIVE_FORMAT, { timeoutMs: 150_000 })
   if (localRaw) {
     try {
-      const j = JSON.parse(localRaw) as { agentNarrative?: unknown; localWorkNarrative?: unknown }
+      const j = JSON.parse(localRaw) as { agentNarrative?: unknown; localWorkNarrative?: unknown; standupNarrative?: unknown }
       const agentNarrative = typeof j.agentNarrative === 'string' ? j.agentNarrative.trim() : ''
       const localWorkNarrative = typeof j.localWorkNarrative === 'string' ? j.localWorkNarrative.trim() : ''
-      if (agentNarrative && localWorkNarrative) {
-        return NextResponse.json({ agentNarrative, localWorkNarrative, agenda })
+      const standupNarrative = typeof j.standupNarrative === 'string' ? j.standupNarrative.trim() : ''
+      if (agentNarrative && localWorkNarrative && standupNarrative) {
+        return NextResponse.json({ agentNarrative, localWorkNarrative, standupNarrative, agenda })
       }
     } catch { /* invalid JSON → fallback Claude */ }
   }
@@ -112,18 +160,21 @@ Tulis dua bagian:
     return NextResponse.json({
       agentNarrative:     eventLines || 'Belum ada aktivitas agent tercatat.',
       localWorkNarrative: sessionLines || 'Belum ada aktivitas kerja lokal tercatat.',
+      standupNarrative:   '',
       agenda,
     })
   }
   const text = await callLLM(
-    `${prompt}\n\nFormat balasan (dua bagian, jangan pakai JSON):\n### AGENT\n<narasi agent di sini>\n\n### LOKAL\n<narasi lokal di sini>`,
+    `${prompt}\n\nFormat balasan (tiga bagian, jangan pakai JSON):\n### AGENT\n<narasi agent di sini>\n\n### LOKAL\n<narasi lokal di sini>\n\n### STANDUP\n<narasi standup di sini>`,
     llmCfg,
   )
-  const agentMatch = text.match(/### AGENT\s*([\s\S]*?)(?=### LOKAL|$)/i)
-  const localMatch = text.match(/### LOKAL\s*([\s\S]*)/i)
+  const agentMatch   = text.match(/### AGENT\s*([\s\S]*?)(?=### LOKAL|$)/i)
+  const localMatch   = text.match(/### LOKAL\s*([\s\S]*?)(?=### STANDUP|$)/i)
+  const standupMatch = text.match(/### STANDUP\s*([\s\S]*)/i)
   return NextResponse.json({
     agentNarrative:     agentMatch?.[1]?.trim() || text,
     localWorkNarrative: localMatch?.[1]?.trim() || '',
+    standupNarrative:   standupMatch?.[1]?.trim() || '',
     agenda,
   })
 }

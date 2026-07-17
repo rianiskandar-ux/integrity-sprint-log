@@ -423,4 +423,57 @@ Confirmed with Rian: Aufa gets her own ISL login (her own OP token, same onboard
 - **If she REJECTS:** handled directly in OP under her own account — she rejects the ticket in OP itself (not an ISL-side state). Whatever OP permissions her account already has apply; no new permission grant identified as necessary for this half.
 - **If she APPROVES:** the ticket flows into **ISL's existing Push Queue** (same triage → Push Queue → OP pipeline Daily Hub sessions already use) with a label such as `BUG PASS VALID`, so it lands in Rian's existing queue view instead of a brand-new "CONFIRMED" surface — reuses existing ISL machinery rather than building a parallel one.
 
-This means F5's Queue tab (§6.5) needs an Aufa-scoped view in addition to Rian's, and the "CONFIRMED" ticket delivery mechanism in §5/§10 changes from *OP comment + Telegram* to *Push Queue entry with a BUG PASS VALID label* — update those sections when Phase 3 implementation actually starts; not rewritten here to avoid re-litigating flow details before Phase 2 (Vera/staging, still blocked on open question #2) is even settled.
+This means F5's Queue tab (§6.5) needs an Aufa-scoped view in addition to Rian's, and the "CONFIRMED" ticket delivery mechanism in §5/§10 changes from *OP comment + Telegram* to *Push Queue entry with a BUG PASS VALID label*.
+
+### 16.2 FINAL end-to-end flow (2026-07-17, agreed with Rian — supersedes §5 where they differ)
+
+```
+[1] INTAKE — Tika (automated, every 30min — LIVE since 2026-07-16)
+    OP Inquiries (query 112) → classify + clarity + dedup
+    → clear bugs → READY_FOR_QA; request/question → info-only in Helpdesk view
+
+[2] INITIAL FINDINGS — Vera (automated, per READY_FOR_QA ticket)
+    → reads subject+description
+    → checks Environment Registry (app → staging URL + test account, owner-managed,
+      starts EMPTY; unregistered app → INCONCLUSIVE "no env configured", not an error)
+    → registered → generate Playwright script (Claude) → run (staging default)
+    → result REPRODUCED / NOT REPRODUCED / INCONCLUSIVE + screenshot + log
+    → stored in validation_runs, shown in Helpdesk as "temuan awal"
+    → NO suggested verdict; NO OP writes (supersedes §6.4's OP-comment posting —
+      Vera reports into the Helpdesk menu only, per Rian 2026-07-17)
+    → runs ONCE per ticket content-hash (same idempotency pattern as Tika)
+
+[3] DECISION — Aufa (human, own ISL login, role='qa')
+    Her Helpdesk view = READY_FOR_QA/QA_REVIEW queue. Vera's findings are a
+    starting point, NOT mandatory — she may test herself locally (her own
+    Playwright/tools; ISL has no visibility into her process and needs none).
+    ✅ PASS  → routed to the OP ASSIGNEE's Push Queue (matched via opUserId →
+               ISL account), labeled [BUG PASS VALID], linked to the OP ticket.
+               NOT hardcoded to Rian — executor = whoever is assigned (Rian's
+               explicit correction 2026-07-17: "yg eksekusi ga cuma gw, yg
+               di-assign aja").
+               No assignee / assignee has no ISL account → ticket stays in the
+               HELPDESK VIEW marked [UNASSIGNED] — it does NOT fall into
+               Rian's queue (his explicit correction: "jgn masuk ke queue gw").
+               Aufa owns resolving it (get it assigned in OP); when a later
+               Tika poll sees an assignee appear, the queue entry routes then.
+    ❌ REJECT → done IN OP directly (status change + comment, Aufa's own OP
+               account). Inquiries scope = open tickets only, so a rejected
+               ticket drops out of intake on the next poll automatically —
+               ISL needs NO reject button.
+
+[4] EXECUTION — assignee (any ISL user)
+    [BUG PASS VALID] entry appears in THEIR existing Push Queue — normal
+    workflow, nothing new to learn.
+```
+
+**UI per role (agreed):**
+- **Rian (owner)** — Helpdesk menu with tabs: *Semua Tiket* (current shadow view), *QA Queue* (READY_FOR_QA/QA_REVIEW + Aufa verdict status), *Confirmed* (PASS history + which queue each went to, including [UNASSIGNED] ones), later *Registry* (Vera env config, owner-only).
+- **Aufa (role 'qa', users.role)** — QA-scoped Helpdesk view: per-ticket card (subject, description, author, OP link, Tika classification/clarity/dup, Vera findings panel when present) + single ✅ PASS button with a confirm dialog naming the target assignee queue. Explicit hint text that reject happens in OP.
+- **Assignee** — no new UI; entry lands in their existing Push Queue.
+
+**Safety rails (why this can't go wrong mid-pipeline):** zero automated OP writes anywhere in the bug path (Tika shadow, Vera ISL-only; only humans write to OP); Vera once-per-content-hash; staging-first + registry-gated; every Aufa verdict recorded (who/when) for audit.
+
+**Build order:** A = Aufa queue + PASS + assignee columns on helpdesk_tickets + role='qa' (buildable NOW — the "Aufa tests locally" path makes the system fully functional before Vera exists). B = Vera engine + Environment Registry + validation_runs. C = Tika Phase 1 comms (separate track, still gated on shadow-mode results + thresholds + Yudhi briefing).
+
+**Launcher UI checklist for build B (Vera) — committed so it isn't forgotten:** register Vera in ISL `/api/isl/agents` (kind 'agent'; homepage/Command Center/Aryo PDF pick it up automatically); add AGENT_PROFILES entry in ProjectCard (bio explicit about findings-only, no verdicts); add EMOJI + BRAIN ('🧠 claude' — script gen uses Claude, unlike Tika's local brain) in flow/status; update Aryo's bio agent list; and draw the deferred helpdesk lane on the Flow page (OP → Tika → Vera → Aufa → assignee) — that lane was explicitly postponed "until Vera exists", and build B is that moment.

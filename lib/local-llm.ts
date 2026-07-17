@@ -11,7 +11,7 @@
  * timeout, Ollama mati, response kosong). Tidak pernah throw — caller cukup cek
  * null lalu fallback ke Claude (capture-bias: kualitas tidak boleh degrade diam-diam).
  */
-export async function callLocalLLM(prompt: string, schema?: object): Promise<string | null> {
+export async function callLocalLLM(prompt: string, schema?: object, opts?: { timeoutMs?: number }): Promise<string | null> {
   const base  = process.env.OLLAMA_URL || 'http://localhost:11434'
   const model = process.env.OLLAMA_CHAT_MODEL || 'qwen2.5:3b'
   try {
@@ -25,7 +25,11 @@ export async function callLocalLLM(prompt: string, schema?: object): Promise<str
         ...(schema ? { format: schema } : {}),
         options: { temperature: 0.2, num_ctx: 8192 },
       }),
-      signal: AbortSignal.timeout(90_000),
+      // 90s default cukup untuk output pendek/sedang (mayoritas pemakaian).
+      // Caller yang minta output PANJANG (mis. aryo/narrative: 3 seksi naratif)
+      // boleh menaikkan — model 3B butuh >90s untuk generate sepanjang itu,
+      // dan timeout yang pasti gagal = 90s terbuang percuma sebelum fallback.
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? 90_000),
     })
     if (!res.ok) return null
     const d = await res.json() as { response?: string }
