@@ -356,11 +356,40 @@ export const helpdeskTickets = pgTable('helpdesk_tickets', {
   // Email-notify Aufa exactly once per ticket (added 2026-07-21) — set the
   // moment it's included in a notification email, so re-polls never re-send.
   qaNotifiedAt:     timestamp('qa_notified_at'),
+  // Correction-loop bookkeeping (added 2026-07-21) — set once a dropped-from-
+  // scope ticket's final OP outcome has been checked (rejected vs resolved
+  // vs whatever), so pollInquiries() never re-checks the same ticket twice.
+  // Null = still open or not yet checked; non-null = outcome recorded.
+  outcomeCheckedAt: timestamp('outcome_checked_at'),
   createdAt:        timestamp('created_at').defaultNow().notNull(),
   updatedAt:        timestamp('updated_at').defaultNow().notNull(),
 }, (t) => [
   index('helpdesk_tickets_state_idx').on(t.pipelineState),
   index('helpdesk_tickets_qa_idx').on(t.qaVerdict),
+])
+
+// ── ticket_corrections ─────────────────────────────────────────────────────
+// Tika's correction loop (added 2026-07-21, same proven pattern as
+// arka_corrections below — Rian: "kedepannya kalau bisa dibuat gitu aja
+// semua agentnya... gamasalah pakek hermes atau buat sendiri asal fleksible
+// dan aman"). Recorded when a ticket Tika classified 'bug' gets rejected in
+// OP (status→Rejected) instead of resolved — a real signal the classification
+// was likely wrong, not a training loop, just retrievable history via the
+// same hybridSearch already used everywhere else. Deliberately narrow scope:
+// only "classified bug, got rejected" for now — other agents/signals (Dira's
+// estimate accuracy, Luna's topic regrouping) are separate future work, not
+// bundled in here.
+export const ticketCorrections = pgTable('ticket_corrections', {
+  id:                 text('id').primaryKey(),           // tc-<opWpId>-<timestamp>
+  ticketId:           text('ticket_id'),                  // not FK-enforced — ticket rows aren't pruned today, but matches arka_corrections' own convention for resilience
+  opWpId:             integer('op_wp_id').notNull(),
+  subject:            text('subject').notNull(),
+  description:        text('description').notNull().default(''),
+  tikaClassification: text('tika_classification').notNull(), // what Tika said (e.g. 'bug')
+  opOutcome:          text('op_outcome').notNull(),          // 'rejected' (only outcome tracked for now)
+  createdAt:          timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('ticket_corrections_created_idx').on(t.createdAt),
 ])
 
 // One row per analysis run per ticket — kept as a log (not overwritten) so

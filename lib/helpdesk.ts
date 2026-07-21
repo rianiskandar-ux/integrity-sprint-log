@@ -8,8 +8,8 @@
  * OP stays the single source of truth (PRD §16 decision #1) — these tables
  * are derived state, safe to drop and rebuild from OP at any time.
  */
-import { db, helpdeskTickets, ticketAnalyses, ticketLinks, userSettings, users, sessions } from './db'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { db, helpdeskTickets, ticketAnalyses, ticketLinks, ticketCorrections, userSettings, users, sessions } from './db'
+import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm'
 import { decrypt } from './crypto'
 import { getOpBaseUrl } from './user-config'
 import { callLocalLLM } from './local-llm'
@@ -17,6 +17,11 @@ import { upsertEmbedding, semanticSearch } from './embeddings'
 import { OWNER_UID, isOwnerUid } from './auth'
 import { fetchInquiries, type OpInquiryElement } from './op-inquiries'
 import crypto from 'crypto'
+
+// OP status ids that mean "rejected" (lib/op-cache.ts's OP_STATUS_MAP — kept
+// as a local literal here rather than importing that map, since op-cache.ts
+// is oriented around CachedWorkPackage/ISL task status, a different concern).
+const OP_REJECTED_STATUS_IDS = new Set([14, 6])
 
 // First ISL->Launcher call this session (every other cross-app call has gone
 // the other direction). ISL runs in Docker, Launcher runs on the Windows host
@@ -134,8 +139,94 @@ export async function notifyQaIfPending(): Promise<{ notified: boolean; count: n
   return { notified: true, count: bugTickets.length }
 }
 
-// Dedup: cosine distance below this = suspected duplicate (PRD §6.2 initial threshold)
+// Dedup: cosine distance below this = suspected duplicate (PRD §6.2 initial
+// threshold) — also reused as the correction-loop's similarity cutoff below.
 const DUP_SIMILARITY_THRESHOLD = 0.3 // hybridSearch/semanticSearch distance is 1-similarity-ish; lower = closer
+
+// ── Tika correction loop (2026-07-21) ───────────────────────────────────────
+// Same proven pattern as arka_corrections (schema.ts): record real mistakes,
+// embed them, retrieve similar past mistakes via semanticSearch when making
+// a new judgment — no training loop, no model fine-tuning, just retrievable
+// history. Narrow scope for v1: only "classified bug, got rejected in OP"
+// (the case where over-classifying wastes Aufa's review time). Doesn't
+// alter Tika's classification directly (unlike Arka's deterministic
+// override) — surfaces as extra context in the classify prompt instead,
+// since "why" a ticket got rejected isn't as clean-cut as a wrong task-id.
+
+async function fetchWpStatusId(base: string, auth: string, wpId: number): Promise<number | null> {
+  try {
+    const res = await fetch(`${base}/api/v3/work_packages/${wpId}`, { headers: { Authorization: auth } })
+    if (!res.ok) return null
+    const data = await res.json() as { _links?: { status?: { href?: string } } }
+    const href = data._links?.status?.href ?? ''
+    const m = href.match(/(\d+)$/)
+    return m ? parseInt(m[1], 10) : null
+  } catch {
+    return null
+  }
+}
+
+/** Checks tickets that dropped out of the open-tickets scope since the last
+ *  poll (their OP status changed away from "open") — if Tika had classified
+ *  one as 'bug' and it turns out the final status is Rejected, that's a real
+ *  misclassification signal, recorded for future retrieval. Everything else
+ *  (resolved normally, etc.) is just marked checked so it's never re-queried. */
+async function detectRejectedOutcomes(base: string, auth: string, currentOpWpIds: number[]): Promise<number> {
+  let corrections = 0
+  const dropped = await db.select().from(helpdeskTickets).where(
+    and(
+      isNull(helpdeskTickets.outcomeCheckedAt),
+      currentOpWpIds.length ? notInArray(helpdeskTickets.opWpId, currentOpWpIds) : undefined,
+    ),
+  ).limit(50) // bounded per poll — a huge backlog just spreads checks across multiple polls, never blocks one
+  if (!dropped.length) return 0
+
+  for (const ticket of dropped) {
+    try {
+      const statusId = await fetchWpStatusId(base, auth, ticket.opWpId)
+      if (statusId === null) continue // OP unreachable for this one — retry next poll, don't mark checked
+
+      if (OP_REJECTED_STATUS_IDS.has(statusId)) {
+        const classifyRow = (await db.select().from(ticketAnalyses)
+          .where(and(eq(ticketAnalyses.ticketId, ticket.id), eq(ticketAnalyses.kind, 'classify')))
+          .limit(1))[0]
+        const kind = (classifyRow?.result as { kind?: string } | undefined)?.kind
+        if (kind === 'bug') {
+          const description = '' // not stored on helpdeskTickets itself — subject alone is still useful signal for retrieval
+          await db.insert(ticketCorrections).values({
+            id: `tc-${ticket.opWpId}-${Date.now()}`,
+            ticketId: ticket.id,
+            opWpId: ticket.opWpId,
+            subject: ticket.subject,
+            description,
+            tikaClassification: kind,
+            opOutcome: 'rejected',
+          })
+          await upsertEmbedding({ sourceType: 'ticket_correction', sourceId: `${ticket.opWpId}-${Date.now()}`, title: ticket.subject, chunk: description })
+          corrections++
+        }
+      }
+      await db.update(helpdeskTickets).set({ outcomeCheckedAt: new Date() }).where(eq(helpdeskTickets.id, ticket.id))
+    } catch { /* best-effort per ticket — skip, retried next poll since outcomeCheckedAt stays null */ }
+  }
+  return corrections
+}
+
+/** Past tickets similar to this one that were classified 'bug' but got
+ *  rejected — folded into the classify prompt as context, not a hard
+ *  override (unlike Arka's task-id override, "why" a ticket gets rejected
+ *  isn't clean-cut enough to just flip the label). Empty string = no
+ *  relevant history yet, prompt is unaffected. */
+async function correctionContext(subject: string, description: string): Promise<string> {
+  try {
+    const hits = await semanticSearch(`${subject}\n${description}`, null, 5)
+    const relevant = hits.filter(h => h.sourceType === 'ticket_correction' && h.distance <= DUP_SIMILARITY_THRESHOLD)
+    if (!relevant.length) return ''
+    return `\n\nCatatan riwayat: tiket berikut PERNAH diklasifikasi "bug" tapi ternyata ditolak (rejected) di OP — pertimbangkan pola ini kalau tiket sekarang mirip:\n${relevant.map(h => `- "${h.title}"`).join('\n')}`
+  } catch {
+    return ''
+  }
+}
 
 function computeContentHash(wp: OpInquiryElement): string {
   return crypto.createHash('sha1').update(`${wp.subject}|${wp.description}|${wp.lockVersion ?? ''}`).digest('hex')
@@ -160,7 +251,7 @@ const CLARITY_FORMAT = {
   required: ['hasReproSteps', 'hasExpectedActual', 'missing'],
 } as const
 
-function classifyPrompt(subject: string, description: string): string {
+function classifyPrompt(subject: string, description: string, correctionNote: string): string {
   return `Kamu adalah Tika, asisten triase tiket untuk tim dev/QA. Baca tiket ini dan klasifikasikan.
 
 Judul: ${subject}
@@ -172,7 +263,7 @@ Klasifikasikan "kind":
 - "question" = pertanyaan, bukan laporan masalah
 - "unclear" = gak jelas termasuk yang mana
 
-Reasoning 1 kalimat singkat, Bahasa Indonesia.`
+Reasoning 1 kalimat singkat, Bahasa Indonesia.${correctionNote}`
 }
 
 function clarityPrompt(subject: string, description: string): string {
@@ -207,13 +298,17 @@ export async function pollInquiries(): Promise<PollResult> {
   const base = getOpBaseUrl() || process.env.OP_BASE_URL || 'https://tokek.integrity-asia.com'
   if (!token) return { scanned: 0, analyzed: 0, dupSuspects: 0, errors: ['no OP token for owner'] }
 
+  const auth = 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
   let wps: OpInquiryElement[]
   try {
-    const auth = 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
     wps = await fetchInquiries(base, auth)
   } catch (e) {
     return { scanned: 0, analyzed: 0, dupSuspects: 0, errors: [String(e)] }
   }
+
+  // Correction loop: check tickets that dropped out of scope since the last
+  // poll for a Rejected outcome (best-effort — never blocks the main pass).
+  try { await detectRejectedOutcomes(base, auth, wps.map(wp => wp.id)) } catch { /* retried next poll */ }
 
   for (const wp of wps) {
     try {
@@ -254,8 +349,9 @@ export async function pollInquiries(): Promise<PollResult> {
       // Analyze only on real content change (PRD §6.1) — track OP lockVersion via hash.
       if (existing?.contentHash === hash) continue
 
+      const correctionNote = await correctionContext(subject, description)
       const [classifyRaw, clarityRaw] = await Promise.all([
-        callLocalLLM(classifyPrompt(subject, description), CLASSIFY_FORMAT),
+        callLocalLLM(classifyPrompt(subject, description, correctionNote), CLASSIFY_FORMAT),
         callLocalLLM(clarityPrompt(subject, description), CLARITY_FORMAT),
       ])
 

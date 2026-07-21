@@ -85,6 +85,13 @@
       "when": 1784609131170,
       "tag": "0011_magical_tusk",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784623729757,
+      "tag": "0012_awesome_captain_midlands",
+      "breakpoints": true
     }
   ]
 }
