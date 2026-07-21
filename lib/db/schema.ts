@@ -334,13 +334,30 @@ export const helpdeskTickets = pgTable('helpdesk_tickets', {
   opStatus:         text('op_status'),
   authorOpUserId:   integer('author_op_user_id'),
   authorName:       text('author_name'),
+  // Assignee mirror (added 2026-07-21, PRD §16.2 build A) — drives PASS
+  // routing: the executor is whoever OP assigns, never hardcoded to Rian.
+  assigneeOpUserId: integer('assignee_op_user_id'),
+  assigneeName:     text('assignee_name'),
   pipelineState:    text('pipeline_state').notNull().default('new'), // new | triaged | needs_info | dup_suspect | ready_for_qa
   contentHash:      text('content_hash'),                  // subject+description+lockVersion — re-analyze only on real change
   lastOpActivityAt: timestamp('last_op_activity_at'),
+  // QA verdict (added 2026-07-21, PRD §16.2 build A) — Aufa's PASS decision.
+  // No "reject" column: reject happens directly in OP (status change), and
+  // Inquiries scope = open tickets only, so a rejected ticket just drops out
+  // of intake on the next poll — nothing to track here for that path.
+  qaVerdict:        text('qa_verdict'),                    // null | 'pass'
+  qaDecidedBy:       integer('qa_decided_by').references(() => users.id),
+  qaDecidedAt:       timestamp('qa_decided_at'),
+  // When PASS routed into a Push Queue session. Null while qaVerdict='pass'
+  // but no assignee resolves to an ISL account yet ([UNASSIGNED] — Rian's
+  // explicit correction: this must NOT fall into his own queue as a default;
+  // it waits in the Helpdesk view until Tika's next poll sees an assignee).
+  pushedToQueueAt:  timestamp('pushed_to_queue_at'),
   createdAt:        timestamp('created_at').defaultNow().notNull(),
   updatedAt:        timestamp('updated_at').defaultNow().notNull(),
 }, (t) => [
   index('helpdesk_tickets_state_idx').on(t.pipelineState),
+  index('helpdesk_tickets_qa_idx').on(t.qaVerdict),
 ])
 
 // One row per analysis run per ticket — kept as a log (not overwritten) so

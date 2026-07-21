@@ -8,15 +8,60 @@
  * OP stays the single source of truth (PRD §16 decision #1) — these tables
  * are derived state, safe to drop and rebuild from OP at any time.
  */
-import { db, helpdeskTickets, ticketAnalyses, ticketLinks, userSettings } from './db'
+import { db, helpdeskTickets, ticketAnalyses, ticketLinks, userSettings, users, sessions } from './db'
 import { eq } from 'drizzle-orm'
 import { decrypt } from './crypto'
 import { getOpBaseUrl } from './user-config'
 import { callLocalLLM } from './local-llm'
 import { upsertEmbedding, semanticSearch } from './embeddings'
-import { OWNER_UID } from './auth'
+import { OWNER_UID, isOwnerUid } from './auth'
 import { fetchInquiries, type OpInquiryElement } from './op-inquiries'
 import crypto from 'crypto'
+
+// ── QA routing (PRD §16.2 build A) ──────────────────────────────────────────
+// Shared by both POST /api/helpdesk/qa/pass (Aufa's immediate action) and
+// pollInquiries() below (retroactive routing — an assignee can be added in
+// OP AFTER Aufa already passed the ticket). Never routes to Rian's own queue
+// as a fallback: his explicit correction was "jgn masuk ke queue gw" — an
+// unresolved assignee just leaves pushedToQueueAt null, and the ticket stays
+// visible/marked [UNASSIGNED] in the Helpdesk view until this resolves.
+type HelpdeskTicketRow = typeof helpdeskTickets.$inferSelect
+
+/** Who may see/act on the Helpdesk QA queue: the owner, or a user whose
+ *  users.role = 'qa' (set manually by the owner once someone like Aufa is
+ *  onboarded — no self-service role picker, this is a deliberate grant). */
+export async function isQaOrOwner(uid: number | null | undefined): Promise<boolean> {
+  if (isOwnerUid(uid)) return true
+  if (uid == null) return false
+  const row = (await db.select().from(users).where(eq(users.id, uid)).limit(1))[0]
+  return row?.role === 'qa'
+}
+
+export async function routeToPushQueueIfReady(ticket: HelpdeskTicketRow): Promise<boolean> {
+  if (ticket.qaVerdict !== 'pass' || ticket.pushedToQueueAt || !ticket.assigneeOpUserId) return false
+
+  const assignee = (await db.select().from(users).where(eq(users.opUserId, ticket.assigneeOpUserId)).limit(1))[0]
+  if (!assignee) return false // no ISL account for this OP user yet — stays pending
+
+  await db.insert(sessions).values({
+    id: `sl-hd-${ticket.opWpId}-${Date.now()}`,
+    sessionId: `helpdesk-pass-${ticket.opWpId}`,
+    userId: assignee.id,
+    date: new Date().toISOString().slice(0, 10),
+    title: `[BUG PASS VALID] ${ticket.subject}`,
+    bullets: [],
+    source: 'helpdesk',
+    startedAt: new Date().toISOString(),
+    estimatedMins: 60,
+    opTaskId: ticket.opWpId,
+    taskStatus: 'in_progress',
+    pushStatus: 'pending',
+    autoPushed: false,
+  }).onConflictDoNothing()
+
+  await db.update(helpdeskTickets).set({ pushedToQueueAt: new Date() }).where(eq(helpdeskTickets.id, ticket.id))
+  return true
+}
 
 // Dedup: cosine distance below this = suspected duplicate (PRD §6.2 initial threshold)
 const DUP_SIMILARITY_THRESHOLD = 0.3 // hybridSearch/semanticSearch distance is 1-similarity-ish; lower = closer
@@ -115,6 +160,10 @@ export async function pollInquiries(): Promise<PollResult> {
         opProjectId: wp.projectId,
         authorOpUserId: wp.createdById,
         authorName: wp.createdBy,
+        // "Unassigned" in OP maps to assigneeId=null (fetchInquiries only sets
+        // the display string to 'Unassigned', not the id) — keep both null.
+        assigneeOpUserId: wp.assigneeId,
+        assigneeName: wp.assignee === 'Unassigned' ? null : wp.assignee,
         lastOpActivityAt: wp.updatedAt ? new Date(wp.updatedAt) : null,
       }
 
@@ -122,6 +171,13 @@ export async function pollInquiries(): Promise<PollResult> {
         await db.update(helpdeskTickets).set({ ...mirrored, updatedAt: new Date() }).where(eq(helpdeskTickets.id, ticketId))
       } else {
         await db.insert(helpdeskTickets).values({ id: ticketId, opWpId: wp.id, ...mirrored })
+      }
+
+      // Retroactive routing: an already-PASSed ticket may only just now have
+      // gotten an OP assignee (or that assignee only just created their ISL
+      // account) — check on every poll, not just on content change below.
+      if (existing) {
+        try { await routeToPushQueueIfReady({ ...existing, ...mirrored }) } catch { /* best-effort, retried next poll */ }
       }
 
       // Analyze only on real content change (PRD §6.1) — track OP lockVersion via hash.

@@ -55,12 +55,18 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
   // it was linked here unconditionally, so a teammate landed on a page where
   // nothing loaded and nothing saved. Hide it for non-owners.
   const [isOwner, setIsOwner] = useState(true)
+  // role='qa' (Aufa) also gets the Helpdesk nav item — her own queue view,
+  // not the owner's full shadow view (PRD §16.2 build A).
+  const [isQa, setIsQa] = useState(false)
 
   useEffect(() => {
     const c = loadAppConfig()
     setAppName(c.appName)
     setAppLogo(c.appLogo)
-    fetch('/api/auth/me').then(r => r.json()).then(d => setIsOwner(!d.multiUser || !!d.isOwner)).catch(() => {})
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      setIsOwner(!d.multiUser || !!d.isOwner)
+      setIsQa(!!d.isQa)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -219,9 +225,10 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <NavItem id="pushqueue" icon={<Send size={14} />}             label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"  indent={1} badge={queueCount} />
           <NavItem id="scorecard" icon={<BarChart3 size={14} />}        label="Scorecard"          shortcut="R" color="text-cyan-400"   indent={1} />
           <NavItem id="docs"      icon={<FileText size={14} />}        label="Dokumen"            shortcut="D" color="text-fuchsia-400" indent={1} />
-          {/* Owner-only — PRD NG5 (Helpdesk pipeline not multi-tenant), API 403s for non-owners */}
-          {isOwner && (
-            <NavItem id="helpdesk" icon={<Bug size={14} />}             label="Helpdesk (Tika)"    shortcut="T" color="text-red-400"     indent={1} />
+          {/* Owner sees the full shadow view; role='qa' (Aufa) sees her own
+              decision queue — same nav slot, different component (AppShell) */}
+          {(isOwner || isQa) && (
+            <NavItem id="helpdesk" icon={<Bug size={14} />}             label={isOwner ? 'Helpdesk (Tika)' : 'Helpdesk — QA'} shortcut="T" color="text-red-400" indent={1} />
           )}
 
           {/* Log expandable group */}

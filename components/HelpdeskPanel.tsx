@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Bug, RefreshCw, Info, ExternalLink, Copy } from 'lucide-react'
+import { Bug, RefreshCw, Info, ExternalLink, Copy, CheckCircle2 } from 'lucide-react'
+import AufaQueueView from './AufaQueueView'
 
 // Tika — Helpdesk & QA Validation Pipeline, Phase 0 (SHADOW MODE).
 // PRD: docs/PRD-helpdesk-qa-pipeline.md. Read-only view over what Tika found —
@@ -29,6 +30,10 @@ interface HelpdeskTicket {
   opType: string | null
   opStatus: string | null
   authorName: string | null
+  assigneeName: string | null
+  assigneeOpUserId: number | null
+  qaVerdict: string | null
+  pushedToQueueAt: string | null
   pipelineState: string
   updatedAt: string
   classify: TicketAnalysis | null
@@ -60,6 +65,14 @@ export default function HelpdeskPanel() {
   const [opUrl, setOpUrl] = useState('https://tokek.integrity-asia.com')
   const [toast, setToast] = useState<string | null>(null)
   const [lastPoll, setLastPoll] = useState<string | null>(null)
+  // role split (PRD §16.2 build A): owner sees this full shadow view, Aufa
+  // (role='qa', not owner) gets her own decision queue instead.
+  const [roleChecked, setRoleChecked] = useState(false)
+  const [showQaView, setShowQaView] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => setShowQaView(!d.isOwner && !!d.isQa)).catch(() => {}).finally(() => setRoleChecked(true))
+  }, [])
 
   function flash(msg: string) {
     setToast(msg)
@@ -98,9 +111,10 @@ export default function HelpdeskPanel() {
     }
   }
 
-  if (loading) return (
+  if (!roleChecked || loading) return (
     <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Memuat Helpdesk…</div>
   )
+  if (showQaView) return <AufaQueueView />
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
@@ -155,6 +169,14 @@ export default function HelpdeskPanel() {
                     {t.opType && (
                       <span className="text-[10px] font-semibold bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 px-2 py-0.5 rounded-full">{t.opType}</span>
                     )}
+                    {t.qaVerdict === 'pass' && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        <CheckCircle2 size={9} /> PASS{t.pushedToQueueAt ? ` → ${t.assigneeName}` : ' (menunggu assignee)'}
+                      </span>
+                    )}
+                    {!t.assigneeOpUserId && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-800">[UNASSIGNED]</span>
+                    )}
                   </div>
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <a href={`${opUrl}/work_packages/${t.opWpId}`} target="_blank" rel="noopener"
@@ -163,7 +185,10 @@ export default function HelpdeskPanel() {
                     </a>
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 leading-snug">{t.subject}</p>
                   </div>
-                  <p className="text-[11px] text-gray-400 mt-1">dari: <strong className="text-gray-600 dark:text-gray-300">{t.authorName ?? '—'}</strong></p>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    dari: <strong className="text-gray-600 dark:text-gray-300">{t.authorName ?? '—'}</strong>
+                    {' · '}assignee: <strong className="text-gray-600 dark:text-gray-300">{t.assigneeName ?? '(belum ada)'}</strong>
+                  </p>
 
                   {t.classify?.reasoning && (
                     <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 italic">"{t.classify.reasoning}"</p>
