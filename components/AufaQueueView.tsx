@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ClipboardCheck, Info, ExternalLink, Copy, CheckCircle2, RefreshCw, Lock } from 'lucide-react'
+import { ClipboardCheck, Info, ExternalLink, Copy, CheckCircle2, RefreshCw, Lock, MessageCircle, Send } from 'lucide-react'
 
 // The shared Helpdesk QA queue (PRD §16.2 build A). Opened to the whole team
 // 2026-07-21 (Rian: "tampilannya sama semua di semua orang") — everyone sees
@@ -53,6 +53,15 @@ export default function AufaQueueView() {
   // else instead of failing silently after a click).
   const [canAct, setCanAct] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
+  // "Tanya ke pelapor" (2026-07-21, Rian: bisa nanya dari ISL tanpa buka OP?)
+  // Posts a REAL OP comment via the existing /api/op/comment route — under
+  // the CALLER's own OP identity (their session token), not a Tika/system
+  // write. Open to everyone (like the view itself), unlike PASS: asking a
+  // question doesn't change routing/ownership, it's just attributed to
+  // whoever sends it, same as if they'd typed it in OP directly.
+  const [askingId, setAskingId] = useState<string | null>(null)
+  const [askText, setAskText] = useState<Record<string, string>>({})
+  const [sendingAsk, setSendingAsk] = useState<string | null>(null)
 
   function flash(msg: string) {
     setToast(msg)
@@ -114,6 +123,31 @@ export default function AufaQueueView() {
     }
   }
 
+  async function sendAsk(t: QaTicket) {
+    const comment = (askText[t.id] ?? '').trim()
+    if (!comment) return
+    setSendingAsk(t.id)
+    try {
+      const r = await fetch('/api/op/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wpId: t.opWpId, comment }),
+      })
+      const d = await r.json()
+      if (r.ok && d.ok !== false) {
+        flash(`Terkirim ke OP #${t.opWpId}`)
+        setAskText(prev => ({ ...prev, [t.id]: '' }))
+        setAskingId(null)
+      } else {
+        flash(`Gagal kirim: ${d.error ?? 'unknown error'}`)
+      }
+    } catch {
+      flash('Gagal menghubungi OP')
+    } finally {
+      setSendingAsk(null)
+    }
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Memuat antrian QA…</div>
   )
@@ -140,7 +174,7 @@ export default function AufaQueueView() {
       <div className="text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2 flex items-start gap-1.5">
         <Info size={11} className="flex-shrink-0 mt-0.5" />
         <span>
-          Terbuka buat semua orang lihat — bebas bantu cek. <strong>PASS</strong> cuma bisa ditekan Aufa/owner biar keputusannya tetap jelas siapa yang tanggung jawab.
+          Terbuka buat semua orang lihat — bebas bantu cek, atau <strong>tanya ke pelapor</strong> langsung dari sini (terkirim ke OP atas nama akunmu). <strong>PASS</strong> cuma bisa ditekan Aufa/owner biar keputusannya tetap jelas siapa yang tanggung jawab.
           Kalau tidak valid, tolak langsung di OP — tiketnya otomatis hilang dari sini.
         </span>
       </div>
@@ -193,6 +227,29 @@ export default function AufaQueueView() {
                   )}
 
                   {/* Vera's findings panel lands here once build B ships (PRD §16.2) */}
+
+                  <button
+                    onClick={() => setAskingId(prev => prev === t.id ? null : t.id)}
+                    className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition">
+                    <MessageCircle size={10} /> {askingId === t.id ? 'Batal tanya' : 'Tanya ke pelapor'}
+                  </button>
+                  {askingId === t.id && (
+                    <div className="mt-1.5 flex gap-1.5">
+                      <textarea
+                        value={askText[t.id] ?? ''}
+                        onChange={e => setAskText(prev => ({ ...prev, [t.id]: e.target.value }))}
+                        placeholder="Tulis pertanyaan — terkirim sebagai komentar OP atas nama akun kamu sendiri"
+                        rows={2}
+                        className="flex-1 text-[11px] rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-2.5 py-1.5 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                      />
+                      <button
+                        onClick={() => sendAsk(t)}
+                        disabled={sendingAsk === t.id || !(askText[t.id] ?? '').trim()}
+                        className="flex-shrink-0 self-end flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition">
+                        <Send size={10} /> {sendingAsk === t.id ? '…' : 'Kirim'}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex-shrink-0 flex flex-col items-end gap-2">
                   <a href={`${opUrl}/work_packages/${t.opWpId}`} target="_blank" rel="noopener" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"><ExternalLink size={14} /></a>
