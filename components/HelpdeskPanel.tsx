@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Bug, RefreshCw, Info, ExternalLink, Copy, CheckCircle2 } from 'lucide-react'
+import { Bug, RefreshCw, Info, ExternalLink, Copy, CheckCircle2, Eye, X } from 'lucide-react'
 import AufaQueueView from './AufaQueueView'
 
 // Tika — Helpdesk & QA Validation Pipeline, Phase 0 (SHADOW MODE).
@@ -69,9 +69,20 @@ export default function HelpdeskPanel() {
   // (role='qa', not owner) gets her own decision queue instead.
   const [roleChecked, setRoleChecked] = useState(false)
   const [showQaView, setShowQaView] = useState(false)
+  const [isOwner, setIsOwner] = useState(false)
+  // Owner-only "preview as Aufa" toggle (2026-07-21, Rian's request) — rather
+  // than fabricate a second fake ISL account/OP token just to see her UI, the
+  // owner already passes isQaOrOwner() on the backend, so this just swaps
+  // which component renders. Genuinely functional, not a mockup: PASS-ing a
+  // real ticket through this view actually works — a real second-plan path
+  // if Aufa is ever unavailable, not just a screenshot preview.
+  const [previewAsQa, setPreviewAsQa] = useState(false)
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(d => setShowQaView(!d.isOwner && !!d.isQa)).catch(() => {}).finally(() => setRoleChecked(true))
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      setShowQaView(!d.isOwner && !!d.isQa)
+      setIsOwner(!!d.isOwner)
+    }).catch(() => {}).finally(() => setRoleChecked(true))
   }, [])
 
   function flash(msg: string) {
@@ -115,6 +126,17 @@ export default function HelpdeskPanel() {
     <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Memuat Helpdesk…</div>
   )
   if (showQaView) return <AufaQueueView />
+  if (previewAsQa) return (
+    <div>
+      <div className="max-w-3xl mx-auto px-4 pt-4">
+        <button onClick={() => setPreviewAsQa(false)}
+          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+          <X size={12} /> Keluar dari preview — kembali ke tampilan owner
+        </button>
+      </div>
+      <AufaQueueView />
+    </div>
+  )
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
@@ -127,12 +149,22 @@ export default function HelpdeskPanel() {
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">Phase 0: baca &amp; analisa tiket Inquiries (query OP #112). Tidak menulis apa pun ke OP.</p>
         </div>
-        <button
-          onClick={pollNow}
-          disabled={polling}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition">
-          <RefreshCw size={12} className={polling ? 'animate-spin' : ''} /> {polling ? 'Scanning…' : 'Poll now'}
-        </button>
+        <div className="flex gap-2">
+          {isOwner && (
+            <button
+              onClick={() => setPreviewAsQa(true)}
+              title="Lihat & pakai menu QA persis seperti Aufa — kalau dia berhalangan, ini second-plan-nya"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/30 transition">
+              <Eye size={12} /> Preview tampilan Aufa
+            </button>
+          )}
+          <button
+            onClick={pollNow}
+            disabled={polling}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition">
+            <RefreshCw size={12} className={polling ? 'animate-spin' : ''} /> {polling ? 'Scanning…' : 'Poll now'}
+          </button>
+        </div>
       </div>
 
       {/* Info notice */}
