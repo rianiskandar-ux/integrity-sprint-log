@@ -9,7 +9,7 @@
  * are derived state, safe to drop and rebuild from OP at any time.
  */
 import { db, helpdeskTickets, ticketAnalyses, ticketLinks, userSettings, users, sessions } from './db'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { decrypt } from './crypto'
 import { getOpBaseUrl } from './user-config'
 import { callLocalLLM } from './local-llm'
@@ -17,6 +17,26 @@ import { upsertEmbedding, semanticSearch } from './embeddings'
 import { OWNER_UID, isOwnerUid } from './auth'
 import { fetchInquiries, type OpInquiryElement } from './op-inquiries'
 import crypto from 'crypto'
+
+// First ISL->Launcher call this session (every other cross-app call has gone
+// the other direction). ISL runs in Docker, Launcher runs on the Windows host
+// as an NSSM service — host.docker.internal is the same escape hatch already
+// used for Ollama (lib/local-llm.ts).
+const LAUNCHER_URL = process.env.LAUNCHER_URL || 'http://host.docker.internal:9000'
+
+async function sendViaLauncherRelay(to: string, subject: string, html: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${LAUNCHER_URL}/api/nara/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY ?? '' },
+      body: JSON.stringify({ to, subject, html }),
+      signal: AbortSignal.timeout(20000),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
 
 // ── QA routing (PRD §16.2 build A) ──────────────────────────────────────────
 // Shared by both POST /api/helpdesk/qa/pass (Aufa's immediate action) and
@@ -61,6 +81,57 @@ export async function routeToPushQueueIfReady(ticket: HelpdeskTicketRow): Promis
 
   await db.update(helpdeskTickets).set({ pushedToQueueAt: new Date() }).where(eq(helpdeskTickets.id, ticket.id))
   return true
+}
+
+// ── Aufa email notification (2026-07-21, Rian's request) ───────────────────
+// Proactive nudge on top of the passive AufaQueueView — she shouldn't have to
+// remember to check ISL. Originally tried the owner's connected Gmail
+// (lib/google-auth sendEmail) — live-tested and found Gmail API is disabled
+// on that OAuth project (403 accessNotConfigured), so this instead relays
+// through Launcher's /api/nara/send-email, which reuses the SAME Brevo SMTP
+// account Nara's own dispatch already sends through successfully every
+// weekday (NARA_SMTP_* env, confirmed working all session) — proven
+// infrastructure instead of a fix-pending OAuth path. No-ops entirely until
+// someone has users.role='qa' with a real email on file — safe to call on
+// every poll.
+export async function notifyQaIfPending(): Promise<{ notified: boolean; count: number }> {
+  const qaUser = (await db.select().from(users).where(eq(users.role, 'qa')).limit(1))[0]
+  if (!qaUser?.email || qaUser.email.endsWith('@local')) return { notified: false, count: 0 } // op-login's placeholder shape when OP had no real email
+
+  const candidates = await db.select().from(helpdeskTickets)
+    .where(and(isNull(helpdeskTickets.qaVerdict), isNull(helpdeskTickets.qaNotifiedAt)))
+  if (!candidates.length) return { notified: false, count: 0 }
+
+  const ids = candidates.map(t => t.id)
+  const classifications = await db.select().from(ticketAnalyses).where(and(inArray(ticketAnalyses.ticketId, ids), eq(ticketAnalyses.kind, 'classify')))
+  const bugTickets = candidates.filter(t =>
+    classifications.some(a => a.ticketId === t.id && (a.result as { kind?: string })?.kind === 'bug'),
+  )
+  if (!bugTickets.length) return { notified: false, count: 0 }
+
+  const base = getOpBaseUrl() || process.env.OP_BASE_URL || 'https://tokek.integrity-asia.com'
+  const rows = bugTickets.map(t =>
+    `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee"><a href="${base}/work_packages/${t.opWpId}">#${t.opWpId}</a></td>` +
+    `<td style="padding:6px 10px;border-bottom:1px solid #eee">${t.subject}</td></tr>`,
+  ).join('')
+  const html = `
+<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:16px;margin-bottom:16px">
+  <strong style="color:#92400e">🎫 ${bugTickets.length} tiket bug baru menunggu QA</strong>
+</div>
+<table style="width:100%;border-collapse:collapse">${rows}</table>
+<p style="margin-top:20px;color:#6b7280">Buka menu <strong>Helpdesk</strong> di ISL untuk lihat temuan Tika (klasifikasi, kelengkapan, kemungkinan duplikat) dan tekan PASS kalau valid — tolak langsung di OP kalau tidak.</p>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
+<p style="color:#9ca3af;font-size:12px">🤖 Auto-sent by Tika · ISL Helpdesk · ${new Date().toLocaleString('id-ID')}</p>
+</body></html>`
+
+  const ok = await sendViaLauncherRelay(qaUser.email, `[ISL Helpdesk] ${bugTickets.length} tiket bug menunggu QA`, html)
+  if (!ok) return { notified: false, count: 0 } // stays un-notified, retried next poll — never silently drops the alert
+
+  for (const t of bugTickets) {
+    await db.update(helpdeskTickets).set({ qaNotifiedAt: new Date() }).where(eq(helpdeskTickets.id, t.id))
+  }
+  return { notified: true, count: bugTickets.length }
 }
 
 // Dedup: cosine distance below this = suspected duplicate (PRD §6.2 initial threshold)

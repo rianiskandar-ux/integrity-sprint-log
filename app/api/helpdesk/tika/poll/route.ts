@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { pollInquiries } from '@/lib/helpdesk'
+import { pollInquiries, notifyQaIfPending } from '@/lib/helpdesk'
 import { getRequestContext } from '@/lib/request-auth'
 import { isOwnerUid } from '@/lib/auth'
 
@@ -28,7 +28,11 @@ export async function POST(req: Request) {
 
   try {
     const result = await pollInquiries()
-    return NextResponse.json({ ok: true, ...result })
+    // Best-effort — a failed/skipped notify (e.g. Aufa not onboarded yet, or
+    // Gmail token expired) must never fail the poll itself; un-notified
+    // tickets just get retried on the next poll (qaNotifiedAt stays null).
+    const notify = await notifyQaIfPending().catch(() => ({ notified: false, count: 0 }))
+    return NextResponse.json({ ok: true, ...result, qaNotified: notify.count })
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e).slice(0, 300) }, { status: 500 })
   }

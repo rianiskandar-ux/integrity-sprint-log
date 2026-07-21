@@ -1,0 +1,1 @@
+ALTER TABLE "helpdesk_tickets" ADD COLUMN "qa_notified_at" timestamp;

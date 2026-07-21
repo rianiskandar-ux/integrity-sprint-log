@@ -353,6 +353,9 @@ export const helpdeskTickets = pgTable('helpdesk_tickets', {
   // explicit correction: this must NOT fall into his own queue as a default;
   // it waits in the Helpdesk view until Tika's next poll sees an assignee).
   pushedToQueueAt:  timestamp('pushed_to_queue_at'),
+  // Email-notify Aufa exactly once per ticket (added 2026-07-21) — set the
+  // moment it's included in a notification email, so re-polls never re-send.
+  qaNotifiedAt:     timestamp('qa_notified_at'),
   createdAt:        timestamp('created_at').defaultNow().notNull(),
   updatedAt:        timestamp('updated_at').defaultNow().notNull(),
 }, (t) => [
