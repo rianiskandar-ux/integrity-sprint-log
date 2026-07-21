@@ -1,14 +1,20 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ClipboardCheck, Info, ExternalLink, Copy, CheckCircle2 } from 'lucide-react'
+import { ClipboardCheck, Info, ExternalLink, Copy, CheckCircle2, RefreshCw, Lock } from 'lucide-react'
 
-// Aufa's QA decision queue (PRD §16.2 build A). She may use Vera's findings
-// (once build B ships) OR test herself locally with her own tools — ISL has
-// no visibility into her process and needs none. Her only action here is
-// PASS; REJECT happens directly in OP (status change) — no button for it,
-// per the PRD's deliberate design (Inquiries scope = open tickets only, so
-// a rejected ticket just drops out of intake on the next Tika poll).
+// The shared Helpdesk QA queue (PRD §16.2 build A). Opened to the whole team
+// 2026-07-21 (Rian: "tampilannya sama semua di semua orang") — everyone sees
+// the same tickets + Tika's findings, full transparency instead of one
+// designated verifier working in a silo. The DECISION stays concentrated
+// though: only Aufa (role='qa') or the owner can actually click PASS — for
+// everyone else it's visible but disabled, so the process is legible without
+// diffusing who's accountable for it. Whoever can act may use Vera's findings
+// (once build B ships) OR test themselves locally — ISL has no visibility
+// into that process and needs none. REJECT happens directly in OP (status
+// change) — no button for it, per the PRD's deliberate design (Inquiries
+// scope = open tickets only, so a rejected ticket just drops out of intake
+// on the next Tika poll).
 
 interface TicketAnalysis {
   kind?: string
@@ -39,8 +45,14 @@ export default function AufaQueueView() {
   const [tickets, setTickets] = useState<QaTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [passing, setPassing] = useState<string | null>(null)
+  const [polling, setPolling] = useState(false)
   const [opUrl, setOpUrl] = useState('https://tokek.integrity-asia.com')
   const [toast, setToast] = useState<string | null>(null)
+  // canAct = isOwner || role='qa' (backend already enforces this on POST
+  // /qa/pass — this is purely so the button renders disabled for everyone
+  // else instead of failing silently after a click).
+  const [canAct, setCanAct] = useState(false)
+  const [isOwner, setIsOwner] = useState(false)
 
   function flash(msg: string) {
     setToast(msg)
@@ -57,10 +69,29 @@ export default function AufaQueueView() {
 
   useEffect(() => {
     fetch('/api/op/cache').then(r => r.json()).then(d => { if (d._opUrl) setOpUrl(d._opUrl) }).catch(() => {})
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      setIsOwner(!!d.isOwner)
+      setCanAct(!!d.isOwner || !!d.isQa)
+    }).catch(() => {})
     load()
   }, [load])
 
+  async function pollNow() {
+    setPolling(true)
+    try {
+      const r = await fetch('/api/helpdesk/tika/poll', { method: 'POST' })
+      const d = await r.json()
+      flash(d.ok ? `Scan selesai: ${d.scanned} tiket, ${d.analyzed} dianalisa` : `Gagal: ${d.error ?? 'unknown error'}`)
+      load()
+    } catch {
+      flash('Gagal menghubungi Tika')
+    } finally {
+      setPolling(false)
+    }
+  }
+
   async function pass(t: QaTicket) {
+    if (!canAct) return
     if (!confirm(`PASS tiket #${t.opWpId}?\n\n${t.assigneeName ? `Akan masuk ke Push Queue milik ${t.assigneeName}.` : 'Belum ada assignee di OP — akan menunggu di Helpdesk sampai di-assign.'}`)) return
     setPassing(t.id)
     try {
@@ -89,16 +120,29 @@ export default function AufaQueueView() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
-      <div>
-        <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-          <ClipboardCheck size={16} /> Helpdesk — Antrian QA
-        </h2>
-        <p className="text-xs text-gray-400 mt-0.5">Tiket bug yang perlu diverifikasi sebelum masuk ke developer.</p>
+      <div className="flex items-start justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <ClipboardCheck size={16} /> Helpdesk — Antrian QA
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">Tiket bug yang perlu diverifikasi sebelum masuk ke developer.</p>
+        </div>
+        {isOwner && (
+          <button
+            onClick={pollNow}
+            disabled={polling}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition">
+            <RefreshCw size={12} className={polling ? 'animate-spin' : ''} /> {polling ? 'Scanning…' : 'Poll now'}
+          </button>
+        )}
       </div>
 
       <div className="text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2 flex items-start gap-1.5">
         <Info size={11} className="flex-shrink-0 mt-0.5" />
-        <span>Bebas pakai cara apa pun buat verifikasi (temuan otomatis di bawah, atau cek sendiri). <strong>PASS</strong> kalau valid. Kalau tidak valid, tolak langsung di OP — tiketnya otomatis hilang dari sini.</span>
+        <span>
+          Terbuka buat semua orang lihat — bebas bantu cek. <strong>PASS</strong> cuma bisa ditekan Aufa/owner biar keputusannya tetap jelas siapa yang tanggung jawab.
+          Kalau tidak valid, tolak langsung di OP — tiketnya otomatis hilang dari sini.
+        </span>
       </div>
 
       {tickets.length === 0 ? (
@@ -154,9 +198,14 @@ export default function AufaQueueView() {
                   <a href={`${opUrl}/work_packages/${t.opWpId}`} target="_blank" rel="noopener" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"><ExternalLink size={14} /></a>
                   <button
                     onClick={() => pass(t)}
-                    disabled={passing === t.id}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition">
-                    <CheckCircle2 size={12} /> {passing === t.id ? 'Menyimpan…' : 'PASS'}
+                    disabled={!canAct || passing === t.id}
+                    title={canAct ? undefined : 'Hanya Aufa atau owner yang bisa PASS'}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition ${
+                      canAct
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    }`}>
+                    {canAct ? <CheckCircle2 size={12} /> : <Lock size={11} />} {passing === t.id ? 'Menyimpan…' : 'PASS'}
                   </button>
                 </div>
               </div>

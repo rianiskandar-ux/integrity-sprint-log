@@ -2,18 +2,19 @@ import { NextResponse } from 'next/server'
 import { db, helpdeskTickets, ticketAnalyses, ticketLinks } from '@/lib/db'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { getRequestContext } from '@/lib/request-auth'
-import { isQaOrOwner } from '@/lib/helpdesk'
 
 export const runtime = 'nodejs'
 
-// GET /api/helpdesk/qa/tickets — Aufa's QA queue (PRD §16.2 build A).
-// Scope: tickets Tika classified as 'bug' that don't have a QA verdict yet.
-// Gated to owner or role='qa' (see lib/helpdesk.ts's isQaOrOwner) — this is
-// deliberately narrower than /api/helpdesk/tickets (Rian's full shadow view).
+// GET /api/helpdesk/qa/tickets — the QA queue (PRD §16.2 build A, opened to
+// everyone 2026-07-21 per Rian: full transparency for the whole team, not
+// just the designated verifier — "mungkin aja semua orang mau bantu/make
+// sure". Any logged-in user can SEE this; only POST /qa/pass (the actual
+// decision) stays gated to isQaOrOwner. Scope: tickets Tika classified as
+// 'bug' with no QA verdict yet.
 export async function GET() {
   const ctx = await getRequestContext()
-  if (process.env.ISL_MULTIUSER === '1' && !(await isQaOrOwner(ctx?.uid))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (process.env.ISL_MULTIUSER === '1' && !ctx) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const tickets = await db.select().from(helpdeskTickets)

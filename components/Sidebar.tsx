@@ -55,9 +55,6 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
   // it was linked here unconditionally, so a teammate landed on a page where
   // nothing loaded and nothing saved. Hide it for non-owners.
   const [isOwner, setIsOwner] = useState(true)
-  // role='qa' (Aufa) also gets the Helpdesk nav item — her own queue view,
-  // not the owner's full shadow view (PRD §16.2 build A).
-  const [isQa, setIsQa] = useState(false)
 
   useEffect(() => {
     const c = loadAppConfig()
@@ -65,7 +62,6 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
     setAppLogo(c.appLogo)
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       setIsOwner(!d.multiUser || !!d.isOwner)
-      setIsQa(!!d.isQa)
     }).catch(() => {})
   }, [])
 
@@ -225,11 +221,11 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
           <NavItem id="pushqueue" icon={<Send size={14} />}             label={t('nav.pushqueue')} shortcut="Q" color="text-amber-400"  indent={1} badge={queueCount} />
           <NavItem id="scorecard" icon={<BarChart3 size={14} />}        label="Scorecard"          shortcut="R" color="text-cyan-400"   indent={1} />
           <NavItem id="docs"      icon={<FileText size={14} />}        label="Dokumen"            shortcut="D" color="text-fuchsia-400" indent={1} />
-          {/* Owner sees the full shadow view; role='qa' (Aufa) sees her own
-              decision queue — same nav slot, different component (AppShell) */}
-          {(isOwner || isQa) && (
-            <NavItem id="helpdesk" icon={<Bug size={14} />}             label={isOwner ? 'Helpdesk (Tika)' : 'Helpdesk — QA'} shortcut="T" color="text-red-400" indent={1} />
-          )}
+          {/* Open to everyone 2026-07-21 (Rian: "tampilannya sama semua di
+              semua orang") — full transparency on what's pending QA; only
+              the PASS action itself stays gated (owner/role='qa', enforced
+              both in AufaQueueView's button state and the API route). */}
+          <NavItem id="helpdesk" icon={<Bug size={14} />}             label="Helpdesk"    shortcut="T" color="text-red-400" indent={1} />
 
           {/* Log expandable group */}
           <div>
