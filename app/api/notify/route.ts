@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { sendEmail, loadProfile } from '@/lib/google-auth'
+import { loadProfile } from '@/lib/google-auth'
+import { sendViaLauncherRelay } from '@/lib/mailer'
 import { getRequestContext } from '@/lib/request-auth'
 import { OWNER_UID } from '@/lib/auth'
 
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
 <p style="color:#9ca3af;font-size:12px">🤖 Auto-sent by ISL · ${new Date().toLocaleString('id-ID')}</p>
 </body></html>`
 
-      const ok = await sendEmail(uid, to, `[ISL] ⚠️ Validasi status: ${title.slice(0, 50)}`, html)
+      const ok = await sendViaLauncherRelay(to, `[ISL] ⚠️ Validasi status: ${title.slice(0, 50)}`, html)
       return NextResponse.json({ ok, to })
     }
 
