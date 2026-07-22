@@ -34,6 +34,10 @@ export async function GET() {
       ...t,
       classify: analyses.find(a => a.ticketId === t.id && a.kind === 'classify')?.result as { kind?: string; reasoning?: string } | undefined ?? null,
       clarity:  analyses.find(a => a.ticketId === t.id && a.kind === 'clarity')?.result as { hasReproSteps?: boolean; hasExpectedActual?: boolean; missing?: string[] } | undefined ?? null,
+      // Tika's suggested clarifying question (Phase 1) — pre-fills the "Tanya
+      // ke pelapor" box for a human to review/edit/send. Latest one wins
+      // (analyses is ordered createdAt desc). null when nothing was missing.
+      draft:    (analyses.find(a => a.ticketId === t.id && a.kind === 'draft')?.result as { text?: string } | undefined)?.text ?? null,
       links:    links.filter(l => l.ticketId === t.id),
       // Vera findings land here once build B exists (validation_runs) — absent for now.
       vera: null as null,

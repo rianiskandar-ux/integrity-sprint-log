@@ -16,31 +16,22 @@ import { callLocalLLM } from './local-llm'
 import { upsertEmbedding, semanticSearch } from './embeddings'
 import { OWNER_UID, isOwnerUid } from './auth'
 import { fetchInquiries, type OpInquiryElement } from './op-inquiries'
+import { sendViaLauncherRelay } from './mailer'
+import { gatherTicketContext } from './ticket-context'
 import crypto from 'crypto'
 
 // OP status ids that mean "rejected" (lib/op-cache.ts's OP_STATUS_MAP — kept
 // as a local literal here rather than importing that map, since op-cache.ts
 // is oriented around CachedWorkPackage/ISL task status, a different concern).
-const OP_REJECTED_STATUS_IDS = new Set([14, 6])
+export const OP_REJECTED_STATUS_IDS = new Set([14, 6])
 
-// First ISL->Launcher call this session (every other cross-app call has gone
-// the other direction). ISL runs in Docker, Launcher runs on the Windows host
-// as an NSSM service — host.docker.internal is the same escape hatch already
-// used for Ollama (lib/local-llm.ts).
-const LAUNCHER_URL = process.env.LAUNCHER_URL || 'http://host.docker.internal:9000'
-
-async function sendViaLauncherRelay(to: string, subject: string, html: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${LAUNCHER_URL}/api/nara/send-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY ?? '' },
-      body: JSON.stringify({ to, subject, html }),
-      signal: AbortSignal.timeout(20000),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
+/** The correction-loop's core business rule, isolated from DB/network I/O so
+ *  it's directly unit-testable: only a ticket Tika classified 'bug' that ended
+ *  up Rejected in OP counts as a real misclassification worth recording.
+ *  Anything else (resolved normally, or Tika correctly said 'request'/'question'
+ *  on something that got rejected) is not a Tika mistake. */
+export function shouldRecordCorrection(tikaKind: string | undefined, opStatusId: number | null): boolean {
+  return opStatusId !== null && OP_REJECTED_STATUS_IDS.has(opStatusId) && tikaKind === 'bug'
 }
 
 // ── QA routing (PRD §16.2 build A) ──────────────────────────────────────────
@@ -171,7 +162,7 @@ async function fetchWpStatusId(base: string, auth: string, wpId: number): Promis
  *  one as 'bug' and it turns out the final status is Rejected, that's a real
  *  misclassification signal, recorded for future retrieval. Everything else
  *  (resolved normally, etc.) is just marked checked so it's never re-queried. */
-async function detectRejectedOutcomes(base: string, auth: string, currentOpWpIds: number[]): Promise<number> {
+export async function detectRejectedOutcomes(base: string, auth: string, currentOpWpIds: number[]): Promise<number> {
   let corrections = 0
   const dropped = await db.select().from(helpdeskTickets).where(
     and(
@@ -186,25 +177,23 @@ async function detectRejectedOutcomes(base: string, auth: string, currentOpWpIds
       const statusId = await fetchWpStatusId(base, auth, ticket.opWpId)
       if (statusId === null) continue // OP unreachable for this one — retry next poll, don't mark checked
 
-      if (OP_REJECTED_STATUS_IDS.has(statusId)) {
-        const classifyRow = (await db.select().from(ticketAnalyses)
-          .where(and(eq(ticketAnalyses.ticketId, ticket.id), eq(ticketAnalyses.kind, 'classify')))
-          .limit(1))[0]
-        const kind = (classifyRow?.result as { kind?: string } | undefined)?.kind
-        if (kind === 'bug') {
-          const description = '' // not stored on helpdeskTickets itself — subject alone is still useful signal for retrieval
-          await db.insert(ticketCorrections).values({
-            id: `tc-${ticket.opWpId}-${Date.now()}`,
-            ticketId: ticket.id,
-            opWpId: ticket.opWpId,
-            subject: ticket.subject,
-            description,
-            tikaClassification: kind,
-            opOutcome: 'rejected',
-          })
-          await upsertEmbedding({ sourceType: 'ticket_correction', sourceId: `${ticket.opWpId}-${Date.now()}`, title: ticket.subject, chunk: description })
-          corrections++
-        }
+      const classifyRow = (await db.select().from(ticketAnalyses)
+        .where(and(eq(ticketAnalyses.ticketId, ticket.id), eq(ticketAnalyses.kind, 'classify')))
+        .limit(1))[0]
+      const kind = (classifyRow?.result as { kind?: string } | undefined)?.kind
+      if (shouldRecordCorrection(kind, statusId)) {
+        const description = '' // not stored on helpdeskTickets itself — subject alone is still useful signal for retrieval
+        await db.insert(ticketCorrections).values({
+          id: `tc-${ticket.opWpId}-${Date.now()}`,
+          ticketId: ticket.id,
+          opWpId: ticket.opWpId,
+          subject: ticket.subject,
+          description,
+          tikaClassification: kind!,
+          opOutcome: 'rejected',
+        })
+        await upsertEmbedding({ sourceType: 'ticket_correction', sourceId: `${ticket.opWpId}-${Date.now()}`, title: ticket.subject, chunk: description })
+        corrections++
       }
       await db.update(helpdeskTickets).set({ outcomeCheckedAt: new Date() }).where(eq(helpdeskTickets.id, ticket.id))
     } catch { /* best-effort per ticket — skip, retried next poll since outcomeCheckedAt stays null */ }
@@ -251,11 +240,18 @@ const CLARITY_FORMAT = {
   required: ['hasReproSteps', 'hasExpectedActual', 'missing'],
 } as const
 
-function classifyPrompt(subject: string, description: string, correctionNote: string): string {
+/** Formats gathered context (OP relations, linked Sheets/Docs) as a prompt
+ *  block, or '' when there's nothing. Kept separate so both classify and
+ *  clarity prompts include the same real-context hint. */
+function contextBlock(context: string): string {
+  return context ? `\n\nKonteks nyata terkait tiket ini (baca ini, jangan berasumsi):\n${context}` : ''
+}
+
+function classifyPrompt(subject: string, description: string, correctionNote: string, context: string): string {
   return `Kamu adalah Tika, asisten triase tiket untuk tim dev/QA. Baca tiket ini dan klasifikasikan.
 
 Judul: ${subject}
-Deskripsi: ${description || '(tidak ada deskripsi)'}
+Deskripsi: ${description || '(tidak ada deskripsi)'}${contextBlock(context)}
 
 Klasifikasikan "kind":
 - "bug" = laporan sesuatu yang rusak/tidak berfungsi
@@ -266,16 +262,38 @@ Klasifikasikan "kind":
 Reasoning 1 kalimat singkat, Bahasa Indonesia.${correctionNote}`
 }
 
-function clarityPrompt(subject: string, description: string): string {
+function clarityPrompt(subject: string, description: string, context: string): string {
   return `Kamu adalah Tika. Baca laporan ini dan cek kelengkapannya sebagai laporan bug.
 
 Judul: ${subject}
-Deskripsi: ${description || '(tidak ada deskripsi)'}
+Deskripsi: ${description || '(tidak ada deskripsi)'}${contextBlock(context)}
 
 Tentukan:
 - hasReproSteps: apakah ada langkah-langkah reproduksi yang jelas?
 - hasExpectedActual: apakah ada penjelasan "harusnya apa" vs "yang terjadi apa"?
-- missing: daftar singkat (Bahasa Indonesia) apa yang kurang — array kosong kalau sudah lengkap.`
+- missing: daftar singkat (Bahasa Indonesia) apa yang kurang — array kosong kalau sudah lengkap.
+Pertimbangkan konteks nyata di atas — kalau info sebenarnya sudah ada di file/tiket terkait, jangan anggap kurang.`
+}
+
+// ── Draft reply (Phase 1, 2026-07-21) — the "active-ask" ────────────────────
+// When a bug ticket is missing info, Tika DRAFTS a question to the reporter.
+// It is NOT auto-posted (shadow mode holds): the draft is stored and surfaced
+// pre-filled into the existing "Tanya ke pelapor" box in AufaQueueView, where
+// Aufa/owner review, edit, and send it manually under their own OP identity.
+// Rian confirmed this exact flow ("sudah benar seperti itu"): Tika proposes,
+// a human decides and sends. Skipped entirely when nothing's missing.
+function draftPrompt(subject: string, description: string, missing: string[], context: string): string {
+  return `Kamu adalah Tika, asisten triase helpdesk. Tiket bug ini kurang informasi. Tulis SATU pesan singkat, sopan, Bahasa Indonesia, untuk ditanyakan ke PELAPOR tiket agar melengkapi info yang kurang.
+
+Judul: ${subject}
+Deskripsi: ${description || '(tidak ada deskripsi)'}${contextBlock(context)}
+
+Info yang kurang: ${missing.join(', ')}
+
+Aturan:
+- Langsung isi pesannya saja, tanpa pembuka "Berikut draft" atau penutup tanda tangan.
+- Tanyakan hanya yang benar-benar kurang; kalau konteks di atas sudah menjawab sebagian, jangan tanyakan itu lagi.
+- Maksimal 3 kalimat, ramah dan to-the-point.`
 }
 
 export interface PollResult {
@@ -283,6 +301,143 @@ export interface PollResult {
   analyzed: number
   dupSuspects: number
   errors: string[]
+}
+
+// ── pollInquiries, decomposed (2026-07-21) ──────────────────────────────────
+// Was one function doing auth+fetch+mirror+route+classify+clarity+dedup all
+// in one pass — split into named steps so each concern is independently
+// readable/testable. Behavior is unchanged; this is a pure decomposition.
+
+/** Resolves the owner's OP token/base URL into a ready-to-use auth header.
+ *  Returns null when there's no token yet (nothing to poll with). */
+async function resolveOpAuth(): Promise<{ base: string; auth: string } | null> {
+  const row = (await db.select().from(userSettings).where(eq(userSettings.userId, OWNER_UID)).limit(1))[0]
+  const token = row?.opApiToken ? decrypt(row.opApiToken) : ''
+  if (!token) return null
+  const base = getOpBaseUrl() || process.env.OP_BASE_URL || 'https://tokek.integrity-asia.com'
+  const auth = 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
+  return { base, auth }
+}
+
+type MirroredFields = Pick<HelpdeskTicketRow,
+  'subject' | 'opStatus' | 'opType' | 'opProjectId' | 'authorOpUserId' | 'authorName' |
+  'assigneeOpUserId' | 'assigneeName' | 'lastOpActivityAt'>
+
+function toMirroredFields(wp: OpInquiryElement): MirroredFields {
+  return {
+    subject: wp.subject,
+    opStatus: wp.status || null,
+    opType: wp.type || null,
+    opProjectId: wp.projectId,
+    authorOpUserId: wp.createdById,
+    authorName: wp.createdBy,
+    // "Unassigned" in OP maps to assigneeId=null (fetchInquiries only sets
+    // the display string to 'Unassigned', not the id) — keep both null.
+    assigneeOpUserId: wp.assigneeId,
+    assigneeName: wp.assignee === 'Unassigned' ? null : wp.assignee,
+    lastOpActivityAt: wp.updatedAt ? new Date(wp.updatedAt) : null,
+  }
+}
+
+/** Upserts one OP ticket's mirrored fields into helpdesk_tickets and runs
+ *  retroactive PASS routing (an already-PASSed ticket may only just now have
+ *  gotten an OP assignee, or that assignee only just created their ISL
+ *  account — checked on every poll, not just on content change). Returns
+ *  what the caller needs to decide whether re-analysis is required. */
+async function mirrorTicket(wp: OpInquiryElement): Promise<{ ticketId: string; hash: string; contentChanged: boolean }> {
+  const hash = computeContentHash(wp)
+  const ticketId = `hdt-${wp.id}`
+  const existing = (await db.select().from(helpdeskTickets).where(eq(helpdeskTickets.opWpId, wp.id)).limit(1))[0]
+  const mirrored = toMirroredFields(wp)
+
+  if (existing) {
+    await db.update(helpdeskTickets).set({ ...mirrored, updatedAt: new Date() }).where(eq(helpdeskTickets.id, ticketId))
+    try { await routeToPushQueueIfReady({ ...existing, ...mirrored }) } catch { /* best-effort, retried next poll */ }
+  } else {
+    await db.insert(helpdeskTickets).values({ id: ticketId, opWpId: wp.id, ...mirrored })
+  }
+
+  return { ticketId, hash, contentChanged: existing?.contentHash !== hash }
+}
+
+/** Classifies + checks clarity + drafts a clarifying question + embeds/dedups
+ *  one ticket, persisting the ticket_analyses rows and any suspected-duplicate
+ *  ticket_links. Only called when mirrorTicket() found real content change.
+ *  base/auth are for gathering OP-relation + linked-file context (accuracy). */
+async function analyzeAndDedupeTicket(wp: OpInquiryElement, ticketId: string, hash: string, base: string, auth: string): Promise<{ dupCount: number }> {
+  const subject = wp.subject
+  const description = wp.description
+
+  // Real context first (OP relations + linked Sheets/Docs) — best-effort, an
+  // empty string when nothing found / Google unavailable, so classify/clarity
+  // still run normally on the ticket text alone.
+  let context = ''
+  try { context = await gatherTicketContext({ id: wp.id, description }, base, auth) } catch { /* degrade to text-only */ }
+
+  const correctionNote = await correctionContext(subject, description)
+  const [classifyRaw, clarityRaw] = await Promise.all([
+    callLocalLLM(classifyPrompt(subject, description, correctionNote, context), CLASSIFY_FORMAT),
+    callLocalLLM(clarityPrompt(subject, description, context), CLARITY_FORMAT),
+  ])
+
+  let classifyKind: string | undefined
+  if (classifyRaw) {
+    try {
+      const parsed = JSON.parse(classifyRaw) as { kind?: string }
+      classifyKind = parsed.kind
+      await db.insert(ticketAnalyses).values({
+        id: `ta-${wp.id}-classify-${Date.now()}`, ticketId, kind: 'classify',
+        model: 'ollama', result: parsed,
+      })
+    } catch { /* malformed LLM JSON — skip this analysis row, ticket still tracked */ }
+  }
+  let clarityMissing: string[] = []
+  if (clarityRaw) {
+    try {
+      const parsed = JSON.parse(clarityRaw) as { missing?: string[] }
+      clarityMissing = Array.isArray(parsed.missing) ? parsed.missing : []
+      await db.insert(ticketAnalyses).values({
+        id: `ta-${wp.id}-clarity-${Date.now()}`, ticketId, kind: 'clarity',
+        model: 'ollama', result: parsed,
+      })
+    } catch { /* malformed LLM JSON — skip */ }
+  }
+
+  // Draft a clarifying question (Phase 1) only for bug tickets that are
+  // actually missing info — no point drafting for a complete report or a
+  // request/question. Stored, never auto-posted (human sends from the UI).
+  if (classifyKind === 'bug' && clarityMissing.length > 0) {
+    try {
+      const draftText = await callLocalLLM(draftPrompt(subject, description, clarityMissing, context))
+      if (draftText && draftText.trim()) {
+        await db.insert(ticketAnalyses).values({
+          id: `ta-${wp.id}-draft-${Date.now()}`, ticketId, kind: 'draft',
+          model: 'ollama', result: { text: draftText.trim() },
+        })
+      }
+    } catch { /* draft is a nice-to-have — never block the poll on it */ }
+  }
+
+  // Dedup: embed this ticket, search among other ticket embeddings only.
+  await upsertEmbedding({ sourceType: 'ticket', sourceId: String(wp.id), title: subject, chunk: description })
+  const hits = await semanticSearch(`${subject}\n${description}`, null, 10)
+  const dupHits = hits.filter(h => h.sourceType === 'ticket' && h.sourceId !== String(wp.id) && h.distance <= DUP_SIMILARITY_THRESHOLD)
+  for (const hit of dupHits) {
+    const relatedOpWpId = Number(hit.sourceId)
+    if (!Number.isFinite(relatedOpWpId)) continue
+    await db.insert(ticketLinks).values({
+      id: `tl-${wp.id}-${relatedOpWpId}`, ticketId, relatedOpWpId, similarity: hit.distance, status: 'suspected',
+    }).onConflictDoNothing()
+  }
+  if (dupHits.length > 0) {
+    await db.insert(ticketAnalyses).values({
+      id: `ta-${wp.id}-dedup-${Date.now()}`, ticketId, kind: 'dedup',
+      model: 'ollama+embeddings', result: { suspects: dupHits.map(h => ({ opWpId: h.sourceId, distance: h.distance })) },
+    }).catch(() => {})
+  }
+
+  await db.update(helpdeskTickets).set({ contentHash: hash, pipelineState: dupHits.length > 0 ? 'dup_suspect' : 'triaged' }).where(eq(helpdeskTickets.id, ticketId))
+  return { dupCount: dupHits.length }
 }
 
 /** Shadow-mode poll: fetch Inquiries scope from OP, classify/clarity/dedup new
@@ -293,12 +448,10 @@ export async function pollInquiries(): Promise<PollResult> {
   let analyzed = 0
   let dupSuspects = 0
 
-  const row = (await db.select().from(userSettings).where(eq(userSettings.userId, OWNER_UID)).limit(1))[0]
-  const token = row?.opApiToken ? decrypt(row.opApiToken) : ''
-  const base = getOpBaseUrl() || process.env.OP_BASE_URL || 'https://tokek.integrity-asia.com'
-  if (!token) return { scanned: 0, analyzed: 0, dupSuspects: 0, errors: ['no OP token for owner'] }
+  const opAuth = await resolveOpAuth()
+  if (!opAuth) return { scanned: 0, analyzed: 0, dupSuspects: 0, errors: ['no OP token for owner'] }
+  const { base, auth } = opAuth
 
-  const auth = 'Basic ' + Buffer.from(`apikey:${token}`).toString('base64')
   let wps: OpInquiryElement[]
   try {
     wps = await fetchInquiries(base, auth)
@@ -312,86 +465,11 @@ export async function pollInquiries(): Promise<PollResult> {
 
   for (const wp of wps) {
     try {
-      const hash = computeContentHash(wp)
-      const ticketId = `hdt-${wp.id}`
-      const existing = (await db.select().from(helpdeskTickets).where(eq(helpdeskTickets.opWpId, wp.id)).limit(1))[0]
+      const { ticketId, hash, contentChanged } = await mirrorTicket(wp)
+      if (!contentChanged) continue // PRD §6.1 — re-analyze only on real content change
 
-      const subject = wp.subject
-      const description = wp.description
-
-      const mirrored = {
-        subject,
-        opStatus: wp.status || null,
-        opType: wp.type || null,
-        opProjectId: wp.projectId,
-        authorOpUserId: wp.createdById,
-        authorName: wp.createdBy,
-        // "Unassigned" in OP maps to assigneeId=null (fetchInquiries only sets
-        // the display string to 'Unassigned', not the id) — keep both null.
-        assigneeOpUserId: wp.assigneeId,
-        assigneeName: wp.assignee === 'Unassigned' ? null : wp.assignee,
-        lastOpActivityAt: wp.updatedAt ? new Date(wp.updatedAt) : null,
-      }
-
-      if (existing) {
-        await db.update(helpdeskTickets).set({ ...mirrored, updatedAt: new Date() }).where(eq(helpdeskTickets.id, ticketId))
-      } else {
-        await db.insert(helpdeskTickets).values({ id: ticketId, opWpId: wp.id, ...mirrored })
-      }
-
-      // Retroactive routing: an already-PASSed ticket may only just now have
-      // gotten an OP assignee (or that assignee only just created their ISL
-      // account) — check on every poll, not just on content change below.
-      if (existing) {
-        try { await routeToPushQueueIfReady({ ...existing, ...mirrored }) } catch { /* best-effort, retried next poll */ }
-      }
-
-      // Analyze only on real content change (PRD §6.1) — track OP lockVersion via hash.
-      if (existing?.contentHash === hash) continue
-
-      const correctionNote = await correctionContext(subject, description)
-      const [classifyRaw, clarityRaw] = await Promise.all([
-        callLocalLLM(classifyPrompt(subject, description, correctionNote), CLASSIFY_FORMAT),
-        callLocalLLM(clarityPrompt(subject, description), CLARITY_FORMAT),
-      ])
-
-      if (classifyRaw) {
-        try {
-          await db.insert(ticketAnalyses).values({
-            id: `ta-${wp.id}-classify-${Date.now()}`, ticketId, kind: 'classify',
-            model: 'ollama', result: JSON.parse(classifyRaw),
-          })
-        } catch { /* malformed LLM JSON — skip this analysis row, ticket still tracked */ }
-      }
-      if (clarityRaw) {
-        try {
-          await db.insert(ticketAnalyses).values({
-            id: `ta-${wp.id}-clarity-${Date.now()}`, ticketId, kind: 'clarity',
-            model: 'ollama', result: JSON.parse(clarityRaw),
-          })
-        } catch { /* malformed LLM JSON — skip */ }
-      }
-
-      // Dedup: embed this ticket, search among other ticket embeddings only.
-      await upsertEmbedding({ sourceType: 'ticket', sourceId: String(wp.id), title: subject, chunk: description })
-      const hits = await semanticSearch(`${subject}\n${description}`, null, 10)
-      const dupHits = hits.filter(h => h.sourceType === 'ticket' && h.sourceId !== String(wp.id) && h.distance <= DUP_SIMILARITY_THRESHOLD)
-      for (const hit of dupHits) {
-        const relatedOpWpId = Number(hit.sourceId)
-        if (!Number.isFinite(relatedOpWpId)) continue
-        await db.insert(ticketLinks).values({
-          id: `tl-${wp.id}-${relatedOpWpId}`, ticketId, relatedOpWpId, similarity: hit.distance, status: 'suspected',
-        }).onConflictDoNothing()
-        dupSuspects++
-      }
-      if (dupHits.length > 0) {
-        await db.insert(ticketAnalyses).values({
-          id: `ta-${wp.id}-dedup-${Date.now()}`, ticketId, kind: 'dedup',
-          model: 'ollama+embeddings', result: { suspects: dupHits.map(h => ({ opWpId: h.sourceId, distance: h.distance })) },
-        }).catch(() => {})
-      }
-
-      await db.update(helpdeskTickets).set({ contentHash: hash, pipelineState: dupHits.length > 0 ? 'dup_suspect' : 'triaged' }).where(eq(helpdeskTickets.id, ticketId))
+      const { dupCount } = await analyzeAndDedupeTicket(wp, ticketId, hash, base, auth)
+      dupSuspects += dupCount
       analyzed++
     } catch (e) {
       errors.push(`wp#${wp.id}: ${String(e)}`)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ClipboardCheck, Info, ExternalLink, Copy, CheckCircle2, RefreshCw, Lock, MessageCircle, Send } from 'lucide-react'
+import { ClipboardCheck, Info, ExternalLink, Copy, CheckCircle2, RefreshCw, Lock, MessageCircle, Send, Sparkles } from 'lucide-react'
 
 // The shared Helpdesk QA queue (PRD §16.2 build A). Opened to the whole team
 // 2026-07-21 (Rian: "tampilannya sama semua di semua orang") — everyone sees
@@ -38,6 +38,7 @@ interface QaTicket {
   updatedAt: string
   classify: TicketAnalysis | null
   clarity: TicketAnalysis | null
+  draft: string | null
   links: TicketLink[]
 }
 
@@ -228,11 +229,21 @@ export default function AufaQueueView() {
 
                   {/* Vera's findings panel lands here once build B ships (PRD §16.2) */}
 
-                  <button
-                    onClick={() => setAskingId(prev => prev === t.id ? null : t.id)}
-                    className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition">
-                    <MessageCircle size={10} /> {askingId === t.id ? 'Batal tanya' : 'Tanya ke pelapor'}
-                  </button>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => setAskingId(prev => prev === t.id ? null : t.id)}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition">
+                      <MessageCircle size={10} /> {askingId === t.id ? 'Batal tanya' : 'Tanya ke pelapor'}
+                    </button>
+                    {t.draft && (
+                      <button
+                        onClick={() => { setAskingId(t.id); setAskText(prev => ({ ...prev, [t.id]: t.draft ?? '' })) }}
+                        title="Isi kotak dengan draft pertanyaan dari Tika — bisa diedit sebelum kirim"
+                        className="flex items-center gap-1 text-[10px] font-semibold text-violet-500 hover:text-violet-600 dark:text-violet-400 transition">
+                        <Sparkles size={10} /> Pakai draft Tika
+                      </button>
+                    )}
+                  </div>
                   {askingId === t.id && (
                     <div className="mt-1.5 flex gap-1.5">
                       <textarea
