@@ -42,8 +42,17 @@ if ($needUp) {
 }
 
 # 3. HTTP responsive? (container jalan tapi app hang)
+# Key dibaca dari env (User-env KAFI_API_KEY), BUKAN hardcoded — dulu hardcoded
+# 'kafi-bridge-2026' yang sudah tidak cocok setelah key dirotasi, jadi kalau
+# task ini aktif dia bakal 401 -> kira ISL mati -> restart container tiap 5
+# menit (false-positive). Kalau env kosong, skip cek HTTP (jangan restart buta).
+$healthKey = $env:KAFI_API_KEY
+if ([string]::IsNullOrWhiteSpace($healthKey)) {
+    Log "KAFI_API_KEY tidak ada di env - skip cek HTTP (hindari false-restart)"
+    exit 0
+}
 try {
-    $r = Invoke-WebRequest -Uri "http://localhost:4891/api/internal/health?key=kafi-bridge-2026" -UseBasicParsing -TimeoutSec 15
+    $r = Invoke-WebRequest -Uri "http://localhost:4891/api/internal/health?key=$healthKey" -UseBasicParsing -TimeoutSec 15
     if ($r.StatusCode -ne 200) { throw "HTTP $($r.StatusCode)" }
     # Sehat - tidak perlu log (biar file tidak penuh entry rutin)
 } catch {
