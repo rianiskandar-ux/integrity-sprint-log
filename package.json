@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:import": "npx tsx scripts/migrate-json-to-pg.ts",
-    "context": "npx tsx --env-file=.env.local scripts/gen-context.ts"
+    "context": "npx tsx --env-file=.env.local scripts/gen-context.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
@@ -43,6 +44,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
