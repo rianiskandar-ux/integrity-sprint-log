@@ -94,6 +94,11 @@ services:
       - ISL_TIMER_KEY=${ISL_TIMER_KEY:-}
       # Embedding lokal via Ollama di host (nomic-embed-text, 768 dim)
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Chat model: DAFTAR utama→cadangan (koma). 14b dipakai kalau server-nya
+      # hidup; begitu mati/tidak ada, callLocalLLM otomatis turun ke 3b (~1.4s
+      # fail-fast, bukan hang). Jadi narasi/triage tidak pernah error gara-gara
+      # satu model mati. Override via .env kalau 14b ada di URL berbeda.
+      - OLLAMA_CHAT_MODEL=${OLLAMA_CHAT_MODEL:-qwen2.5:14b,qwen2.5:3b}
       # Inter-service machine key (Launcher <-> ISL cross-app calls, git-capture
       # script, Claude Code hook). No hardcoded fallback here — must come from
       # .env (see .env's own KAFI_API_KEY comment for why this was rotated).
