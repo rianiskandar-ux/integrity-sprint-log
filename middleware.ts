@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { verifyToken, AUTH_COOKIE } from '@/lib/session-token'
 import { USER_COOKIE } from '@/lib/auth'
+import { isSameOriginRequest, MUTATING_METHODS } from '@/lib/csrf'
 
 // /api paths reachable WITHOUT a session — the login/OAuth flow itself, and a
 // keyless health probe. Everything else under /api is gated below so a newly
@@ -14,35 +15,6 @@ import { USER_COOKIE } from '@/lib/auth'
 // gating these keeps the query-param-key convention (internal/*) and per-user
 // capture keys working; the routes themselves still enforce the key value.
 const PUBLIC_API_PREFIXES = ['/api/auth/', '/api/internal/', '/api/kafi/']
-
-// ── CSRF protection (Hardening #4) ──────────────────────────────────────────
-// Cookie-authenticated requests are the CSRF-vulnerable class (the browser
-// auto-attaches cookies cross-site); machine-key (x-kafi-key) requests are
-// not — an attacker page can't read/replay that header, and any cross-origin
-// attempt to set it forces a CORS preflight this app never approves, so the
-// browser blocks it before it's sent. So this check only needs to run for
-// the cookie path, on state-changing methods.
-//
-// Approach: verify the request's Origin (fallback Referer) header's host
-// matches the request's own Host header. This needs no hardcoded origin
-// allowlist — it just proves "this request actually came from a page served
-// by this same host", which is true for any legitimate same-origin fetch()
-// call and false for a cross-site CSRF attempt (forged form/fetch from an
-// attacker's page carries THEIR origin, not this app's). Works unchanged
-// whether accessed via localhost, LAN IP, or a .test hostname.
-const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-
-function isSameOriginRequest(request: NextRequest): boolean {
-  const host = request.headers.get('host')
-  if (!host) return false
-  const candidate = request.headers.get('origin') || request.headers.get('referer')
-  if (!candidate) return false
-  try {
-    return new URL(candidate).host === host
-  } catch {
-    return false
-  }
-}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -69,7 +41,7 @@ export async function middleware(request: NextRequest) {
     if (request.headers.get('x-kafi-key')) return NextResponse.next()
 
     // CSRF: mutating cookie-authenticated requests must be same-origin.
-    if (MUTATING_METHODS.has(request.method) && !isSameOriginRequest(request)) {
+    if (MUTATING_METHODS.has(request.method) && !isSameOriginRequest(request.headers)) {
       return NextResponse.json({ error: 'CSRF check failed — request origin mismatch' }, { status: 403 })
     }
 

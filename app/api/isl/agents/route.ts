@@ -5,6 +5,7 @@ import { eq, and, desc } from 'drizzle-orm'
 import { getTimer } from '@/lib/work-timer'
 import { OWNER_UID, isOwnerUid } from '@/lib/auth'
 import { getRequestContext } from '@/lib/request-auth'
+import { getOllamaUrl } from '@/lib/embeddings'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -54,6 +55,17 @@ function fmtAgo(mins: number): string {
   if (mins < 60) return `${mins} menit lalu`
   const h = Math.floor(mins / 60), m = mins % 60
   return h > 0 ? (m > 0 ? `${h}j ${m}m lalu` : `${h}j lalu`) : `${m}m lalu`
+}
+
+async function isOllamaReachable(): Promise<boolean> {
+  const base = getOllamaUrl()
+  if (!base) return false
+  try {
+    const res = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(3000) })
+    return res.ok
+  } catch {
+    return false
+  }
 }
 
 export async function GET(req: Request) {
@@ -326,6 +338,18 @@ export async function GET(req: Request) {
         status = 'issue'; statusText = 'Issue'
         detail = `${detailBase} — cron kemungkinan mati`
       }
+    }
+
+    // Blind spot the staleness check above can't see: mirrorTicket() bumps
+    // helpdeskTickets.updatedAt on EVERY poll regardless of whether analysis
+    // succeeds, so "poll baru saja" still shows even when Ollama has been
+    // down for days and classify/clarity/dedup have silently failed on every
+    // single ticket since (callLocalLLM just returns null, no error surfaces
+    // anywhere). A live reachability ping is the only way to catch that.
+    const ollamaUp = await isOllamaReachable()
+    if (!ollamaUp && status !== 'issue') {
+      status = 'issue'; statusText = 'Issue'
+      detail = `${detail} — Ollama tidak terjangkau, analisis (classify/clarity/dedup) kemungkinan diam-diam berhenti`
     }
 
     agents.push({
