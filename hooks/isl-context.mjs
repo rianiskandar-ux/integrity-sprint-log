@@ -430,17 +430,50 @@ function isAlreadyProcessed(sessionId) {
   } catch { return false }
 }
 
-function markProcessed(sessionId) {
+// Message count at the time the session was last processed — lets a repeat
+// Stop decide whether the session grew enough to be worth re-recording
+// (fix #1, 2026-07-22: long continuous sessions used to freeze at their first
+// snapshot). Backward-compatible: old files without `counts` return 0.
+function getProcessedMsgCount(sessionId) {
   try {
-    let data = { sessions: [] }
+    const data = JSON.parse(readFileSync(PROCESSED_FILE, 'utf-8'))
+    return (data.counts ?? {})[sessionId] ?? 0
+  } catch { return 0 }
+}
+
+function markProcessed(sessionId, msgCount = 0) {
+  try {
+    let data = { sessions: [], counts: {} }
     try { data = JSON.parse(readFileSync(PROCESSED_FILE, 'utf-8')) } catch {}
     const sessions = (data.sessions ?? [])
-    if (!sessions.includes(sessionId)) {
-      sessions.push(sessionId)
-      // Keep last 500 sessions only
-      writeFileSync(PROCESSED_FILE, JSON.stringify({ sessions: sessions.slice(-500) }, null, 2))
-    }
+    const counts   = (data.counts ?? {})
+    if (!sessions.includes(sessionId)) sessions.push(sessionId)
+    counts[sessionId] = msgCount
+    // Keep last 500 sessions only; prune counts to the same window.
+    const kept = sessions.slice(-500)
+    const keptSet = new Set(kept)
+    const prunedCounts = {}
+    for (const [k, v] of Object.entries(counts)) if (keptSet.has(k)) prunedCounts[k] = v
+    writeFileSync(PROCESSED_FILE, JSON.stringify({ sessions: kept, counts: prunedCounts }, null, 2))
   } catch {}
+}
+
+// Refresh an already-recorded session's ISL record with the latest summary,
+// WITHOUT any OpenProject write. Used on a repeat Stop of a long continuous
+// session: the OP push already happened on the first Stop, so re-pushing would
+// create duplicate time entries — instead we PATCH (partial update, so
+// opTaskId/pushStatus/etc. are preserved) to keep the Hub record current.
+async function refreshSessionRecord(sessionId, fields) {
+  try {
+    const r = await fetch(`${ISL_URL}/api/isl/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
+      body: JSON.stringify(fields),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!r.ok) { process.stderr.write(`[ISL] refresh sesi gagal HTTP ${r.status}\n`); return false }
+    return true
+  } catch (e) { process.stderr.write(`[ISL] refresh sesi error: ${e.message}\n`); return false }
 }
 
 // ── Ollama lokal (Phase B) — otak utama summarization, gratis & offline ─────
@@ -537,11 +570,14 @@ async function main() {
   }
   if (!transcriptPath || !existsSync(transcriptPath)) process.exit(0)
 
-  // Skip if already processed — prevents double-logging same session
-  if (sessionId && isAlreadyProcessed(sessionId)) {
-    process.stderr.write(`[ISL] Session ${sessionId?.slice(0,8)} already processed — skip.\n`)
-    process.exit(0)
-  }
+  // Repeat Stop of an already-recorded session. Previously this hard-exited,
+  // which FROZE long continuous sessions at their first snapshot — every later
+  // turn's work (deploys, config, discussion) was silently never recorded
+  // (confirmed bug, audit 2026-07-22). Now we don't skip: further down, a
+  // repeat REFRESHES the existing ISL record (idempotent PATCH, preserves OP
+  // linkage) WITHOUT re-pushing to OP — so no duplicate time entries — gated on
+  // meaningful growth so trivial trailing turns don't re-summarize.
+  const isRepeat = !!(sessionId && isAlreadyProcessed(sessionId))
 
   const rawLines = readFileSync(transcriptPath, 'utf-8').trim().split('\n')
   const messages = []
@@ -580,6 +616,16 @@ async function main() {
   if (!lastAssistant) process.exit(0)
   const assistantChars = messages.reduce((n, m) => m.role === 'assistant' ? n + m.text.length : n, 0)
   if (assistantChars < 120) process.exit(0)
+
+  // Repeat-Stop growth gate: only re-summarize/refresh if the session grew
+  // meaningfully since it was last processed — otherwise every trailing turn
+  // of a long session would trigger a fresh (local-LLM) summary for no new
+  // content. First-time sessions (isRepeat=false) always proceed.
+  const REFRESH_MIN_GROWTH = 4
+  if (isRepeat && messages.length < getProcessedMsgCount(sessionId) + REFRESH_MIN_GROWTH) {
+    process.stderr.write(`[ISL] Session ${sessionId?.slice(0,8)} already recorded, no meaningful growth — skip.\n`)
+    process.exit(0)
+  }
 
   // AI summary + status determination
   const recent      = messages.slice(-14)
@@ -674,6 +720,28 @@ Return ONLY valid JSON, no markdown, no extra text:
   const hasExplicitCmd = !!command || !!ticketBinding
   const needsValidation = !hasExplicitCmd
   const opMode = getOPMode()
+
+  // ── Repeat Stop: refresh-only, NO OP push ─────────────────────────────────
+  // The session was already pushed to OP on its first Stop. Re-running autoPush
+  // here would post duplicate OP time entries (inflated hours). Instead refresh
+  // the PRIMARY session record (original sessionId) with the latest summary via
+  // a partial PATCH that preserves opTaskId/pushStatus — so the Hub reflects the
+  // full session while OP stays correct. Secondary topics aren't re-split on a
+  // repeat (avoids orphan -t{n} records); the primary refresh is the strict win
+  // over the old freeze-at-first-snapshot behavior.
+  if (isRepeat) {
+    const primary = topics[0]
+    const ok = await refreshSessionRecord(sessionId, {
+      title:      primary.title,
+      bullets:    primary.bullets,
+      actualMins,
+      taskStatus: command ? command.islStatus : primary.aiStatus,
+    })
+    process.stderr.write(`[ISL] Session ${sessionId?.slice(0,8)} di-refresh (repeat, ${messages.length} msg)${ok ? '' : ' — refresh gagal, retry Stop berikutnya'}\n`)
+    if (sessionId) markProcessed(sessionId, messages.length)
+    process.exit(0)
+  }
+
   const userId = await resolveUserId(opMode)
 
   for (let i = 0; i < topics.length; i++) {
@@ -683,7 +751,7 @@ Return ONLY valid JSON, no markdown, no extra text:
     const topicSessionId = i === 0 ? sessionId : `${sessionId}-t${i + 1}`
     await autoPush({ sessionId: topicSessionId, actualMins: i === 0 ? actualMins : null, userId, finalStatus, hasExplicitCmd, needsValidation, ticketBinding: i === 0 ? ticketBinding : null, tokenUsage: i === 0 ? tokenUsage : null, title: topic.title, bullets: topic.bullets, aiStatus: topic.aiStatus })
   }
-  if (sessionId) markProcessed(sessionId)
+  if (sessionId) markProcessed(sessionId, messages.length)
   process.exit(0)
 }
 
