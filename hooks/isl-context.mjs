@@ -571,7 +571,15 @@ async function main() {
   }
 
   const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
-  if (!lastAssistant || lastAssistant.text.length < 50) process.exit(0)
+  // Gate on AGGREGATE session substance, not the trailing message length.
+  // The old `lastAssistant.text.length < 50` dropped a whole real session if it
+  // happened to end on a short closer like "All done, deployed!" (<50 chars) —
+  // especially likely given a preference for terse replies. Judge the session
+  // by total assistant output instead (confirmed bug, audit 2026-07-22); the AI
+  // summarizer's isSubstantial + the code heuristic (below) make the finer call.
+  if (!lastAssistant) process.exit(0)
+  const assistantChars = messages.reduce((n, m) => m.role === 'assistant' ? n + m.text.length : n, 0)
+  if (assistantChars < 120) process.exit(0)
 
   // AI summary + status determination
   const recent      = messages.slice(-14)
@@ -712,6 +720,11 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
   let taskId     = null
   let isNewTask  = false
   let relatedOldId = null
+  // Whether the OP worklog (time entry) actually landed. If it fails, the
+  // session must NOT be reported as a clean silent 'pushed' — flag it
+  // needsValidation so it stays visible (confirmed bug, audit 2026-07-22:
+  // OP down -> time entry swallowed -> ISL showed 'pushed' with no OP record).
+  let opWriteOk  = true
 
   if (OP_API_TOKEN && OP_BASE_URL) {
     // Determine which task to use — priority: !ticket:ID > matching > new
@@ -814,11 +827,14 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
       const durLabel = actualMins
         ? (actualMins >= 60 ? `${Math.floor(actualMins/60)}j ${actualMins%60}m` : `${actualMins}m`)
         : `${durationMins}m (est)`
-      await opPost('/api/v3/time_entries', {
-        hours: `PT${durationMins}M`, spentOn: date,
-        comment: { format: 'markdown', raw: `**${title}**\n\n⏱ ${durLabel} | ${statusLabel} | 🤖 ISL` },
-        _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
-      }).catch(() => {})
+      {
+        const teRes = await opPost('/api/v3/time_entries', {
+          hours: `PT${durationMins}M`, spentOn: date,
+          comment: { format: 'markdown', raw: `**${title}**\n\n⏱ ${durLabel} | ${statusLabel} | 🤖 ISL` },
+          _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
+        }).catch(() => null)
+        if (!teRes || !teRes.ok) { opWriteOk = false; process.stderr.write(`[ISL] time_entry GAGAL di OP #${taskId}${teRes ? ` (HTTP ${teRes.status})` : ' (network)'} — sesi ditandai perlu validasi\n`) }
+      }
     } else if (existingTask) {
       // Existing task — log activity comment + time entry
       taskId = existingTask.id
@@ -828,11 +844,14 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
       const durLabel = actualMins
         ? (actualMins >= 60 ? `${Math.floor(actualMins/60)}j ${actualMins%60}m` : `${actualMins}m`)
         : `${durationMins}m (est)`
-      await opPost('/api/v3/time_entries', {
-        hours: `PT${durationMins}M`, spentOn: date,
-        comment: { format: 'markdown', raw: `**${title}**\n\n⏱ ${durLabel} | ${statusLabel} | 🤖 ISL` },
-        _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
-      }).catch(() => {})
+      {
+        const teRes = await opPost('/api/v3/time_entries', {
+          hours: `PT${durationMins}M`, spentOn: date,
+          comment: { format: 'markdown', raw: `**${title}**\n\n⏱ ${durLabel} | ${statusLabel} | 🤖 ISL` },
+          _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
+        }).catch(() => null)
+        if (!teRes || !teRes.ok) { opWriteOk = false; process.stderr.write(`[ISL] time_entry GAGAL di OP #${taskId}${teRes ? ` (HTTP ${teRes.status})` : ' (network)'} — sesi ditandai perlu validasi\n`) }
+      }
       // If actual duration significantly exceeds current estimate → bump estimatedTime
       if (actualMins) {
         try {
@@ -933,7 +952,9 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     isNewTask, taskStatus: finalStatus,
     // 'pushed' = logged to existing OP task. 'pending' = user approved via Push Queue. 'hub' = no OP match, needs triage in Daily Hub.
     pushStatus: taskId ? 'pushed' : (hasExplicitCmd ? 'pending' : 'hub'),
-    needsValidation: taskId ? needsValidation : true,
+    // Force validation if the OP worklog write failed — don't let a failed
+    // time entry masquerade as a clean push.
+    needsValidation: taskId ? (needsValidation || !opWriteOk) : true,
     hasExplicitCmd, aiStatus,
     opTaskId: taskId, opStoryId: storyId, autoPushed: !!taskId,
     tokenUsage: tokenSummary,

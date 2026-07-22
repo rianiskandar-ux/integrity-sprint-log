@@ -364,7 +364,7 @@ async function mirrorTicket(wp: OpInquiryElement): Promise<{ ticketId: string; h
  *  one ticket, persisting the ticket_analyses rows and any suspected-duplicate
  *  ticket_links. Only called when mirrorTicket() found real content change.
  *  base/auth are for gathering OP-relation + linked-file context (accuracy). */
-async function analyzeAndDedupeTicket(wp: OpInquiryElement, ticketId: string, hash: string, base: string, auth: string): Promise<{ dupCount: number }> {
+async function analyzeAndDedupeTicket(wp: OpInquiryElement, ticketId: string, hash: string, base: string, auth: string): Promise<{ dupCount: number; classified: boolean }> {
   const subject = wp.subject
   const description = wp.description
 
@@ -381,6 +381,7 @@ async function analyzeAndDedupeTicket(wp: OpInquiryElement, ticketId: string, ha
   ])
 
   let classifyKind: string | undefined
+  let classifyPersisted = false
   if (classifyRaw) {
     try {
       const parsed = JSON.parse(classifyRaw) as { kind?: string }
@@ -389,6 +390,7 @@ async function analyzeAndDedupeTicket(wp: OpInquiryElement, ticketId: string, ha
         id: `ta-${wp.id}-classify-${Date.now()}`, ticketId, kind: 'classify',
         model: 'ollama', result: parsed,
       })
+      classifyPersisted = true
     } catch { /* malformed LLM JSON — skip this analysis row, ticket still tracked */ }
   }
   let clarityMissing: string[] = []
@@ -436,8 +438,17 @@ async function analyzeAndDedupeTicket(wp: OpInquiryElement, ticketId: string, ha
     }).catch(() => {})
   }
 
-  await db.update(helpdeskTickets).set({ contentHash: hash, pipelineState: dupHits.length > 0 ? 'dup_suspect' : 'triaged' }).where(eq(helpdeskTickets.id, ticketId))
-  return { dupCount: dupHits.length }
+  // Only stamp contentHash when the classify actually PERSISTED. If the LLM
+  // was down (callLocalLLM returns null, never throws) no classify row was
+  // written — stamping the hash here would gate this ticket out permanently
+  // (next poll computes the same hash → contentChanged=false → skipped forever,
+  // never classified, never reaches QA). Leaving the hash unstamped means the
+  // ticket is re-analyzed on a later poll once Ollama recovers. (Confirmed bug,
+  // audit 2026-07-22.)
+  if (classifyPersisted) {
+    await db.update(helpdeskTickets).set({ contentHash: hash, pipelineState: dupHits.length > 0 ? 'dup_suspect' : 'triaged' }).where(eq(helpdeskTickets.id, ticketId))
+  }
+  return { dupCount: dupHits.length, classified: classifyPersisted }
 }
 
 /** Shadow-mode poll: fetch Inquiries scope from OP, classify/clarity/dedup new
@@ -468,9 +479,12 @@ export async function pollInquiries(): Promise<PollResult> {
       const { ticketId, hash, contentChanged } = await mirrorTicket(wp)
       if (!contentChanged) continue // PRD §6.1 — re-analyze only on real content change
 
-      const { dupCount } = await analyzeAndDedupeTicket(wp, ticketId, hash, base, auth)
+      const { dupCount, classified } = await analyzeAndDedupeTicket(wp, ticketId, hash, base, auth)
       dupSuspects += dupCount
-      analyzed++
+      if (classified) analyzed++
+      // Surface (not swallow) a pass that classified nothing — LLM likely down;
+      // ticket stays unstamped and will retry next poll.
+      else errors.push(`wp#${wp.id}: no classification (LLM unavailable?) — will retry next poll`)
     } catch (e) {
       errors.push(`wp#${wp.id}: ${String(e)}`)
     }

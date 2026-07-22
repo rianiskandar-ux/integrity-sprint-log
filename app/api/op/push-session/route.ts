@@ -204,6 +204,15 @@ export async function POST(req: Request) {
   const mins    = (body.loggedMins || null) ?? session.actualMins ?? session.estimatedMins ?? 30
 
   let taskId: number | null = null   // main WP id stored in ISL (User Story when create_new)
+  // Track whether the ACTUAL work record (time entries) + task creation truly
+  // landed in OP. Previously these were fire-and-forget (.catch(()=>{}), no
+  // res.ok) yet the session was still marked 'pushed' — so a failed worklog or
+  // a dropped task group left ISL showing "pushed" while OP had no time logged
+  // (confirmed bug, audit 2026-07-22). Now a failure flags the session
+  // needsValidation and surfaces a warning instead of claiming clean success.
+  let worklogOk = true
+  let failedGroups = 0
+  const pushWarnings: string[] = []
 
   // ── link_existing ────────────────────────────────────────────────────────────
   if (body.action === 'link_existing') {
@@ -236,15 +245,19 @@ export async function POST(req: Request) {
       ].join('\n') } }),
     }).catch(() => {})
 
-    // Time entry
-    await fetch(`${OP_BASE}/api/v3/time_entries`, {
+    // Time entry — verify it actually landed (this is the worklog record).
+    const teRes = await fetch(`${OP_BASE}/api/v3/time_entries`, {
       method: 'POST', headers,
       body: JSON.stringify({
         hours: toISODuration(mins), spentOn: date,
         comment: { format: 'markdown', raw: `**${session.title}**\n\n⏱ ${durLabel(mins)} | 🤖 ISL Push Queue` },
         _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
       }),
-    }).catch(() => {})
+    }).catch(() => null)
+    if (!teRes || !teRes.ok) {
+      worklogOk = false
+      pushWarnings.push(`Time entry (${durLabel(mins)}) gagal tercatat di OP${teRes ? ` (HTTP ${teRes.status})` : ' (network)'} — sesi ditandai perlu validasi, worklog belum masuk OP.`)
+    }
 
   // ── create_new ───────────────────────────────────────────────────────────────
   } else if (body.action === 'create_new') {
@@ -360,7 +373,13 @@ export async function POST(req: Request) {
           _links:        taskLinks,
         }),
       })
-      if (!tRes.ok) continue
+      if (!tRes.ok) {
+        // Don't silently drop the group — its bullets + minutes would vanish
+        // with no signal. Count it so the session is flagged, not marked clean.
+        failedGroups++
+        pushWarnings.push(`Task "${group.label}" (${durLabel(group.mins)}) gagal dibuat di OP (HTTP ${tRes.status}) — bullet & waktunya belum tercatat.`)
+        continue
+      }
       const task = await tRes.json()
       const taskId_ = task.id as number
       createdTasks.push({ id: taskId_, subject: taskSubject, mins: group.mins })
@@ -376,7 +395,7 @@ export async function POST(req: Request) {
       }).catch(() => {})
 
       // ── Time entry per Task (proportional) — logged here, not on US ──────────
-      await fetch(`${OP_BASE}/api/v3/time_entries`, {
+      const teRes = await fetch(`${OP_BASE}/api/v3/time_entries`, {
         method: 'POST', headers,
         body: JSON.stringify({
           hours:   toISODuration(group.mins),
@@ -387,13 +406,21 @@ export async function POST(req: Request) {
             activity:    { href: '/api/v3/time_entries/activities/1' },
           },
         }),
-      }).catch(() => {})
+      }).catch(() => null)
+      if (!teRes || !teRes.ok) {
+        worklogOk = false
+        pushWarnings.push(`Time entry untuk "${group.label}" (${durLabel(group.mins)}) gagal di OP${teRes ? ` (HTTP ${teRes.status})` : ' (network)'} — waktunya belum tercatat.`)
+      }
     }
 
     // Return extra info about created structure
     const structureInfo = { usId, tasks: createdTasks }
     await logCorrection(session, usId)
-    const updated = { ...session, opTaskId: usId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: false, updatedAt: new Date().toISOString() }
+    // A dropped task group or a failed worklog means the push is NOT clean —
+    // keep the session flagged (needsValidation) so it stays visible for
+    // fixing, rather than silently reporting full success.
+    const cleanPush = failedGroups === 0 && worklogOk && createdTasks.length > 0
+    const updated = { ...session, opTaskId: usId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: !cleanPush, updatedAt: new Date().toISOString() }
     await saveSession(updated)
 
     const tg = getTelegramConfig()
@@ -403,19 +430,23 @@ export async function POST(req: Request) {
       ok: true,
       taskId: usId,
       structure: structureInfo,
+      worklogOk: cleanPush,
+      warnings: pushWarnings.length ? pushWarnings : undefined,
       opUrl: `${OP_BASE}/work_packages/${usId}`,
     })
   }
 
   if (!taskId) return NextResponse.json({ error: 'No task ID resolved' }, { status: 500 })
 
-  // Update ISL session (for link_existing path)
+  // Update ISL session (for link_existing path). If the worklog time entry
+  // failed, keep the session flagged (needsValidation) + warn — don't report a
+  // clean 'pushed' when OP has no logged time.
   await logCorrection(session, taskId)
-  const updated = { ...session, opTaskId: taskId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: false, updatedAt: new Date().toISOString() }
+  const updated = { ...session, opTaskId: taskId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: !worklogOk, updatedAt: new Date().toISOString() }
   await saveSession(updated)
 
   const tg = getTelegramConfig()
   if (tg) sendTelegram(notifPushed(session.title, taskId, mins), tg).catch(() => {})
 
-  return NextResponse.json({ ok: true, taskId, opUrl: `${OP_BASE}/work_packages/${taskId}` })
+  return NextResponse.json({ ok: true, taskId, worklogOk, warnings: pushWarnings.length ? pushWarnings : undefined, opUrl: `${OP_BASE}/work_packages/${taskId}` })
 }

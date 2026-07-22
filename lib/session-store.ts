@@ -154,21 +154,37 @@ export async function saveSession(session: SessionLog): Promise<void> {
     updatedAt:        new Date(session.updatedAt),
   }).onConflictDoUpdate({
     target: sessions.id,
+    // The set clause must mirror EVERY editable column in .values() above.
+    // It previously omitted command/ticketBinding/relatedOldTaskId/tokenUsage/
+    // hasExplicitCmd/isNewTask/source/endedAt — so re-posting an existing
+    // session (the normal hook-creates-then-enriches flow, or a late
+    // `!ticket:StoryID` binding) silently kept the OLD values in Postgres while
+    // the API returned 200 with the NEW payload: the binding/token metering
+    // looked saved but wasn't, and the work got mis-/un-attributed on push.
+    // (Confirmed bug, audit 2026-07-22.)
     set: {
-      title:           session.title,
-      bullets:         session.bullets,
-      actualMins:      session.actualMins ?? null,
-      estimatedMins:   session.estimatedMins,
-      opTaskId:        session.opTaskId ?? null,
-      opStoryId:       session.opStoryId ?? null,
-      opEpicId:        session.opEpicId ?? null,
-      taskStatus:      session.taskStatus ?? null,
-      aiStatus:        session.aiStatus ?? null,
-      pushStatus:      session.pushStatus,
-      autoPushed:      session.autoPushed ?? false,
-      undoneAt:        session.undoneAt ?? null,
-      needsValidation: session.needsValidation ?? false,
-      updatedAt:       new Date(session.updatedAt),
+      title:            session.title,
+      bullets:          session.bullets,
+      source:           session.source ?? null,
+      endedAt:          session.endedAt ?? null,
+      actualMins:       session.actualMins ?? null,
+      estimatedMins:    session.estimatedMins,
+      opTaskId:         session.opTaskId ?? null,
+      opStoryId:        session.opStoryId ?? null,
+      opEpicId:         session.opEpicId ?? null,
+      isNewTask:        session.isNewTask ?? false,
+      taskStatus:       session.taskStatus ?? null,
+      aiStatus:         session.aiStatus ?? null,
+      hasExplicitCmd:   session.hasExplicitCmd ?? false,
+      command:          session.command ?? null,
+      ticketBinding:    session.ticketBinding ?? null,
+      relatedOldTaskId: session.relatedOldTaskId ?? null,
+      tokenUsage:       session.tokenUsage ?? null,
+      pushStatus:       session.pushStatus,
+      autoPushed:       session.autoPushed ?? false,
+      undoneAt:         session.undoneAt ?? null,
+      needsValidation:  session.needsValidation ?? false,
+      updatedAt:        new Date(session.updatedAt),
     }
   })
 
