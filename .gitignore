@@ -87,3 +87,6 @@ video/
 .dockerignore-tmp
 docker-deps/
 pending-hook-posts.json
+
+# git-capture run log (local forensics, not source)
+git-capture.log

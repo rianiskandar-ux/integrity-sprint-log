@@ -22,12 +22,21 @@
  *   node scripts/isl-git-capture.mjs --dry-run  # print what it would post
  */
 import { execSync } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, appendFileSync } from 'fs'
 
 const ISL_URL  = process.env.ISL_URL      || 'http://localhost:4891'
 const KAFI_KEY = process.env.KAFI_API_KEY
 const SINCE_DAYS = Number(process.env.GIT_CAPTURE_SINCE_DAYS || 2)
 const DRY = process.argv.includes('--dry-run')
+
+// Run log — so a scheduled run is never invisible. Task Scheduler swallows
+// stdout; without this, a silent failure (bad key, ISL down, battery-refused
+// task) left zero trace. One line per run, checked by nobody-until-needed but
+// there when a "why is the Hub blank?" question comes up. Best-effort.
+const LOG_FILE = 'C:/Users/user199/ai-apps/daily-sprint-next/git-capture.log'
+function logRun(line) {
+  try { appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${line}\n`) } catch { /* logging must never break capture */ }
+}
 
 // Repos to scan (owner's local working copies). Add more as needed.
 const REPOS = [
@@ -95,3 +104,7 @@ for (const repo of REPOS) {
 }
 
 console.log(`\n${DRY ? '[dry-run] ' : ''}done — ${posted} day-session(s) ${DRY ? 'previewed' : 'captured'}`)
+if (!DRY) {
+  if (!KAFI_KEY) logRun('WARN no KAFI_API_KEY in env — POSTs would fail auth')
+  logRun(`done — ${posted} day-session(s) captured`)
+}

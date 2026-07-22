@@ -272,44 +272,58 @@ export async function GET(req: Request) {
     })
   }
 
-  // ── Kafi — Field Agent (external bridge) ─────────────────────────────────
+  // ── Kafi — Capture Health (was kafi-source-only; now watches whole pipeline) ─
+  // Rian's directive 2026-07-22: "jangan sampai silent error, kalian yang
+  // pastikan jalan." The old check only counted source='kafi' sessions, so it
+  // read idle even though git-capture is the real daily recorder — a whole day
+  // could go blank in the Hub without any signal. Now it counts ALL of today's
+  // recorded sessions (git-capture commits + kafi hook + manual) and, if a
+  // WORKDAY afternoon arrives with ZERO recorded, escalates to 'issue' so it
+  // turns red in the Aryo report and Nara's alert — a blank day can no longer
+  // slip by unnoticed. (The Kafi Stop-hook itself is unreliable for long
+  // continuous sessions — that's why git-capture exists — so watching the
+  // whole pipeline, not just the hook, is the correct health signal.)
   try {
-    const todayKafiSessions = await db.select()
+    const todaySess = await db.select()
       .from(sessions)
-      .where(and(eq(sessions.date, today), eq(sessions.source, 'kafi')))
+      .where(eq(sessions.date, today))
       .orderBy(desc(sessions.createdAt))
-      .limit(1)
+    const count = todaySess.length
+    const last = todaySess[0] ?? null
+    const lastMins = last?.createdAt ? minutesAgo(last.createdAt.toISOString()) : null
+    const bySource = [...new Set(todaySess.map(s => s.source).filter(Boolean))].join(', ')
 
-    const lastKafi   = todayKafiSessions[0] ?? null
-    const lastMinsK  = lastKafi?.createdAt ? minutesAgo(lastKafi.createdAt.toISOString()) : null
-    const countKafi  = await db.select()
-      .from(sessions)
-      .where(and(eq(sessions.date, today), eq(sessions.source, 'kafi')))
-      .then(r => r.length)
+    // WIB (UTC+7) clock — escalate only on a real workday afternoon so the
+    // 09:00 Nara health check and weekends never false-alarm.
+    const wib = new Date(Date.now() + 7 * 3600_000)
+    const wibHour = wib.getUTCHours()
+    const wibDay = wib.getUTCDay() // 0=Min … 6=Sab
+    const workdayAfternoon = wibDay >= 1 && wibDay <= 5 && wibHour >= 15
 
     let status: AgentStatus = 'idle'
     let statusText = 'Standby'
-    let detail = 'Belum ada capture hari ini'
+    let detail = 'Belum ada aktivitas terekam hari ini'
 
-    if (countKafi > 0 && lastMinsK !== null && lastMinsK < 60) {
-      status = 'active'; statusText = 'Aktif'
-      detail = `${countKafi} capture hari ini · ${fmtAgo(lastMinsK)}`
-    } else if (countKafi > 0) {
-      status = 'idle'; statusText = 'Idle'
-      detail = `${countKafi} capture hari ini · ${lastMinsK ? fmtAgo(lastMinsK) : '—'}`
+    if (count > 0) {
+      status = (lastMins !== null && lastMins < 120) ? 'active' : 'idle'
+      statusText = status === 'active' ? 'Aktif' : 'Idle'
+      detail = `${count} sesi terekam hari ini${bySource ? ` (${bySource})` : ''} · ${lastMins !== null ? fmtAgo(lastMins) : '—'}`
+    } else if (workdayAfternoon) {
+      status = 'issue'; statusText = 'Issue'
+      detail = 'Belum ada aktivitas terekam hari ini padahal sudah sore — commit kerjaan atau tambah sesi manual biar hari ini tidak blank di Hub'
     }
 
     agents.push({
       id: 'kafi', kind: 'agent', name: 'Kafi', role: 'Field Agent',
-      description: 'Capture aktivitas Claude Code luar ISL → kirim ke Arka via Hub',
+      description: 'Rekam kerja harian ke Hub (git-capture commit + hook Claude Code) & jaga hari kerja jangan blank',
       status, statusText, detail,
-      lastActive: lastKafi?.createdAt?.toISOString() ?? null,
+      lastActive: last?.createdAt?.toISOString() ?? null,
     })
   } catch {
     agents.push({
       id: 'kafi', kind: 'agent', name: 'Kafi', role: 'Field Agent',
-      description: 'Capture aktivitas Claude Code luar ISL → kirim ke Arka via Hub',
-      status: 'idle', statusText: 'Standby', detail: 'Belum ada data capture', lastActive: null,
+      description: 'Rekam kerja harian ke Hub (git-capture commit + hook Claude Code) & jaga hari kerja jangan blank',
+      status: 'issue', statusText: 'Error', detail: 'Tidak bisa baca status capture (sessions table)', lastActive: null,
     })
   }
 
