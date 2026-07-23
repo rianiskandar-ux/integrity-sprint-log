@@ -14,7 +14,7 @@ function timeToMinutes(t: string): number {
 }
 
 export async function POST(req: Request) {
-  const { wpId, statusId, percentDone, spentTimeStr, estimatedMins, addSpentMins, userSettings } = await req.json()
+  const { wpId, statusId, percentDone, spentTimeStr, estimatedMins, addSpentMins, subject, userSettings } = await req.json()
   const ctx   = await getRequestContext()
   // Session identity only — ignore any client-supplied OP token override.
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -62,6 +62,11 @@ export async function POST(req: Request) {
   const estimateAllowed = !/^(feature|epic)$/i.test(wpType)
 
   const body: Record<string, unknown> = { lockVersion: wp.lockVersion }
+  // Rename the work package (US or Task) — only when a real, changed subject is
+  // sent. Lets the "✨ Suggest title" flow rewrite a generic OP title in place.
+  if (typeof subject === 'string' && subject.trim() && subject.trim() !== wp.subject) {
+    body.subject = subject.trim().slice(0, 255)
+  }
   if (statusId)                               body._links        = { status: { href: `/api/v3/statuses/${statusId}` } }
   if (isDoneStatus || percentDone !== undefined) body.percentageDone = effectivePct
   if (typeof estimatedMins === 'number' && estimatedMins > 0 && estimateAllowed) body.estimatedTime = toISODuration(estimatedMins)

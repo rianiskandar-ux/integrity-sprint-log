@@ -69,6 +69,8 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
   const [spentH, setSpentH]     = useState<string>('')
   const [spentM, setSpentM]     = useState<string>('')
   const [comment, setComment]   = useState<string>('')
+  const [subject, setSubject]   = useState<string>('')          // editable OP title
+  const [suggestingTitle, setSuggestingTitle] = useState(false)
 
   // "Catatan Otomatis": AI-drafted progress note for the OP activity log
   const [drafting, setDrafting]           = useState(false)
@@ -94,6 +96,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
         setPct(data.percentDone ?? 0)
         setSpentH('')
         setSpentM('')
+        setSubject(data.subject ?? '')
       })
       .catch(e => setMsg(`⚠️ ${String(e)}`))
       .finally(() => setLoading(false))
@@ -178,6 +181,29 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
     else setMsg('⚠️ Gagal membuat draft catatan')
   }
 
+  // ✨ Suggest a clearer OP title from this item's description + activity
+  // history (work-log comments). Suggest-only — fills the editable Subject
+  // field; the rename only reaches OP when the user clicks Simpan. Works for
+  // whatever this modal is showing (User Story or Task).
+  async function suggestTitle() {
+    if (!d || suggestingTitle || saving) return
+    const srcLines = [
+      ...(d.description ? [d.description.slice(0, 800)] : []),
+      ...d.comments.flatMap(c => c.text.split('\n')),
+    ].map(s => s.trim()).filter(l => l.length > 4).slice(0, 25)
+    if (!srcLines.length) { setMsg('⚠️ Belum ada deskripsi/aktivitas untuk jadi dasar judul'); return }
+    setSuggestingTitle(true); setMsg(null)
+    try {
+      const r = await fetch('/api/suggest/title', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bullets: srcLines, current: subject }),
+      })
+      const res = await r.json()
+      if (r.ok && res.title) setSubject(String(res.title).slice(0, 200))
+      else setMsg('⚠️ Gagal menyarankan judul')
+    } catch { setMsg('⚠️ Gagal menyarankan judul') } finally { setSuggestingTitle(false) }
+  }
+
   async function save(bypassGuard = false, skipComment = false) {
     if (!d || saving || drafting) return
 
@@ -213,6 +239,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
           statusId:      statusId !== d.statusId ? statusId : undefined,
           estimatedMins: estMins,
           addSpentMins:  totalMins > 0 ? totalMins : undefined,
+          subject:       subject.trim() && subject.trim() !== d.subject ? subject.trim() : undefined,
         }),
       }).then(r => r.json())
       if (upd.error) throw new Error(upd.error)
@@ -308,6 +335,25 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
             <div className="h-px bg-gray-100 dark:bg-gray-800" />
 
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Edit langsung ke OP</p>
+
+            {/* Subject (editable) + AI suggest */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Judul {d.type}</p>
+                <button onClick={suggestTitle} disabled={suggestingTitle || saving}
+                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-50 transition"
+                  title="Sarankan judul lebih jelas dari deskripsi + riwayat activity (AI)">
+                  {suggestingTitle
+                    ? <><span className="w-3 h-3 border-2 border-indigo-200 dark:border-indigo-800 border-t-indigo-500 rounded-full animate-spin" />Menyusun…</>
+                    : '✨ Suggest Judul'}
+                </button>
+              </div>
+              <input value={subject} onChange={e => setSubject(e.target.value)}
+                className="w-full text-[12px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
+              {d.subject && subject.trim() && subject.trim() !== d.subject && (
+                <p className="mt-1 text-[9px] text-amber-600 dark:text-amber-400">Judul diubah — akan ditulis ke OP saat Simpan.</p>
+              )}
+            </div>
 
             {/* Status + Est */}
             <div className="grid grid-cols-2 gap-x-6">
