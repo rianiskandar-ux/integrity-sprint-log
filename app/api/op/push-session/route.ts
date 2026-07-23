@@ -4,6 +4,7 @@ import { sendTelegram, getTelegramConfig, notifPushed } from '@/lib/telegram'
 import { getRequestContext } from '@/lib/request-auth'
 import { db, agentEvents, arkaCorrections } from '@/lib/db'
 import { upsertEmbedding } from '@/lib/embeddings'
+import { callLocalLLM } from '@/lib/local-llm'
 
 // ── Arka Correction Loop v1 ───────────────────────────────────────────────────
 // This route is the single choke point where a session's opTaskId — already
@@ -155,6 +156,38 @@ function clusterIntoTasks(sessionTitle: string, bullets: string[], totalMins: nu
   return { groups: taskGroups, needsEpic }
 }
 
+// Strip the [Xm] time prefix and trailing commit-hash from a bullet so it reads
+// as plain work text.
+function cleanBullet(b: string): string {
+  return b.replace(/^\[\d+m\]\s*/, '').replace(/\s*\([0-9a-f]{7,}\)\s*$/i, '').trim()
+}
+
+// Turn a task group's actual bullets into a SHORT descriptive title, instead of
+// the generic theme bucket ("Fix & Repair", "Implementation", …) that made every
+// task title look identical and say nothing about the work (Nico feedback,
+// 2026-07-23). Local LLM summarizes; on any failure (Ollama down → callLocalLLM
+// returns null) it falls back to the first real bullet, then the theme label —
+// so a push never breaks or blocks on this.
+async function describeTaskLabel(bullets: string[], themeFallback: string): Promise<string> {
+  const clean = bullets.map(cleanBullet).filter(Boolean)
+  if (!clean.length) return themeFallback
+  const derived = clean[0].slice(0, 70)   // deterministic fallback: first real bullet
+  try {
+    const prompt = `Ringkas daftar aktivitas kerja berikut menjadi SATU judul task singkat yang menjelaskan APA yang dikerjakan (maksimal 8 kata, tanpa tanda kutip, tanpa nomor, ikuti bahasa isinya). Jangan pakai kata generik seperti "Fix" atau "Implementation" saja — sebutkan objek konkretnya.
+
+Aktivitas:
+${clean.map(b => `- ${b}`).join('\n')}
+
+Judul:`
+    const raw = await callLocalLLM(prompt)
+    if (raw) {
+      const line = raw.trim().split('\n')[0].replace(/^["'`\s\-*\d.]+/, '').replace(/["'`\s]+$/, '').slice(0, 90)
+      if (line.length >= 4) return line
+    }
+  } catch { /* fall through to derived */ }
+  return derived || themeFallback
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
@@ -285,6 +318,14 @@ export async function POST(req: Request) {
     const bullets = body.bullets?.length ? body.bullets : session.bullets
     const { groups, needsEpic } = clusterIntoTasks(subject, bullets, mins)
     const isSingle = groups.length === 1
+
+    // Replace generic theme labels with descriptive titles summarizing each
+    // task's real bullets (Nico feedback: titles too similar / uninformative).
+    // Only for multi-task breakdowns — a single task just uses the (already
+    // descriptive) session subject. ≤5 groups, local LLM, best-effort.
+    if (!isSingle) {
+      await Promise.all(groups.map(async g => { g.label = await describeTaskLabel(g.bullets, g.label) }))
+    }
 
     // Build shared link template
     const baseLinks: Record<string, { href: string } | undefined> = {

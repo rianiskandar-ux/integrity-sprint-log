@@ -955,7 +955,7 @@ function SessionCard({
                   ))}
                   <p className="text-[9px] text-gray-400 mt-1 italic ml-4">
                     {estimatedGroups.length > 1
-                      ? `${estimatedGroups.length} tasks auto-grouped by theme · time split proportionally`
+                      ? `${estimatedGroups.length} tasks auto-grouped · judul final diringkas otomatis dari isinya saat push · waktu dibagi proporsional`
                       : 'Single task — all activities logged as 1 task'}
                   </p>
                 </div>
