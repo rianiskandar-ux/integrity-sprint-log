@@ -529,6 +529,25 @@ function SessionCard({
   const origEst = session.estimatedMins ?? 60
   const actMins = session.actualMins ?? null
 
+  // ✨ AI title suggestion — click-triggered, suggest-only (human accepts/edits).
+  // Summarizes the session's bullets into a concise descriptive subject via the
+  // same local-LLM helper the auto-breakdown uses (Rian's request 2026-07-23:
+  // an AI suggest for the manual rename in the create-new form).
+  const [suggesting, setSuggesting] = useState(false)
+  async function suggestTitle() {
+    const bullets = segmentsToBullets(segments)
+    if (!bullets.length) return
+    setSuggesting(true)
+    try {
+      const r = await fetch('/api/suggest/title', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bullets, current: form.subject }),
+      })
+      const d = await r.json()
+      if (r.ok && d.title) setForm(f => ({ ...f, subject: String(d.title).slice(0, 120) }))
+    } catch { /* best-effort — leave subject as-is */ } finally { setSuggesting(false) }
+  }
+
   // Redistribute segment durations proportionally when total estimate changes
   function redistributeSegments(newTotal: number) {
     if (newTotal <= 0) return
@@ -807,7 +826,14 @@ function SessionCard({
           <div className="grid grid-cols-1 gap-3">
             {/* Subject */}
             <div>
-              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Subject</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Subject</label>
+                <button type="button" onClick={suggestTitle} disabled={suggesting}
+                  title="Sarankan judul ringkas dari aktivitas (AI)"
+                  className="flex items-center gap-1 text-[9px] font-semibold text-violet-600 dark:text-violet-300 hover:text-violet-800 dark:hover:text-violet-100 disabled:opacity-40 transition">
+                  ✨ {suggesting ? 'Menyusun…' : 'Suggest'}
+                </button>
+              </div>
               <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
                 className="mt-1 w-full text-[12px] border border-violet-200 dark:border-violet-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-violet-400" />
             </div>
