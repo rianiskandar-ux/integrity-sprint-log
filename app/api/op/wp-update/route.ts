@@ -48,14 +48,15 @@ export async function POST(req: Request) {
   const totalSpentMin = currentSpentMin + spentMin
   const autoPct       = estimatedMin > 0 ? Math.min(100, Math.round((totalSpentMin / estimatedMin) * 100)) : percentDone
 
+  void autoPct  // no longer force %done from spent/est ratio — see progress note below
+
   // Detect current status from OP (fallback when statusId not sent = status unchanged)
   const currentStatusHref = (wp._links?.status?.href as string) ?? ''
   const currentStatusId   = parseInt(currentStatusHref.split('/').pop() ?? '0') || 0
   const effectiveStatusId = statusId ?? currentStatusId
-  // OP constraint: remainingTime must be 0 when status is Closed/Rejected or task is 100% done.
   const isDoneStatus  = [12, 14].includes(effectiveStatusId)  // 12=Closed, 14=Rejected
-  const effectivePct  = isDoneStatus ? 100 : (percentDone ?? autoPct)
-  const remainingMin  = isDoneStatus || effectivePct >= 100 ? 0 : Math.max(0, estimatedMin - totalSpentMin)
+  const spentAdded    = spentMin > 0
+  const estChanged    = typeof estimatedMins === 'number' && estimatedMins > 0 && estimatedMins !== currentEstMin
 
   // Feature/Epic estimates are managed in OP, not from ISL — never write an estimate to them.
   const wpType = (wp._links?.type?.title ?? '') as string
@@ -68,9 +69,27 @@ export async function POST(req: Request) {
     body.subject = subject.trim().slice(0, 255)
   }
   if (statusId)                               body._links        = { status: { href: `/api/v3/statuses/${statusId}` } }
-  if (isDoneStatus || percentDone !== undefined) body.percentageDone = effectivePct
   if (typeof estimatedMins === 'number' && estimatedMins > 0 && estimateAllowed) body.estimatedTime = toISODuration(estimatedMins)
-  if (estimatedMin > 0)    body.remainingTime = toISODuration(remainingMin)
+
+  // ── Progress (remainingTime / percentageDone) ─────────────────────────────
+  // This OP derives %done from WORK (spent vs remaining). The old code wrote
+  // remainingTime on EVERY save as max(0, est−spent) → whenever spent≥est it
+  // sent remainingTime=0, and OP flipped %done to 100% — even for a "New" task,
+  // even on a subject-only save (the reported bug: Suggest→Simpan made a New,
+  // next-sprint task show 100%). Now progress is touched ONLY when it truly
+  // changes, and a non-done task is NEVER forced to 100%:
+  //  • Done status (Closed/Rejected) → remaining 0 (OP derives 100%).
+  //  • Otherwise, only if the user added spent or changed the estimate: write
+  //    the real remaining, but skip writing 0 (which would flip it to 100%).
+  //  • Subject/status-only save → progress untouched (no spurious completion).
+  if (isDoneStatus) {
+    body.remainingTime = 'PT0M'
+    if (percentDone !== undefined) body.percentageDone = 100
+  } else if (spentAdded || estChanged) {
+    const rem = Math.max(0, estimatedMin - totalSpentMin)
+    if (rem > 0) body.remainingTime = toISODuration(rem)
+    if (percentDone !== undefined) body.percentageDone = percentDone
+  }
 
   let patchRes = await fetch(`${base}/api/v3/work_packages/${wpId}`, {
     method: 'PATCH', headers, body: JSON.stringify(body),
@@ -85,11 +104,11 @@ export async function POST(req: Request) {
         method: 'PATCH', headers, body: JSON.stringify(body),
       })
       if (!patchRes.ok) return NextResponse.json({ error: await patchRes.text() }, { status: patchRes.status })
-      return NextResponse.json({ ok: true, percentDone: effectivePct, remainingMin, pctSkipped: true })
+      return NextResponse.json({ ok: true, pctSkipped: true })
     }
     return NextResponse.json({ error: errText }, { status: patchRes.status })
   }
 
   if (!patchRes.ok) return NextResponse.json({ error: await patchRes.text() }, { status: patchRes.status })
-  return NextResponse.json({ ok: true, percentDone: effectivePct, remainingMin })
+  return NextResponse.json({ ok: true })
 }

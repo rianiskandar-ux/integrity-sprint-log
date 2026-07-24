@@ -375,7 +375,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
             {/* % Complete — view only, derived from Status in OP */}
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">
-                % Complete <span className="normal-case font-normal text-gray-400">(otomatis dari Status)</span>
+                % Complete <span className="normal-case font-normal text-gray-400">(dihitung OP dari spent vs sisa — bukan status)</span>
               </p>
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
