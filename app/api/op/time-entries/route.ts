@@ -24,7 +24,13 @@ export async function GET(req: Request) {
   const wpId = new URL(req.url).searchParams.get('wpId')
   if (!wpId) return NextResponse.json({ error: 'wpId required' }, { status: 400 })
 
-  const filters  = encodeURIComponent(JSON.stringify([{ workPackage: { operator: '=', values: [wpId] } }]))
+  // OP's time_entries filter key for "which work package" is `entity`, NOT
+  // `workPackage` (even though the entry's own _links relation IS named
+  // workPackage) — this OP instance rejects the latter with "Work package
+  // filter does not exist", so the Time Entries list was always empty/erroring
+  // (bug found 2026-07-24: Rian couldn't find any entry to reduce/delete).
+  // Verified directly against the live OP API before fixing.
+  const filters  = encodeURIComponent(JSON.stringify([{ entity: { operator: '=', values: [wpId] } }]))
   const sortBy   = encodeURIComponent(JSON.stringify([['spentOn', 'desc']]))
   const res = await fetch(
     `${opBaseUrl}/api/v3/time_entries?filters=${filters}&pageSize=50&sortBy=${sortBy}`,
