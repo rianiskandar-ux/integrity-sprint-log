@@ -126,7 +126,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
     const minutes = (parseInt(editing.h || '0') || 0) * 60 + (parseInt(editing.m || '0') || 0)
     const res = await fetch('/api/op/time-entries', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entryId: editing.id, minutes, date: editing.date, comment: editing.comment }),
+      body: JSON.stringify({ entryId: editing.id, minutes, date: editing.date, comment: editing.comment, wpId }),
     }).then(r => r.json()).catch(() => ({ error: 'network' }))
     setEntryBusy(false)
     if (!res.error) { setEditing(null); loadEntries(); load() }
@@ -137,7 +137,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
     setEntryBusy(true)
     const res = await fetch('/api/op/time-entries', {
       method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entryId: id }),
+      body: JSON.stringify({ entryId: id, wpId }),
     }).then(r => r.json()).catch(() => ({ error: 'network' }))
     setEntryBusy(false)
     setConfirmDel(null)
