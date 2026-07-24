@@ -231,7 +231,22 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
       const estMins    = estH.trim() ? Math.round(parseFloat(estH) * 60) : undefined
       const spentHNum  = parseInt(spentH || '0') || 0
       const spentMNum  = parseInt(spentM || '0') || 0
-      const totalMins  = spentHNum * 60 + spentMNum
+      let totalMins    = spentHNum * 60 + spentMNum
+
+      // Auto-fill Spent = Estimasi when a task is CLOSED with zero spent
+      // recorded (Rian's decision 2026-07-24): closing a task that was never
+      // timer-tracked shouldn't leave Spent stuck at 0 forever — assume the
+      // planned work was done as estimated rather than leaving a misleading gap.
+      // Only fires on the transition INTO Closed, and only if total spent
+      // (existing OP spent + whatever's typed here) is still genuinely zero.
+      let autoFilledSpent = false
+      const closingNow = statusId === 12 && d.statusId !== 12
+      const existingSpentMins = Math.round((d.spentHours ?? 0) * 60)
+      if (closingNow && existingSpentMins + totalMins === 0) {
+        const estMinsForFill = estMins ?? Math.round((d.estimatedHours ?? 0) * 60)
+        if (estMinsForFill > 0) { totalMins = estMinsForFill; autoFilledSpent = true }
+      }
+
       const upd = await fetch('/api/op/wp-update', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -244,14 +259,15 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
       }).then(r => r.json())
       if (upd.error) throw new Error(upd.error)
 
-      // 2) add spent time entry to OP
+      // 2) add spent time entry to OP — duration derived from totalMins directly
+      // (not spentHNum/spentMNum) so the auto-fill-on-close path above also
+      // produces a correct duration string, not "0m".
       if (totalMins > 0) {
-        const dur = spentHNum > 0 && spentMNum > 0
-          ? `${spentHNum}h${spentMNum}m`
-          : spentHNum > 0 ? `${spentHNum}h` : `${spentMNum}m`
+        const h = Math.floor(totalMins / 60), m = totalMins % 60
+        const dur = h > 0 && m > 0 ? `${h}h${m}m` : h > 0 ? `${h}h` : `${m}m`
         await fetch('/api/op/timelog', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wpId, duration: dur, date: new Date().toISOString().slice(0, 10), title: 'Update via ISL' }),
+          body: JSON.stringify({ wpId, duration: dur, date: new Date().toISOString().slice(0, 10), title: autoFilledSpent ? 'Auto-filled on close (= estimasi) via ISL' : 'Update via ISL' }),
         }).catch(() => {})
       }
 
@@ -263,9 +279,8 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
         }).catch(() => {})
       }
 
-      setMsg(upd.pctSkipped
-        ? '✅ Tersimpan ke OP (% Complete dikelola otomatis oleh Status)'
-        : '✅ Tersimpan ke OP')
+      const base = upd.pctSkipped ? '✅ Tersimpan ke OP (% Complete dikelola otomatis oleh Status)' : '✅ Tersimpan ke OP'
+      setMsg(autoFilledSpent ? `${base} — Spent otomatis diisi = estimasi (${estH || fmtH(d.estimatedHours)}), belum pernah ditrack sebelumnya` : base)
       setComment('')
       load()
       onSaved?.()
