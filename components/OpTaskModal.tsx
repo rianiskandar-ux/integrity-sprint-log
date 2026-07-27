@@ -242,9 +242,20 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
       let autoFilledSpent = false
       const closingNow = statusId === 12 && d.statusId !== 12
       const existingSpentMins = Math.round((d.spentHours ?? 0) * 60)
+      const effEstMins = estMins ?? Math.round((d.estimatedHours ?? 0) * 60)
       if (closingNow && existingSpentMins + totalMins === 0) {
-        const estMinsForFill = estMins ?? Math.round((d.estimatedHours ?? 0) * 60)
-        if (estMinsForFill > 0) { totalMins = estMinsForFill; autoFilledSpent = true }
+        if (effEstMins > 0) { totalMins = effEstMins; autoFilledSpent = true }
+      }
+
+      // Cap total Spent at the Estimate (Rian's rule 2026-07-27: spent boleh =
+      // atau < estimasi, tidak boleh LEBIH). If adding this would push total
+      // spent past the estimate, trim the added amount so total lands exactly
+      // at the estimate — and tell the user (with the escape hatch: raise the
+      // Est first if the work genuinely took longer). Never silently swallow.
+      let cappedSpent = false
+      if (effEstMins > 0 && existingSpentMins + totalMins > effEstMins) {
+        totalMins = Math.max(0, effEstMins - existingSpentMins)
+        cappedSpent = true
       }
 
       const upd = await fetch('/api/op/wp-update', {
@@ -280,7 +291,12 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
       }
 
       const base = upd.pctSkipped ? '✅ Tersimpan ke OP (% Complete dikelola otomatis oleh Status)' : '✅ Tersimpan ke OP'
-      setMsg(autoFilledSpent ? `${base} — Spent otomatis diisi = estimasi (${estH || fmtH(d.estimatedHours)}), belum pernah ditrack sebelumnya` : base)
+      const note = autoFilledSpent
+        ? ` — Spent otomatis diisi = estimasi (${estH || fmtH(d.estimatedHours)}), belum pernah ditrack sebelumnya`
+        : cappedSpent
+          ? ` — Spent dibatasi = estimasi (max). Kalau kerjanya memang lebih lama, naikkan dulu Est-nya lalu isi lagi.`
+          : ''
+      setMsg(base + note)
       setComment('')
       load()
       onSaved?.()
@@ -404,7 +420,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
             {/* + Spent + Remaining preview */}
             <div className="grid grid-cols-2 gap-x-6">
               <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">+ Spent (tambah)</p>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">+ Spent <span className="normal-case font-normal text-gray-400">(isi manual, tanpa timer)</span></p>
                 <div className="flex items-center gap-1.5">
                   <input type="number" min="0" value={spentH} onChange={e => setSpentH(e.target.value)}
                     placeholder="0"
@@ -415,6 +431,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
                     className="w-14 text-center text-[12px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800" />
                   <span className="text-[11px] text-gray-400 font-medium">menit</span>
                 </div>
+                <p className="text-[9px] text-gray-400 mt-1">Sudah dikerjakan berapa lama? Isi di sini → otomatis jadi In progress. Maks = estimasi.</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Remaining (setelah simpan)</p>

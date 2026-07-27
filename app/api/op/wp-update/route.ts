@@ -53,10 +53,21 @@ export async function POST(req: Request) {
   // Detect current status from OP (fallback when statusId not sent = status unchanged)
   const currentStatusHref = (wp._links?.status?.href as string) ?? ''
   const currentStatusId   = parseInt(currentStatusHref.split('/').pop() ?? '0') || 0
-  const effectiveStatusId = statusId ?? currentStatusId
-  const isDoneStatus  = [12, 14].includes(effectiveStatusId)  // 12=Closed, 14=Rejected
+  let   effectiveStatusId = statusId ?? currentStatusId
   const spentAdded    = spentMin > 0
   const estChanged    = typeof estimatedMins === 'number' && estimatedMins > 0 && estimatedMins !== currentEstMin
+
+  // Auto-flip New → In progress the moment real spent is logged (Rian's
+  // invariant 2026-07-27): a task with worked time can't still be "New". Keeps
+  // status honest and prevents the old "New but Spent>0" contradiction from
+  // ever reappearing. Only touches the New(1) case — never pulls a
+  // Closed/On-hold/etc. task's status around.
+  let autoStartStatus = false
+  if (spentAdded && effectiveStatusId === 1) {
+    effectiveStatusId = 7  // In progress
+    autoStartStatus = true
+  }
+  const isDoneStatus  = [12, 14].includes(effectiveStatusId)  // 12=Closed, 14=Rejected
 
   // Feature/Epic estimates are managed in OP, not from ISL — never write an estimate to them.
   const wpType = (wp._links?.type?.title ?? '') as string
@@ -68,7 +79,10 @@ export async function POST(req: Request) {
   if (typeof subject === 'string' && subject.trim() && subject.trim() !== wp.subject) {
     body.subject = subject.trim().slice(0, 255)
   }
-  if (statusId)                               body._links        = { status: { href: `/api/v3/statuses/${statusId}` } }
+  // Write the status link if the caller changed it, OR if we auto-flipped
+  // New→In progress because spent was logged. Use effectiveStatusId so both
+  // paths land correctly.
+  if (statusId || autoStartStatus) body._links = { status: { href: `/api/v3/statuses/${effectiveStatusId}` } }
   if (typeof estimatedMins === 'number' && estimatedMins > 0 && estimateAllowed) body.estimatedTime = toISODuration(estimatedMins)
 
   // ── Progress (remainingTime / percentageDone) ─────────────────────────────
