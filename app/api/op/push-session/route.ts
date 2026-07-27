@@ -403,32 +403,24 @@ export async function POST(req: Request) {
         ].join('\n') } }),
       }).catch(() => {})
 
-      // ── Time entry per Task (proportional) — logged here, not on US ──────────
-      const teRes = await fetch(`${OP_BASE}/api/v3/time_entries`, {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          hours:   toISODuration(group.mins),
-          spentOn: date,
-          comment: { format: 'markdown', raw: `**${taskSubject}**\n\n⏱ ${durLabel(group.mins)} | 🤖 ISL Push Queue` },
-          _links: {
-            workPackage: { href: `/api/v3/work_packages/${taskId_}` },
-            activity:    { href: '/api/v3/time_entries/activities/1' },
-          },
-        }),
-      }).catch(() => null)
-      if (!teRes || !teRes.ok) {
-        worklogOk = false
-        pushWarnings.push(`Time entry untuk "${group.label}" (${durLabel(group.mins)}) gagal di OP${teRes ? ` (HTTP ${teRes.status})` : ' (network)'} — waktunya belum tercatat.`)
-      }
+      // NOTE (2026-07-27, Rian): a freshly-created task is PLANNED work, not
+      // done work — so it must start at Spent 0, not pre-filled = estimate.
+      // Previously we logged a time_entry = group.mins here, which is exactly
+      // why every new task showed Spent≈Est while still "New". Spent now
+      // accrues only where it's real: the timer while In progress, or the
+      // auto-fill-on-close (= estimate) in OpTaskModal. The estimate + the
+      // work-log activity comment above are still written, so nothing about
+      // WHAT the task is / how long it's expected to take is lost.
     }
 
     // Return extra info about created structure
     const structureInfo = { usId, tasks: createdTasks }
     await logCorrection(session, usId)
-    // A dropped task group or a failed worklog means the push is NOT clean —
-    // keep the session flagged (needsValidation) so it stays visible for
-    // fixing, rather than silently reporting full success.
-    const cleanPush = failedGroups === 0 && worklogOk && createdTasks.length > 0
+    // A dropped task group means the push is NOT clean — keep the session
+    // flagged (needsValidation) so it stays visible for fixing, rather than
+    // silently reporting full success. (No worklog is written on create now —
+    // tasks start Spent 0 — so worklogOk isn't part of this check.)
+    const cleanPush = failedGroups === 0 && createdTasks.length > 0
     const updated = { ...session, opTaskId: usId, pushStatus: 'pushed' as const, autoPushed: false, needsValidation: !cleanPush, updatedAt: new Date().toISOString() }
     await saveSession(updated)
 
