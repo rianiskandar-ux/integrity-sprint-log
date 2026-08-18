@@ -26,6 +26,8 @@ import EnvModeBadge from './EnvModeBadge'
 import IncomingTasksPanel from './IncomingTasksPanel'
 import InquiriesPanel from './InquiriesPanel'
 import HelpdeskPanel from './HelpdeskPanel'
+import TeamBoardView from './TeamBoardView'
+import PresenceHeartbeat from './PresenceHeartbeat'
 import ScorecardPanel from './ScorecardPanel'
 import DocsPanel from './DocsPanel'
 import StaleBacklogView from './StaleBacklogView'
@@ -362,6 +364,7 @@ export default function AppShell({
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950 font-sans">
+      <PresenceHeartbeat />
       {/* Mobile overlay */}
       {mobileNav && (
         <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setMobileNav(false)} />
@@ -546,6 +549,7 @@ export default function AppShell({
           {view === 'incoming' && <IncomingTasksPanel />}
           {view === 'inquiries' && <InquiriesPanel />}
           {view === 'helpdesk' && <HelpdeskPanel />}
+          {view === 'team' && <TeamBoardView />}
           {view === 'scorecard' && <ScorecardPanel />}
           {view === 'docs' && <DocsPanel />}
           {view === 'isldash'   && <div className="flex-1 min-h-0 overflow-hidden"><ISLDashboard onNavigate={v => navigate({ view: v })} onReport={() => setReportOpen(true)} /></div>}

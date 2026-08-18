@@ -9,7 +9,7 @@ import {
   MessageSquarePlus, Brain, Inbox, Send, Mail,
   ClipboardList, Bot, BookOpen, Archive,
   Settings, Lock, MessageCircle, BarChart3, FileText,
-  ChevronLeft, ChevronRight, ChevronDown, Bug,
+  ChevronLeft, ChevronRight, ChevronDown, Bug, Users,
 } from 'lucide-react'
 
 // Launcher Admin Console — PIN-gated terminal + Quick Fix, lives in the
@@ -28,7 +28,7 @@ function openAdminConsole() {
     .finally(() => clearTimeout(timeout))
 }
 
-const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'scorecard', 'docs', 'autolog', 'dailylog', 'backlog', 'helpdesk'])
+const ISL_VIEWS = new Set(['isldash', 'chats', 'dailyhub', 'incoming', 'inquiries', 'pushqueue', 'scorecard', 'docs', 'autolog', 'dailylog', 'backlog', 'helpdesk', 'team'])
 const LOG_VIEWS = new Set(['autolog', 'dailylog', 'backlog'])
 
 interface Props {
@@ -226,6 +226,11 @@ export default function Sidebar({ open, view, today, selectedDate, dates, hasSes
               the PASS action itself stays gated (owner/role='qa', enforced
               both in AufaQueueView's button state and the API route). */}
           <NavItem id="helpdesk" icon={<Bug size={14} />}             label="Helpdesk"    shortcut="T" color="text-red-400" indent={1} />
+          {/* Two-way team workload board (2026-08-05) — every logged-in teammate
+              sees everyone's WIP/due/stale, including their own. Deliberately
+              not owner-only: a one-way view of "who's busy" is surveillance,
+              not a tool. See project-isl-technical-spec.md for the design debate. */}
+          <NavItem id="team"     icon={<Users size={14} />}            label="Team"        shortcut="W" color="text-teal-400" indent={1} />
 
           {/* Log expandable group */}
           <div>

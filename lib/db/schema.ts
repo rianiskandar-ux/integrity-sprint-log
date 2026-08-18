@@ -99,6 +99,19 @@ export const opCache = pgTable('op_cache', {
   refreshedAt: timestamp('refreshed_at').defaultNow().notNull(),
 })
 
+// ── user_presence ─────────────────────────────────────────────────────────────
+// One row per user, upserted by a browser heartbeat (~30s while ISL is open).
+// Deliberately NOT a log/history table — we only ever need "when did we last
+// hear from them", never a timeline. `idleSince` is client-reported (no mouse/
+// keyboard/scroll for 10 min) so the Team Board can tell "tab open, walked
+// away" apart from "actively looking at it" without reading anything from the
+// page itself — just a boolean the browser computes locally.
+export const userPresence = pgTable('user_presence', {
+  userId:     integer('user_id').primaryKey().references(() => users.id),
+  lastPingAt: timestamp('last_ping_at').notNull().defaultNow(),
+  idle:       boolean('idle').notNull().default(false),
+})
+
 // ── user_settings ──────────────────────────────────────────────────────────────
 export const userSettings = pgTable('user_settings', {
   id:                       integer('id').primaryKey().generatedAlwaysAsIdentity(),

@@ -69,6 +69,8 @@ export interface CachedWorkPackage {
   createdById: number | null
   source: TaskSource[]   // how this WP relates to me
   isClosed: boolean
+  dueDate: string | null        // YYYY-MM-DD, OP's own field — null if not set
+  estimatedHours: number | null
 }
 
 export interface CachedSprint {
@@ -108,6 +110,16 @@ export interface OPCache {
   incomingTasks: CachedWorkPackage[]    // open tasks from others (assigned TO me, created by others)
   sprints: CachedSprint[]
   watchedProjects: CachedProject[]
+  // Each per-project/per-filter OP fetch below is independently try/caught so
+  // one flaky call doesn't kill the whole sync — correct, but it used to mean
+  // a TOTAL failure of one fetch (e.g. one of the 6 assignee/accountable/author
+  // x open/closed queries) silently produced an incomplete-but-plausible task
+  // count with zero trace anywhere (found 2026-08-18, same failure shape as
+  // the sprint-retention and Team-Board-sync-wipe bugs the same day — a wrong
+  // non-zero number is far harder to notice than an empty one). This just
+  // makes those catches visible instead of silent; nothing here changes
+  // resilience behavior, still skip-and-continue, just no longer mute.
+  fetchWarnings: string[]
 }
 
 const EMPTY: OPCache = {
@@ -121,6 +133,7 @@ const EMPTY: OPCache = {
   incomingTasks: [],
   sprints: [],
   watchedProjects: [],
+  fetchWarnings: [],
 }
 
 export function loadCache(userId?: number | null): OPCache {
@@ -187,6 +200,9 @@ function parseWP(
 
   const isClosed = opStatusId === 12 || opStatusId === 14 || opStatusId === 6
 
+  const estMatch = typeof wp.estimatedTime === 'string' ? wp.estimatedTime.match(/PT(?:(\d+)H)?(?:(\d+)M)?/) : null
+  const estimatedHours = estMatch ? Math.round(((parseInt(estMatch[1] ?? '0') * 60 + parseInt(estMatch[2] ?? '0')) / 60) * 10) / 10 : null
+
   return {
     id:          wp.id as number,
     subject:     wp.subject as string,
@@ -209,6 +225,8 @@ function parseWP(
     createdById: authorId,
     source:      [source],
     isClosed,
+    dueDate:     (wp.dueDate as string) ?? null,
+    estimatedHours,
   }
 }
 
@@ -232,6 +250,8 @@ export async function rebuildCache(
   const closedTasks:      Map<number, CachedWorkPackage> = new Map()
   const sprints:          CachedSprint[]      = []
   const watchedProjects:  CachedProject[]     = []
+  const fetchWarnings:    string[]            = []
+  const warn = (msg: string) => { fetchWarnings.push(msg); console.warn(`[op-cache] ${msg}`) }
 
   for (const identifier of projectIdentifiers) {
     let projectId: number
@@ -239,7 +259,7 @@ export async function rebuildCache(
       const proj = await opGet(base, token, `/projects/${identifier}`)
       projectId = proj.id
       watchedProjects.push({ id: projectId, name: proj.name as string, identifier })
-    } catch { continue }
+    } catch (e) { warn(`project '${identifier}' unreachable, skipping entirely: ${e instanceof Error ? e.message : String(e)}`); continue }
 
     // ── Epics (all, not just open — for !ticket:ID lookup) ──────────────
     try {
@@ -259,7 +279,7 @@ export async function rebuildCache(
           description: (wp.description?.raw ?? '').slice(0, 200),
         })
       }
-    } catch { /* skip */ }
+    } catch (e) { warn(`epics fetch failed for '${identifier}': ${e instanceof Error ? e.message : String(e)}`) }
 
     // ── User Stories (open) ──────────────────────────────────────────────
     try {
@@ -282,7 +302,7 @@ export async function rebuildCache(
           epicId:    parentId,
         })
       }
-    } catch { /* skip */ }
+    } catch (e) { warn(`user stories fetch failed for '${identifier}': ${e instanceof Error ? e.message : String(e)}`) }
 
     // ── My tasks: assignee + accountable + author ────────────────────────
     // We fetch open and recent-closed separately
@@ -312,7 +332,7 @@ export async function rebuildCache(
             openTasks.set(wp.id, parseWP(wp, identifier, projectId, source))
           }
         }
-      } catch { /* skip */ }
+      } catch (e) { warn(`open tasks (${principalFilter}) fetch failed for '${identifier}': ${e instanceof Error ? e.message : String(e)}`) }
 
       // Recent closed tasks (last 30 days)
       try {
@@ -332,17 +352,27 @@ export async function rebuildCache(
             closedTasks.set(wp.id, parseWP(wp, identifier, projectId, source))
           }
         }
-      } catch { /* skip */ }
+      } catch (e) { warn(`closed tasks (${principalFilter}) fetch failed for '${identifier}': ${e instanceof Error ? e.message : String(e)}`) }
     }
 
     // ── Sprints/versions ─────────────────────────────────────────────────
     try {
       const res = await opGet(base, token, `/projects/${identifier}/versions?pageSize=200`)
-      const twoWeeksAgo    = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      // Lower bound was 14 days — OP already returns the FULL version list in
+      // the one call above (no date filter in the OP query itself), so pruning
+      // here only threw away metadata we'd already paid for. That pruning is
+      // what made Sprint View's older tabs show a generic "S14" instead of the
+      // real OP name, AND (worse) made the Sprint Plan tab silently fall back
+      // to the CURRENT sprint's data for any old tab — sprint-plan/route.ts
+      // needs a matching id in this list to serve historical data at all
+      // (found 2026-08-18, reported as "S14 shows Sprint #121's data"). 400
+      // days covers ISL's whole practical history while still bounding growth
+      // if OP accumulates years of versions.
+      const lookback       = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       const sixMonthsAhead = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       for (const v of res._embedded?.elements ?? []) {
         if (!v.startDate || !v.endDate) continue
-        if (v.endDate < twoWeeksAgo || v.startDate > sixMonthsAhead) continue
+        if (v.endDate < lookback || v.startDate > sixMonthsAhead) continue
         const isCurrent = v.startDate <= today && v.endDate >= today
         sprints.push({
           id:                v.id,
@@ -358,7 +388,22 @@ export async function rebuildCache(
           sprintStartCutoff = v.startDate
         }
       }
-    } catch { /* skip */ }
+    } catch (e) { warn(`sprints/versions fetch failed for '${identifier}': ${e instanceof Error ? e.message : String(e)}`) }
+  }
+
+  // Every per-project fetch above is wrapped in its own try/catch (skip on
+  // failure, so one flaky project doesn't kill the whole sync) — but that
+  // means a totally invalid token (e.g. undecryptable after an
+  // ISL_ENCRYPTION_KEY rotation — found 2026-08-05: Zaky & Ijal's saved
+  // tokens fail AES-GCM auth with the current key, so opGet() 401s on every
+  // single call) silently produces an EMPTY cache that still looks like a
+  // successful sync. Without this guard, saveCache() below would overwrite a
+  // real, merely-stale cache with a fake "zero tasks" one — read by
+  // /api/team/board as "not busy" when the truth is "we never asked OP".
+  // Refuse instead: 0/N projects reachable = hard failure, existing cache on
+  // disk is left untouched.
+  if (projectIdentifiers.length > 0 && watchedProjects.length === 0) {
+    throw new Error(`OP unreachable for all ${projectIdentifiers.length} project(s) — token likely invalid/undecryptable; refusing to overwrite existing cache`)
   }
 
   const allOpen   = Array.from(openTasks.values())
@@ -380,6 +425,10 @@ export async function rebuildCache(
     incomingTasks,
     sprints,
     watchedProjects,
+    fetchWarnings,
+  }
+  if (fetchWarnings.length > 0) {
+    console.warn(`[op-cache] uid=${saveUserId ?? userId}: ${fetchWarnings.length} fetch(es) failed this sync — see warnings above. Numbers in this cache may be incomplete, not just stale.`)
   }
   saveCache(cache, saveUserId ?? userId)
   return cache

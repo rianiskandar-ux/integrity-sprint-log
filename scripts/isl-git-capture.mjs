@@ -40,8 +40,9 @@ function logRun(line) {
 
 // Repos to scan (owner's local working copies). Add more as needed.
 const REPOS = [
-  { name: 'ISL',      path: 'C:/Users/user199/ai-apps/daily-sprint-next' },
-  { name: 'Launcher', path: 'C:/Users/user199/ai-apps/launcher-dashboard' },
+  { name: 'ISL',         path: 'C:/Users/user199/ai-apps/daily-sprint-next' },
+  { name: 'Launcher',    path: 'C:/Users/user199/ai-apps/launcher-dashboard' },
+  { name: 'PhoenixWeb',  path: 'C:/Users/user199/ai-apps/phoenix-web' },
 ]
 
 // Only the owner's own commits — match on committer email so a shared repo with
