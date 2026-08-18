@@ -18,9 +18,29 @@ function Log($msg) {
     Write-Host $line
 }
 
+# Jalanin proses eksternal TANPA console window sama sekali (CreateNoWindow).
+# -WindowStyle Hidden di level Scheduled Task cuma nyembunyiin window PowerShell-nya
+# sendiri - child process native (docker.exe dkk) yang dipanggil langsung tetap bisa
+# munculin console sendiri. Ini penyebab popup cmd kosong yang kelihatan sekilas.
+function Invoke-Hidden($FilePath, $Arguments, $WorkDir) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    if ($WorkDir) { $psi.WorkingDirectory = $WorkDir }
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $p.StandardOutput.ReadToEnd()
+    $stderr = $p.StandardError.ReadToEnd()
+    $p.WaitForExit()
+    return [PSCustomObject]@{ ExitCode = $p.ExitCode; StdOut = $stdout; StdErr = $stderr }
+}
+
 # 1. Docker engine hidup?
-docker info 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$infoResult = Invoke-Hidden "docker" "info"
+if ($infoResult.ExitCode -ne 0) {
     Log "docker engine mati - coba start Docker Desktop"
     $dd = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
     if (Test-Path $dd) { Start-Process $dd }
@@ -28,16 +48,16 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 2. Container jalan?
-$running = docker ps --format "{{.Names}}"
+$psResult = Invoke-Hidden "docker" 'ps --format "{{.Names}}"'
+$running = $psResult.StdOut -split "`r?`n" | Where-Object { $_ }
 $needUp = $false
 foreach ($name in @("isl-postgres", "integrity-sprint-log")) {
     if ($running -notcontains $name) { Log "container $name MATI"; $needUp = $true }
 }
 if ($needUp) {
     Log "compose up -d ..."
-    Set-Location $ComposeDir
-    docker compose up -d 2>&1 | Out-Null
-    Log "compose up selesai (exit $LASTEXITCODE)"
+    $upResult = Invoke-Hidden "docker" "compose up -d" $ComposeDir
+    Log "compose up selesai (exit $($upResult.ExitCode))"
     exit 0
 }
 
@@ -57,6 +77,6 @@ try {
     # Sehat - tidak perlu log (biar file tidak penuh entry rutin)
 } catch {
     Log "ISL :4891 tidak respons ($($_.Exception.Message)) - restart container"
-    docker restart integrity-sprint-log 2>&1 | Out-Null
-    Log "restart selesai (exit $LASTEXITCODE)"
+    $restartResult = Invoke-Hidden "docker" "restart integrity-sprint-log"
+    Log "restart selesai (exit $($restartResult.ExitCode))"
 }

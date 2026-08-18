@@ -329,13 +329,19 @@ function resolveTaskHierarchy(taskId) {
   }
 }
 
-function appendTaskMemory(taskId, title, bullets, date, actualMins, sessionId) {
-  // POST to ISL task_memory API (Postgres) — primary storage
-  fetch(`${ISL_URL}/api/isl/task-memory`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
-    body: JSON.stringify({ opTaskId: taskId, title, bullets, date, actualMins, sessionId }),
-  }).catch(() => {})
+async function appendTaskMemory(taskId, title, bullets, date, actualMins, sessionId) {
+  // POST to ISL task_memory API (Postgres) — primary storage.
+  //
+  // Dulu ini `fetch(...).catch(() => {})` tanpa await, dan fungsinya bukan async
+  // sehingga pemanggilnya pun tidak bisa menunggu. Hook ini proses pendek: begitu
+  // ia keluar, fetch yang belum selesai ditinggal. Akibatnya tabel task_memory
+  // KOSONG TOTAL sejak awal, padahal file MD di bawah tetap tertulis (sinkron) —
+  // jadi tidak ada satu pun tanda bahwa separuh fungsi ini gagal. Diperbaiki
+  // 2026-08-18 dengan postDurable: di-await, dan payload yang gagal diantre ke
+  // pending-queue supaya hook berikutnya mengirim ulang.
+  await postDurable('/api/isl/task-memory',
+    { opTaskId: taskId, title, bullets, date, actualMins, sessionId },
+    { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY })
 
   // Keep MD file as secondary (read by Claude Code memory system)
   try {
@@ -674,6 +680,20 @@ Return ONLY valid JSON, no markdown, no extra text:
     const parse = (raw) => { try { return JSON.parse((raw ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '{}') } catch { return {} } }
     const validShape = (j) => typeof j.isSubstantial === 'boolean' && (!j.isSubstantial || (Array.isArray(j.topics) && j.topics.length > 0))
 
+    // Rian 2026-08-18: ringkasan AI DILEWATI secara default di mesin ini.
+    // Diukur langsung: qwen2.5:3b butuh 67,9s (dingin), 64,4s lalu 39,4s (hangat) —
+    // jadi bukan cold-start, dan OLLAMA_KEEP_ALIVE tidak menolong. Hook Stop dibunuh
+    // Claude Code pada 30 detik (timeout di ~/.claude/settings.json), dan POST sesi
+    // terjadi SETELAH ringkasan → sesi TIDAK PERNAH tercatat sama sekali sejak
+    // pertengahan tahun, tanpa jejak apa pun. Fallback heuristik di bawah
+    // (extractTitle/extractBullets) selesai dalam milidetik.
+    // Tujuan sekarang: laporan Nara AKURAT. Tercatat dengan judul heuristik jauh
+    // lebih berguna daripada tidak tercatat dengan judul bagus.
+    // Set ISL_HOOK_AI=1 kalau nanti mesinnya sudah cukup cepat.
+    if (process.env.ISL_HOOK_AI !== '1') {
+      process.stderr.write('[ISL] ringkasan AI dilewati (ISL_HOOK_AI != 1) — pakai heuristik agar hook selesai dalam budget\n')
+      throw new Error('skip-ai')
+    }
     const localRaw = await callOllama(prompt)
     let json = parse(localRaw)
     let brain = 'ollama'
@@ -711,7 +731,13 @@ Return ONLY valid JSON, no markdown, no extra text:
     const allAssistant = messages.filter(m => m.role === 'assistant').map(m => m.text).join(' ')
     const hasCode = /```|\.tsx?|\.mjs|function |const |import |export |PATCH|POST|fetch\(/.test(allAssistant)
     if (!hasCode || messages.filter(m => m.role === 'assistant').length < 3) process.exit(0)
-    taskInfo = [{ title: extractTitle(lastAssistant.text), bullets: extractBullets(lastAssistant.text) || extractParagraphBullets(lastAssistant.text), aiStatus: 'in_progress' }]
+    // Judul dari SELURUH teks assistant (heading tersedia di sana), bullet tetap dari
+    // pesan terakhir supaya isinya mencerminkan hasil akhir, bukan langkah di tengah.
+    taskInfo = [{
+      title:   extractTitle(allAssistant),
+      bullets: extractBullets(lastAssistant.text) || extractParagraphBullets(lastAssistant.text),
+      aiStatus: 'in_progress',
+    }]
   }
 
   // Normalize to array
@@ -794,7 +820,21 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
   // OP down -> time entry swallowed -> ISL showed 'pushed' with no OP record).
   let opWriteOk  = true
 
-  if (OP_API_TOKEN && OP_BASE_URL) {
+  // Rian 2026-08-18: AI TIDAK BOLEH menulis ke OpenProject atas inisiatifnya sendiri.
+  // Sebelumnya blok ini jalan tanpa syarat: AI mencocokkan task, lalu menulis activity
+  // comment + time entry ke OP — bahkan membuat task baru — tanpa persetujuan Rian.
+  // `hasExplicitCmd` hanya memengaruhi LABEL pushStatus, bukan apakah OP ditulis.
+  // Sekarang OP hanya ditulis kalau Rian memerintahkan eksplisit (command / !ticket:ID),
+  // atau kalau ISL_AUTO_PUSH_OP=1 di-set dengan sengaja.
+  // Kalau tidak diizinkan: taskId tetap null → pushStatus 'hub' → masuk Daily Hub untuk
+  // di-triage Rian, dan needsValidation true. Nol tulisan ke OP.
+  // Efek samping yang menguntungkan: semua round-trip OP hilang dari jalur default,
+  // jadi hook jauh lebih cepat dan muat di budget 30 detik.
+  const opWriteAllowed = hasExplicitCmd || process.env.ISL_AUTO_PUSH_OP === '1'
+  if (!opWriteAllowed) {
+    process.stderr.write('[ISL] OP tidak disentuh — tanpa perintah eksplisit. Sesi masuk Daily Hub untuk triage.\n')
+  }
+  if (OP_API_TOKEN && OP_BASE_URL && opWriteAllowed) {
     // Determine which task to use — priority: !ticket:ID > matching > new
     let existingTask = null
 
@@ -949,7 +989,7 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     }
 
     // Append to task memory file
-    if (taskId) appendTaskMemory(taskId, title, bullets, date, actualMins, sessionId)
+    if (taskId) await appendTaskMemory(taskId, title, bullets, date, actualMins, sessionId)
 
     // Sync parent User Story estimatedTime = sum of all child task estimates
     // This keeps the US as an accurate container of actual work done
@@ -1030,14 +1070,18 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     ticketBinding,
   }, { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY })
 
-  // Append to Daily Log — fire and forget. x-kafi-key: per-user captureKey
-  // (teammate's own hook) or the global default (owner) — drives attribution.
+  // Append to Daily Log. x-kafi-key: per-user captureKey (teammate's own hook) atau
+  // default global (owner) — menentukan atribusi.
+  //
+  // Dulu ini "fire and forget": fetch tanpa await + catch kosong. Panggilan
+  // /api/isl/sessions di atas di-await lewat postDurable, makanya sessions terisi
+  // sementara daily_logs BERHENTI SEJAK 3 JULI 2026 tanpa ada yang tahu — request-nya
+  // ditinggal saat proses hook keluar. Sekarang pakai postDurable yang sama:
+  // di-await, dan kegagalan diantre untuk dikirim ulang oleh hook berikutnya.
   const logDate = new Date().toISOString().slice(0, 10)
-  fetch(`${ISL_URL}/api/daily-log/append`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
-    body: JSON.stringify({ title, bullets, date: logDate, sessionId }),
-  }).catch(() => {})
+  await postDurable('/api/daily-log/append',
+    { title, bullets, date: logDate, sessionId },
+    { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY })
 
   // Email notification jika needsValidation
   if (needsValidation && taskId) {
@@ -1053,10 +1097,20 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
 }
 
 // ── Text fallbacks ────────────────────────────────────────────────────────────
+// Rian 2026-08-18: dipanggil dengan SELURUH teks assistant sesi, bukan hanya pesan
+// terakhir. Dulu judulnya diambil dari `lastAssistant.text` saja, jadi kalau pesan
+// penutup kebetulan prosa pendek, judulnya jadi potongan prosa itu — contoh nyata:
+// "Sekarang gw punya semua yang gw butuh. D..." padahal sesi itu soal perbaikan hook.
+// Pelajaran yang SAMA sudah dicatat di file ini untuk guard assistantChars ("judge the
+// session by total assistant output"), hanya belum diterapkan ke ekstraksi judul.
+//
+// Prioritas: heading terakhir (kesimpulan sesi lebih deskriptif daripada pembuka) >
+// heading pertama > baris pertama yang layak.
 function extractTitle(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 10 && l.length < 80)
-  const h = lines.find(l => /^#{1,3}\s/.test(l))
-  if (h) return h.replace(/^#+\s*/, '').slice(0, 70)
+  const lines    = text.split('\n').map(l => l.trim()).filter(l => l.length > 10 && l.length < 80)
+  const headings = lines.filter(l => /^#{1,3}\s/.test(l))
+  const pick     = headings[headings.length - 1] ?? headings[0]
+  if (pick) return pick.replace(/^#+\s*/, '').replace(/[*`]/g, '').slice(0, 70)
   return lines[0]?.slice(0, 70) || 'Work Session'
 }
 function extractBullets(text) {

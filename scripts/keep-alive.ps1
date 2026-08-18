@@ -24,8 +24,28 @@ function Notify($m) {
   } catch {}
 }
 
+# Jalanin proses eksternal TANPA console window sama sekali (CreateNoWindow).
+# -WindowStyle Hidden di level Scheduled Task cuma nyembunyiin window PowerShell-nya
+# sendiri - child process native (docker.exe dkk) yang dipanggil langsung tetap bisa
+# munculin console sendiri. Ini penyebab popup cmd kosong yang kelihatan sekilas.
+function Invoke-Hidden($FilePath, $Arguments, $WorkDir) {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $FilePath
+  $psi.Arguments = $Arguments
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  if ($WorkDir) { $psi.WorkingDirectory = $WorkDir }
+  $p = [System.Diagnostics.Process]::Start($psi)
+  $stdout = $p.StandardOutput.ReadToEnd()
+  $stderr = $p.StandardError.ReadToEnd()
+  $p.WaitForExit()
+  return [PSCustomObject]@{ ExitCode = $p.ExitCode; StdOut = $stdout; StdErr = $stderr }
+}
+
 function ContainerRunning($name) {
-  try { return (docker inspect -f '{{.State.Running}}' $name 2>$null) -eq 'true' } catch { return $false }
+  try { return (Invoke-Hidden "docker" "inspect -f `"{{.State.Running}}`" $name").StdOut.Trim() -eq 'true' } catch { return $false }
 }
 
 function AppResponds {
@@ -50,9 +70,8 @@ Log "DOWN - db=$dbOk app=$appOk. Restarting..."
 Notify "DOWN (db=$dbOk app=$appOk) - mencoba restart..."
 
 try {
-  Push-Location $ProjectDir
-  docker compose up -d 2>&1 | ForEach-Object { Log "  $_" }
-  Pop-Location
+  $upResult = Invoke-Hidden "docker" "compose up -d" $ProjectDir
+  ($upResult.StdOut + $upResult.StdErr) -split "`r?`n" | Where-Object { $_ } | ForEach-Object { Log "  $_" }
   Start-Sleep -Seconds 12
   $appOk2 = (ContainerRunning $AppName) -and (AppResponds)
   if ($appOk2) { Log "RECOVERED - ISL hidup lagi."; Notify "OK - ISL pulih." }
