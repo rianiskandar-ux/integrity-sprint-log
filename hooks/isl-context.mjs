@@ -19,7 +19,7 @@
  * Relate detect: task closed lama → buat task baru dgn referensi
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync, openSync, readSync, closeSync } from 'fs'
 import { join }    from 'path'
 import { homedir } from 'os'
 import { spawn }   from 'child_process'
@@ -371,18 +371,80 @@ async function appendTaskMemory(taskId, title, bullets, date, actualMins, sessio
 }
 
 // ── Duration from transcript ──────────────────────────────────────────────────
-function getActualDurationMins(rawLines) {
-  const times = []
-  for (const line of rawLines) {
-    try {
-      const entry = JSON.parse(line)
-      const ts    = entry.timestamp ?? entry.createdAt
-      if (ts) times.push(new Date(ts).getTime())
-    } catch {}
-  }
+// times = timestamp tingkat-atas tiap baris transkrip (ms), dari readTranscript()
+function getActualDurationMins(times) {
   if (times.length < 2) return null
+  // min/max lewat loop: Math.max(...times) melempar RangeError bila sesi punya > ±120 ribu baris
+  let lo = Infinity, hi = -Infinity
+  for (const t of times) { if (t < lo) lo = t; if (t > hi) hi = t }
   // Cap at 480 min (8h) — wall-clock duration can be huge if session left idle
-  return Math.min(480, Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 60000)))
+  return Math.min(480, Math.max(1, Math.round((hi - lo) / 60000)))
+}
+
+// ── Satu catatan ISL per HARI (Rian 2026-10-27) ──────────────────────────────
+// Dulu satu sesi Claude = satu baris ISL selamanya: tanggalnya tanggal Stop pertama, lalu tiap
+// Stop berikutnya hanya me-refresh baris itu. Tab God Mode hidup berminggu-minggu, jadi kerja
+// 26 Okt tercatat di baris bertanggal 18 Juni (30b94e24) dan menitnya mentok di cap 480.
+// Sekarang: hari pertama tetap memakai sessionId, hari berikutnya `<sessionId>@<YYYY-MM-DD WIB>`.
+// Menit = menit AKTIF hari itu saja (jeda > 30 menit dibuang) — aturan yang sama dengan jam kerja.
+const WIB_MS = 7 * 3600000
+const wibDay = t => new Date(t + WIB_MS).toISOString().slice(0, 10)
+function activeMins(times) {
+  if (times.length < 2) return null
+  const s = times.slice().sort((a, b) => a - b)
+  let ms = 0
+  for (let i = 1; i < s.length; i++) { const g = s[i] - s[i - 1]; if (g > 0 && g <= 30 * 60000) ms += g }
+  return Math.max(1, Math.round(ms / 60000))
+}
+
+// ── Baca transkrip HEMAT RAM (Rian 2026-10-26) ─────────────────────────────────
+// Dulu: readFileSync(seluruh berkas).split('\n') lalu JSON.parse SETIAP baris (dua kali: pesan + durasi). Sesi God Mode
+// 6b42d7c7 = 372 MB -> hook memakan ±876 MB RAM & 5-15 dtk di SETIAP akhir prompt (laptop 15,7 GB, sisa sering 2-4 GB).
+// Sekarang dibaca per potongan 4 MB; hanya baris berisi "type":"user"/"assistant" yang di-parse. Hasil identik:
+//   messages  = pesan user/assistant berteks > 10 karakter (aturan lama)
+//   topTimes  = timestamp TINGKAT-ATAS (entry.timestamp ?? entry.createdAt) -> durasi sesi (aturan getActualDurationMins lama)
+//   lineTimes = timestamp PERTAMA di tiap baris (regex lama activeSegment, termasuk kebiasaannya) -> capture draf tiket
+function* transcriptLines(path) {
+  const fd = openSync(path, 'r'), buf = Buffer.alloc(4 << 20)
+  let rest = Buffer.alloc(0), n
+  try {
+    while ((n = readSync(fd, buf, 0, buf.length, null)) > 0) {
+      const chunk = rest.length ? Buffer.concat([rest, buf.subarray(0, n)]) : buf.subarray(0, n)
+      let s = 0, i
+      while ((i = chunk.indexOf(10, s)) >= 0) { yield chunk.toString('utf8', s, i); s = i + 1 }
+      rest = Buffer.from(chunk.subarray(s))   // salin: buf dipakai ulang di putaran berikutnya
+    }
+    if (rest.length) yield rest.toString('utf8')
+  } finally { closeSync(fd) }
+}
+const TS_RE = /"timestamp":"([^"]+)"/
+function readTranscript(path) {
+  const messages = [], topTimes = [], lineTimes = []
+  let count = 0
+  for (const line of transcriptLines(path)) {
+    count++
+    const m = line.match(TS_RE)
+    lineTimes.push(m ? Date.parse(m[1]) : NaN)
+    if (line.includes('"type":"user"') || line.includes('"type":"assistant"')) {
+      try {
+        const entry = JSON.parse(line)
+        const ts = entry.timestamp ?? entry.createdAt
+        if (ts) topTimes.push(new Date(ts).getTime())
+        if (entry.type !== 'user' && entry.type !== 'assistant') continue
+        const raw  = entry.message?.content ?? ''
+        const text = typeof raw === 'string' ? raw
+          : Array.isArray(raw) ? raw.filter(b => b.type === 'text').map(b => b.text).join('\n') : ''
+        if (text.length > 10) messages.push({ role: entry.type, text })
+      } catch {}
+      continue
+    }
+    // baris lain (system, summary, snapshot …): timestamp tingkat-atas = kemunculan TERAKHIR (kunci tingkat-atas ditulis
+    // setelah isi bersarang); tanpa JSON.parse
+    const k = line.lastIndexOf('"timestamp":"'), c = k < 0 ? line.lastIndexOf('"createdAt":"') : -1
+    const at = k >= 0 ? k + 13 : c >= 0 ? c + 13 : -1
+    if (at >= 0) { const e = line.indexOf('"', at); if (e > at) topTimes.push(new Date(line.slice(at, e)).getTime()) }
+  }
+  return { messages, topTimes, lineTimes, count }
 }
 
 // ── OP API helpers ────────────────────────────────────────────────────────────
@@ -493,7 +555,9 @@ async function callOllama(prompt) {
       headers: { 'content-type': 'application/json' },
       // format = JSON Schema penuh → constrained decoding, struktur DIJAMIN persis
       // (3B suka meratakan skema: activities naik ke level atas, topics kosong)
-      body: JSON.stringify({ model, prompt, stream: false, format: {
+      // keep_alive 1m: enricher memproses beberapa sesi berurutan (model tetap hangat), lalu ±2 GB RAM
+      // segera dilepas — laptop ini sering tinggal 2-4 GB (riwayat freeze)
+      body: JSON.stringify({ model, prompt, stream: false, keep_alive: '1m', format: {
         type: 'object',
         properties: {
           isSubstantial: { type: 'boolean' },
@@ -509,7 +573,9 @@ async function callOllama(prompt) {
         },
         required: ['isSubstantial', 'topics'],
       }, options: { temperature: 0.2, num_ctx: 8192 } }),
-      signal: AbortSignal.timeout(90000),
+      // 90 dtk terlalu mepet: diukur 75-91 dtk per ringkasan -> sering habis waktu = "output invalid".
+      // Enricher (di luar Claude Code, tanpa batas 30 dtk) menaikkan lewat OLLAMA_TIMEOUT_MS.
+      signal: AbortSignal.timeout(Number(process.env.OLLAMA_TIMEOUT_MS) || 90000),
     })
     if (!res.ok) return ''
     const d = await res.json()
@@ -551,6 +617,70 @@ function callClaudeCLI(prompt) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+// ── Capture → draf update tiket di ISL (Rian 2026-10-19) ──────────────────────
+// Sesi kerja kantor yang berkaitan dengan tiket yang SUDAH ada → aktivitas + waktu aktif masuk ke draf
+// update tiket itu di ISL (BUKAN OP; push tetap Rian). Pencocokan tiket di server ISL (cache hook basi).
+// Waktu = waktu aktif per tanggal WIB (jeda > 30 mnt = istirahat), HANYA dari pesan baru sejak capture
+// terakhir sesi ini — sesi God Mode bisa berhari-hari & menyentuh banyak tiket. Tanpa state: 24 jam terakhir.
+const CAPTURE_GAP_MS = 30 * 60000
+const CAPTURE_STATE  = `${ISL_DIR}/capture-state.json`
+// alat pribadi & freelance = tanpa tiket (OP = KPI kerja kantor) — sama dengan lib/ticket-capture.ts
+const PERSONAL_DIR = /[\\/](kota-kerja-src|daily-sprint-next|launcher-dashboard|emergent-contest|jagadigital|cocoland[^\\/]*|cuckoo[^\\/]*|\.claude[^\\/]*)([\\/]|$)/i
+
+// lineTimes = timestamp pertama tiap baris transkrip (readTranscript), NaN bila tak ada
+function activeSegment(lineTimes, sinceMs) {
+  const times = []
+  for (const t of lineTimes) if (t > sinceMs) times.push(t)
+  if (times.length < 2) return null
+  times.sort((a, b) => a - b)
+  const byDate = {}
+  for (let i = 1; i < times.length; i++) {
+    const gap = times[i] - times[i - 1]
+    if (gap <= 0 || gap > CAPTURE_GAP_MS) continue
+    const date = new Date(times[i] + 7 * 3600000).toISOString().slice(0, 10)
+    byDate[date] = (byDate[date] ?? 0) + gap
+  }
+  const logs = Object.entries(byDate).map(([date, ms]) => ({ date, mins: Math.round(ms / 60000) })).filter(l => l.mins >= 1)
+  return logs.length ? { segStart: times[0], lastTs: times[times.length - 1], logs } : null
+}
+
+async function captureToDrafts({ sessionId, cwd, lineTimes, topics, ticketBinding }) {
+  try {
+    if (!sessionId || !process.env.KAFI_API_KEY || !topics?.length) return
+    if (cwd && PERSONAL_DIR.test(cwd)) return
+    let state = {}
+    try { state = JSON.parse(readFileSync(CAPTURE_STATE, 'utf-8')) } catch {}
+    const seg = activeSegment(lineTimes, state[sessionId] ?? Date.now() - 24 * 3600000)
+    if (!seg) return
+    const res = await fetch(`${ISL_URL}/api/isl/ticket-drafts/capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
+      body: JSON.stringify({
+        sessionId, segment: `${sessionId}@${seg.segStart}`, cwd: cwd ?? null, ticketBinding: ticketBinding ?? null,
+        title: topics[0].title, bullets: topics.flatMap(t => t.bullets ?? []).slice(0, 12), logs: seg.logs,
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return   // state tak dimajukan → potongan ini ikut dikirim lagi di Stop berikutnya
+    const j = await res.json().catch(() => ({}))
+    state[sessionId] = seg.lastTs
+    try { writeFileSync(CAPTURE_STATE, JSON.stringify(state)) } catch {}
+    process.stderr.write(j.matched ? `[ISL] Draf update #${j.wpId} diperbarui (${j.how}) — review di tab Sprint.\n` : `[ISL] Capture: ${j.reason ?? 'tak cocok'}\n`)
+  } catch { /* jangan pernah menghambat hook */ }
+}
+
+// Keluar RAPI (Rian 2026-10-26). Dulu tiap jalur memanggil process.exit(0) mendadak. Di Windows itu sesekali
+// meledak SETELAH kerja hook selesai: "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c,
+// line 76" -> exit code bukan 0 -> Claude Code menandai "Stop hook error" (terutama sesi raksasa, mis. 8.000+ pesan).
+// Penyebabnya libuv yang masih menyelesaikan I/O latar (pipe stdin / socket) saat proses dirobohkan paksa.
+// Sekarang: stdin ditutup begitu payload terbaca, lalu proses selesai ALAMI saat event loop kosong (diukur ±0,3-0,5 dtk);
+// cadangan paksa 4 dtk (unref, tak menahan proses) hanya kalau ada yang tertinggal.
+function selesai() {
+  process.exitCode = 0
+  try { process.stdin.destroy() } catch {}
+  setTimeout(() => process.exit(0), 4000).unref()
+}
+
 async function main() {
   let payload = {}
   try {
@@ -560,8 +690,19 @@ async function main() {
       process.stdin.on('end', () => resolve(data))
       setTimeout(() => resolve(data), 3000)
     })
-    if (raw.trim()) payload = JSON.parse(raw)
-  } catch {}
+    // BUG DIPERBAIKI 2026-08-19: dulu `if (raw.trim()) payload = JSON.parse(raw)` —
+    // trim HANYA dipakai untuk cek truthiness, sementara JSON.parse menerima `raw` yang
+    // masih mengandung BOM (U+FEFF). PowerShell 5.1 menyisipkan BOM saat pipe ke native
+    // command, jadi payload dari enricher SELALU gagal di-parse, jatuh ke `catch {}`,
+    // payload jadi {} dan hook keluar diam-diam di guard transcriptPath tanpa satu pun
+    // pesan. Sekarang yang di-parse adalah string yang sudah dibersihkan.
+    const trimmed = raw.replace(/^﻿/, '').trim()
+    if (trimmed) payload = JSON.parse(trimmed)
+  } catch (e) {
+    process.stderr.write(`[ISL] payload stdin tidak bisa di-parse: ${e.message}\n`)
+  }
+  // payload sudah di tangan -> berhenti membaca pipe stdin sekarang, jauh sebelum proses berakhir (lihat selesai())
+  try { process.stdin.removeAllListeners('data'); process.stdin.destroy() } catch {}
 
   const sessionId = payload.session_id
   let transcriptPath = payload.transcript_path
@@ -574,7 +715,7 @@ async function main() {
       }
     } catch {}
   }
-  if (!transcriptPath || !existsSync(transcriptPath)) process.exit(0)
+  if (!transcriptPath || !existsSync(transcriptPath)) return selesai()
 
   // Repeat Stop of an already-recorded session. Previously this hard-exited,
   // which FROZE long continuous sessions at their first snapshot — every later
@@ -583,25 +724,21 @@ async function main() {
   // repeat REFRESHES the existing ISL record (idempotent PATCH, preserves OP
   // linkage) WITHOUT re-pushing to OP — so no duplicate time entries — gated on
   // meaningful growth so trivial trailing turns don't re-summarize.
-  const isRepeat = !!(sessionId && isAlreadyProcessed(sessionId))
+  const { messages, topTimes, lineTimes } = readTranscript(transcriptPath)
 
-  const rawLines = readFileSync(transcriptPath, 'utf-8').trim().split('\n')
-  const messages = []
-  for (const line of rawLines) {
-    try {
-      const entry = JSON.parse(line)
-      if (entry.type !== 'user' && entry.type !== 'assistant') continue
-      const raw  = entry.message?.content ?? ''
-      const text = typeof raw === 'string' ? raw
-        : Array.isArray(raw) ? raw.filter(b => b.type === 'text').map(b => b.text).join('\n') : ''
-      if (text.length > 10) messages.push({ role: entry.type, text })
-    } catch {}
-  }
+  // catatan hari ini: sessionId (hari pertama sesi) atau sessionId@tanggal (hari berikutnya)
+  const today = wibDay(Date.now())
+  let firstTs = Infinity
+  for (const t of topTimes) if (t < firstTs) firstTs = t
+  const recordId = sessionId && Number.isFinite(firstTs) && wibDay(firstTs) !== today ? `${sessionId}@${today}` : sessionId
+  const dayStart = Date.parse(today + 'T00:00:00+07:00')
+  const todayTimes = topTimes.filter(t => t >= dayStart)
+  const isRepeat = !!(recordId && isAlreadyProcessed(recordId))
 
   // Anti-spam
-  if (messages.length < 3) process.exit(0)
-  const actualMins = getActualDurationMins(rawLines)
-  if (actualMins !== null && actualMins < 2) process.exit(0)
+  if (messages.length < 3) return selesai()
+  const actualMins = activeMins(todayTimes)
+  if (actualMins === null || actualMins < 2) return selesai()   // hari ini belum ada kerja berarti di sesi ini
 
   // Commands
   const command       = detectCommand(messages)
@@ -609,7 +746,7 @@ async function main() {
 
   if (command?.cmd === '!intermezzo') {
     process.stderr.write('[ISL] !intermezzo — sesi ini tidak dicatat.\n')
-    process.exit(0)
+    return selesai()
   }
 
   const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
@@ -619,18 +756,23 @@ async function main() {
   // especially likely given a preference for terse replies. Judge the session
   // by total assistant output instead (confirmed bug, audit 2026-07-22); the AI
   // summarizer's isSubstantial + the code heuristic (below) make the finer call.
-  if (!lastAssistant) process.exit(0)
+  if (!lastAssistant) return selesai()
   const assistantChars = messages.reduce((n, m) => m.role === 'assistant' ? n + m.text.length : n, 0)
-  if (assistantChars < 120) process.exit(0)
+  if (assistantChars < 120) return selesai()
 
   // Repeat-Stop growth gate: only re-summarize/refresh if the session grew
   // meaningfully since it was last processed — otherwise every trailing turn
   // of a long session would trigger a fresh (local-LLM) summary for no new
   // content. First-time sessions (isRepeat=false) always proceed.
+  // ISL_FORCE_REFRESH=1 melewati gate ini. Dipakai enricher latar (isl-enrich.ps1):
+  // hook dijalankan ULANG di luar Claude Code dengan ISL_HOOK_AI=1 supaya ringkasan
+  // Ollama boleh makan 40-68 detik tanpa dibunuh timeout 30s. Sesi tidak bertambah
+  // panjang, jadi tanpa bypass ini enricher selalu berhenti di gate.
   const REFRESH_MIN_GROWTH = 4
-  if (isRepeat && messages.length < getProcessedMsgCount(sessionId) + REFRESH_MIN_GROWTH) {
+  const forceRefresh = process.env.ISL_FORCE_REFRESH === '1'
+  if (!forceRefresh && isRepeat && messages.length < getProcessedMsgCount(recordId) + REFRESH_MIN_GROWTH) {
     process.stderr.write(`[ISL] Session ${sessionId?.slice(0,8)} already recorded, no meaningful growth — skip.\n`)
-    process.exit(0)
+    return selesai()
   }
 
   // AI summary + status determination
@@ -638,6 +780,7 @@ async function main() {
   const contextText = recent.map(m => `[${m.role.toUpperCase()}]: ${m.text.slice(0, 900)}`).join('\n\n')
 
   let taskInfo    = null
+  let aiOutcome   = null    // null = ringkasan AI dipakai/tidak dicoba; 'gagal' | 'skip' (hanya relevan untuk enricher)
   const tokenUsage  = null  // CLI subscription — no token tracking
 
   try {
@@ -694,26 +837,33 @@ Return ONLY valid JSON, no markdown, no extra text:
       process.stderr.write('[ISL] ringkasan AI dilewati (ISL_HOOK_AI != 1) — pakai heuristik agar hook selesai dalam budget\n')
       throw new Error('skip-ai')
     }
+    // Rian 2026-10-27: fallback ke Claude CLI DIMATIKAN secara default (ISL_CLI_FALLBACK=1 untuk menyalakan).
+    // Diukur 26-27 Okt: 15 dari 22 ringkasan jatuh ke Claude CLI — Ollama 3B butuh 75-90 dtk dan habis waktu
+    // di batas 90 dtk, lalu "tidak substansial" pun diverifikasi ulang ke Claude. Akibatnya kuota Claude Rian
+    // terpakai dan isi sesi kantor keluar laptop, padahal Ollama dipilih justru supaya lokal.
+    // Sekarang: lokal gagal -> tidak ada ringkasan (enricher mencoba lagi nanti); lokal bilang skip -> diterima.
+    const cliOk = process.env.ISL_CLI_FALLBACK === '1'
     const localRaw = await callOllama(prompt)
     let json = parse(localRaw)
     let brain = 'ollama'
     if (!validShape(json)) {
       process.stderr.write(`[ISL] lokal raw (${localRaw.length} chars): ${localRaw.slice(0, 200)}\n`)
+      if (!cliOk) { aiOutcome = 'gagal'; throw new Error('local-failed') }
       json = parse(await callClaudeCLI(prompt))
       brain = 'claude-cli (lokal: output invalid)'
     } else if (json.isSubstantial === false) {
-      json = parse(await callClaudeCLI(prompt))
-      brain = 'claude-cli (lokal bilang skip — verifikasi)'
+      if (cliOk) { json = parse(await callClaudeCLI(prompt)); brain = 'claude-cli (lokal bilang skip — verifikasi)' }
+      else aiOutcome = 'skip'
     }
     process.stderr.write(`[ISL] summary via ${brain}\n`)
     // Durable event log (Scorecard) — awaited with a short timeout since the
-    // hook process exits synchronously via process.exit(0) further down;
+    // hook process ends right after main() returns (selesai(), further down);
     // a true fire-and-forget fetch could get killed before it sends.
     try {
       await fetch(`${ISL_URL}/api/events/log`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
-        body: JSON.stringify({ agent: 'arka', event: brain === 'ollama' ? 'summary_local' : 'summary_fallback' }),
+        body: JSON.stringify({ agent: 'arka', event: brain.startsWith('ollama') ? 'summary_local' : 'summary_fallback' }),
         signal: AbortSignal.timeout(3000),
       })
     } catch { /* logging is best-effort — never block the hook */ }
@@ -727,15 +877,41 @@ Return ONLY valid JSON, no markdown, no extra text:
     }
   } catch {}
 
+  // enricher (ISL_FORCE_REFRESH=1) datang HANYA untuk ringkasan AI: tanpa ringkasan, jangan timpa catatan
+  // yang ada dengan judul heuristik. 'gagal' -> dicoba lagi putaran berikutnya; 'skip' -> keputusan sah.
+  if (forceRefresh && aiOutcome) {
+    if (aiOutcome === 'gagal') {
+      try {
+        await fetch(`${ISL_URL}/api/events/log`, { method: 'POST', signal: AbortSignal.timeout(3000),
+          headers: { 'content-type': 'application/json', 'x-kafi-key': process.env.KAFI_API_KEY },
+          body: JSON.stringify({ agent: 'arka', event: 'summary_failed' }) })
+      } catch {}
+    }
+    process.stderr.write(aiOutcome === 'gagal'
+      ? '[ISL] enrich ditunda: ringkasan lokal gagal (tanpa fallback Claude) — dicoba lagi nanti\n'
+      : '[ISL] enrich dilewati: lokal menilai tidak substansial\n')
+    return selesai()
+  }
+
   if (!taskInfo) {
     const allAssistant = messages.filter(m => m.role === 'assistant').map(m => m.text).join(' ')
     const hasCode = /```|\.tsx?|\.mjs|function |const |import |export |PATCH|POST|fetch\(/.test(allAssistant)
-    if (!hasCode || messages.filter(m => m.role === 'assistant').length < 3) process.exit(0)
+    if (!hasCode || messages.filter(m => m.role === 'assistant').length < 3) return selesai()
     // Judul dari SELURUH teks assistant (heading tersedia di sana), bullet tetap dari
     // pesan terakhir supaya isinya mencerminkan hasil akhir, bukan langkah di tengah.
+    //
+    // BUG DIPERBAIKI 2026-08-19: dulu `extractBullets(...) || extractParagraphBullets(...)`.
+    // extractBullets SELALU me-return array, dan array kosong itu TRUTHY di JS — jadi
+    // `[] || fallback` menghasilkan `[]` dan fallback paragraf TIDAK PERNAH jalan. Akibatnya
+    // sesi tercatat dengan bullets kosong permanen kalau pesan terakhir tidak punya baris
+    // "- " di awal baris (mis. isinya tabel atau prosa). Dua sesi asli 18 Agu terbukti
+    // bullets `[]`. Sekarang cek panjangnya, bukan truthiness.
+    let bullets = extractBullets(lastAssistant.text)
+    if (bullets.length === 0) bullets = extractParagraphBullets(lastAssistant.text)
+    if (bullets.length === 0) bullets = extractParagraphBullets(allAssistant)
     taskInfo = [{
       title:   extractTitle(allAssistant),
-      bullets: extractBullets(lastAssistant.text) || extractParagraphBullets(lastAssistant.text),
+      bullets,
       aiStatus: 'in_progress',
     }]
   }
@@ -757,15 +933,16 @@ Return ONLY valid JSON, no markdown, no extra text:
   // over the old freeze-at-first-snapshot behavior.
   if (isRepeat) {
     const primary = topics[0]
-    const ok = await refreshSessionRecord(sessionId, {
+    const ok = await refreshSessionRecord(recordId, {
       title:      primary.title,
       bullets:    primary.bullets,
       actualMins,
       taskStatus: command ? command.islStatus : primary.aiStatus,
     })
-    process.stderr.write(`[ISL] Session ${sessionId?.slice(0,8)} di-refresh (repeat, ${messages.length} msg)${ok ? '' : ' — refresh gagal, retry Stop berikutnya'}\n`)
-    if (sessionId) markProcessed(sessionId, messages.length)
-    process.exit(0)
+    process.stderr.write(`[ISL] Session ${recordId?.slice(0,8)}${recordId !== sessionId ? ' @' + today : ''} di-refresh (repeat, ${messages.length} msg)${ok ? '' : ' — refresh gagal, retry Stop berikutnya'}\n`)
+    await captureToDrafts({ sessionId, cwd: payload.cwd, lineTimes, topics, ticketBinding })
+    if (recordId) markProcessed(recordId, messages.length)
+    return selesai()
   }
 
   const userId = await resolveUserId(opMode)
@@ -774,11 +951,12 @@ Return ONLY valid JSON, no markdown, no extra text:
     const topic = topics[i]
     const finalStatus = command ? command.islStatus : topic.aiStatus
     // Topic 1 uses original sessionId (replaces live session), topics 2+ get unique suffix
-    const topicSessionId = i === 0 ? sessionId : `${sessionId}-t${i + 1}`
+    const topicSessionId = i === 0 ? recordId : `${recordId}-t${i + 1}`
     await autoPush({ sessionId: topicSessionId, actualMins: i === 0 ? actualMins : null, userId, finalStatus, hasExplicitCmd, needsValidation, ticketBinding: i === 0 ? ticketBinding : null, tokenUsage: i === 0 ? tokenUsage : null, title: topic.title, bullets: topic.bullets, aiStatus: topic.aiStatus })
   }
-  if (sessionId) markProcessed(sessionId, messages.length)
-  process.exit(0)
+  await captureToDrafts({ sessionId, cwd: payload.cwd, lineTimes, topics, ticketBinding })
+  if (recordId) markProcessed(recordId, messages.length)
+  return selesai()
 }
 
 // ── KPI-aware task time estimation ───────────────────────────────────────────
@@ -830,10 +1008,15 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
   // di-triage Rian, dan needsValidation true. Nol tulisan ke OP.
   // Efek samping yang menguntungkan: semua round-trip OP hilang dari jalur default,
   // jadi hook jauh lebih cepat dan muat di budget 30 detik.
-  const opWriteAllowed = hasExplicitCmd || process.env.ISL_AUTO_PUSH_OP === '1'
-  if (!opWriteAllowed) {
-    process.stderr.write('[ISL] OP tidak disentuh — tanpa perintah eksplisit. Sesi masuk Daily Hub untuk triage.\n')
-  }
+  //
+  // Rian 2026-10-16 (keputusan final): hook TIDAK PERNAH menulis ke OP, termasuk dengan
+  // command / !ticket:ID. OP = laporan final; satu-satunya pintu = push ISL (Push Queue)
+  // saat sesi sudah "ready". !ticket:ID kini hanya mengikat sesi ke tiket DI ISL
+  // (opTaskId terisi -> tujuan sudah terpilih di Push Queue). Blok OP di bawah sengaja mati.
+  const opWriteAllowed = false
+  process.stderr.write(hasExplicitCmd
+    ? `[ISL] OP tidak disentuh (keputusan 16 Okt). Sesi masuk Push Queue${ticketBinding ? ` terikat ke #${ticketBinding}` : ''}.\n`
+    : '[ISL] OP tidak disentuh. Sesi masuk Daily Hub untuk triage.\n')
   if (OP_API_TOKEN && OP_BASE_URL && opWriteAllowed) {
     // Determine which task to use — priority: !ticket:ID > matching > new
     let existingTask = null
@@ -1064,7 +1247,8 @@ async function autoPush({ sessionId, title, bullets, actualMins, aiStatus, userI
     // time entry masquerade as a clean push.
     needsValidation: taskId ? (needsValidation || !opWriteOk) : true,
     hasExplicitCmd, aiStatus,
-    opTaskId: taskId, opStoryId: storyId, autoPushed: !!taskId,
+    // !ticket:ID -> tujuan push sudah terpilih di ISL (bukan ditulis ke OP)
+    opTaskId: taskId ?? ticketBinding ?? null, opStoryId: storyId, autoPushed: !!taskId,
     tokenUsage: tokenSummary,
     relatedOldTaskId: relatedOldId,
     ticketBinding,
@@ -1124,10 +1308,13 @@ function extractParagraphBullets(text) {
 
 main()
   .then(async () => {
-    // Regenerate CLAUDE.md setelah session selesai (non-blocking)
+    // Regenerate CLAUDE.md setelah session selesai (non-blocking).
+    // 2026-10-26: blok ini TAK PERNAH jalan selama main() berakhir dengan process.exit(0). Sekarang main() selesai normal,
+    // jadi supaya perilaku tidak berubah diam-diam (npm baru tiap akhir prompt = CPU/RAM), hanya jalan bila ISL_HOOK_CONTEXT=1.
+    if (process.env.ISL_HOOK_CONTEXT !== '1') return
     const { spawn } = await import('child_process')
     const { fileURLToPath } = await import('url')
     const rootDir = fileURLToPath(new URL('../', import.meta.url))
     spawn('npm', ['run', 'context'], { cwd: rootDir, stdio: 'ignore', detached: true }).unref()
   })
-  .catch(() => process.exit(0))
+  .catch(() => selesai())
