@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '@/lib/i18n'
 import TaskChatModal, { type TaskChatContext } from './TaskChatModal'
 import SprintRecap, { type RecapTask } from './SprintRecap'
+import TicketDrafts from './TicketDrafts'
 import OpTaskModal from './OpTaskModal'
 import {
   CalendarDays, RefreshCw, Loader2, Sparkles, Bot, Lightbulb,
@@ -387,12 +388,11 @@ export default function SprintPlanView({ initialSprintId }: { initialSprintId?: 
   const totalSpent = allTasks.filter(isInteractive).reduce((a, t) => a + (t.spentHours ?? 0), 0)
   const openEst    = carryOver.filter(isInteractive).reduce((a, t) => a + (t.estimatedHours ?? 0), 0)
 
-  const capacityColor = openEst < 40
+  // Aturan Rian (16 Okt): total estimasi sprint 50–60 jam — di bawah 50 kurang, di atas 60 lewat batas
+  const capacityColor = openEst < 50
     ? { bar: 'bg-blue-400', text: 'text-blue-600 dark:text-blue-400', label: 'Under capacity', bg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' }
-    : openEst <= 50
-    ? { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', label: 'Good capacity', bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' }
     : openEst <= 60
-    ? { bar: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400', label: 'Near limit', bg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' }
+    ? { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', label: 'Good capacity', bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' }
     : { bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400', label: 'Over capacity!', bg: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800' }
 
   const sprintStart = new Date(currentSprint.startDate).getTime()
@@ -519,7 +519,7 @@ export default function SprintPlanView({ initialSprintId }: { initialSprintId?: 
               <div className={`h-full rounded-full transition-all ${capacityColor.bar}`}
                 style={{ width: `${Math.min(100, openEst / 60 * 100)}%` }} />
             </div>
-            <p className="text-[8px] text-gray-400 mt-0.5">40h–60h ideal · {fmtH(openEst)} open</p>
+            <p className="text-[8px] text-gray-400 mt-0.5">50h–60h target · {fmtH(openEst)} open</p>
           </div>
         </div>
 
@@ -533,6 +533,11 @@ export default function SprintPlanView({ initialSprintId }: { initialSprintId?: 
           </div>
         )}
       </div>
+
+      {/* Draf tiket milik kita — rencana di ISL, lahir di OP hanya saat Fix → Push (Rian 16 Okt) */}
+      {!isReadOnly && (
+        <TicketDrafts sprintId={currentSprint.id} sprintName={currentSprint.name} onPushed={() => load(selectedSprintId)} />
+      )}
 
       {/* Recap */}
       <div className="space-y-1.5">

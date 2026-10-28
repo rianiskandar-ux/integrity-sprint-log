@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getRequestContext } from '@/lib/request-auth'
 import { getTimer, startTimer, stopTimer, pauseTimer, resumeTimer } from '@/lib/work-timer'
-import { updateSession, getSession } from '@/lib/session-store'
+import { updateSession, getSession, saveSession, createSessionId } from '@/lib/session-store'
 import { OWNER_UID } from '@/lib/auth'
-
-function toISODuration(minutes: number): string {
-  const h = Math.floor(minutes / 60), m = minutes % 60
-  return h > 0 ? `PT${h}H${m > 0 ? m + 'M' : ''}` : `PT${m}M`
-}
+import { wibDate } from '@/lib/op-time'
 
 export const runtime = 'nodejs'
 
@@ -63,29 +59,30 @@ export async function POST(req: Request) {
       } catch { /* session may not exist anymore */ }
     }
 
-    // Auto-push to OP if timer was linked to an OP task
-    let opPushed = false
-    if (r.timer.opTaskId && !r.suspicious && r.elapsedMins > 0) {
+    // Rian 2026-10-16: TIDAK ada lagi auto-push ke OP saat timer berhenti — OP = laporan final,
+    // satu-satunya pintu = Push Queue ISL. Timer yang terikat ke sesi sudah tercatat di atas;
+    // timer yang hanya terikat ke tiket OP (tanpa sesi) dijadikan sesi 'pending' di Push Queue
+    // dengan tujuan tiket itu, supaya waktunya tidak hilang dan di-push saat sudah ready.
+    let queuedSessionId: string | null = null
+    if (!r.timer.sessionId && r.timer.opTaskId && !r.suspicious && r.elapsedMins > 0) {
       try {
-        const ctx = await getRequestContext()
-        if (ctx?.opToken && ctx?.opBaseUrl) {
-          const auth = 'Basic ' + Buffer.from(`apikey:${ctx.opToken}`).toString('base64')
-          const res  = await fetch(`${ctx.opBaseUrl}/api/v3/time_entries`, {
-            method: 'POST',
-            headers: { Authorization: auth, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              hours:   toISODuration(r.elapsedMins),
-              spentOn: new Date().toISOString().split('T')[0],
-              comment: { format: 'plain', raw: r.timer.taskTitle ?? 'Timer via ISL' },
-              _links:  { workPackage: { href: `/api/v3/work_packages/${r.timer.opTaskId}` } },
-            }),
-          })
-          opPushed = res.ok
-        }
-      } catch { /* non-fatal — OP push failure shouldn't block timer stop */ }
+        const now = new Date(), started = new Date(now.getTime() - r.elapsedMins * 60000)
+        const id = createSessionId(), iso = now.toISOString()
+        await saveSession({
+          id, userId: uid, date: wibDate(started),
+          title: r.timer.taskTitle ?? 'Timer via ISL',
+          bullets: [`Timer ISL: ${r.elapsedMins} menit`],
+          source: 'timer', startedAt: started.toISOString(), endedAt: iso,
+          actualMins: r.elapsedMins, estimatedMins: r.elapsedMins,
+          opTaskId: r.timer.opTaskId, pushStatus: 'pending', autoPushed: false, hasExplicitCmd: true,
+          createdAt: iso, updatedAt: iso,
+        })
+        queuedSessionId = id
+      } catch { /* non-fatal — timer tetap berhenti */ }
     }
 
-    return NextResponse.json({ ok: true, elapsedMins: r.elapsedMins, totalActual, suspicious: r.suspicious, timer: r.timer, opPushed })
+    // opPushed tetap dikirim (selalu false) supaya klien lama tak rusak
+    return NextResponse.json({ ok: true, elapsedMins: r.elapsedMins, totalActual, suspicious: r.suspicious, timer: r.timer, opPushed: false, queuedSessionId })
   }
 
   return NextResponse.json({ error: 'unknown action' }, { status: 400 })

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Layers, Sparkles, MapPin, CheckCircle2, Send, Package, Loader2, Zap, RefreshCw } from 'lucide-react'
 import SprintRecap, { type RecapTask } from './SprintRecap'
+import TicketDrafts from './TicketDrafts'
 import OpTaskModal from './OpTaskModal'
 
 interface SuggestedTask {
@@ -319,6 +320,9 @@ export default function NextSprintTab({ currentSprintNo }: { currentSprintNo: nu
 
   return (
     <div className="space-y-6 pb-10">
+
+      {/* Draf tiket next sprint — rencana di ISL, lahir di OP hanya saat Fix → Push (Rian 16 Okt) */}
+      {nextSprintId && <TicketDrafts sprintId={nextSprintId} sprintName={nextName || 'Next Sprint'} />}
 
       {/* Recap menyeluruh task yang sudah masuk next sprint (OP-style, semua status + totals) */}
       {nextRecap.length > 0 && (

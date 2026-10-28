@@ -42,7 +42,7 @@ export async function GET(req: Request) {
         }[]
         comments = els
           .filter(a => (a.comment?.raw ?? '').trim().length > 0)
-          .map(a => ({ user: a._links?.user?.title ?? '?', at: a.createdAt ?? '', text: (a.comment!.raw ?? '').slice(0, 1000) }))
+          .map(a => ({ user: a._links?.user?.title ?? '?', at: a.createdAt ?? '', text: (a.comment!.raw ?? '').slice(0, 4000) }))
       }
     } catch { /* non-fatal */ }
 

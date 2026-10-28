@@ -90,3 +90,9 @@ pending-hook-posts.json
 
 # git-capture run log (local forensics, not source)
 git-capture.log
+
+# state lokal hook/enricher (per mesin, bukan kode)
+capture-state.json
+enriched-sessions.json
+isl-enrich.ps1
+enrich.log

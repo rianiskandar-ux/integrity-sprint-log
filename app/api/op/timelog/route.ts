@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getRequestContext } from '@/lib/request-auth'
+import { wibDate, opStartTime } from '@/lib/op-time'
 
 export const runtime = 'nodejs'
 
@@ -35,7 +36,9 @@ export async function POST(req: Request) {
     const spentMin = durationToMinutes(duration ?? 30)
     if (spentMin === 0) return NextResponse.json({ error: 'Invalid duration' }, { status: 400 })
 
-    const spentOn = date ?? new Date().toISOString().split('T')[0]
+    // tanggal WIB (bukan UTC) + startTime wajib OP; jam mulai = sekarang − durasi bila log hari ini
+    const spentOn = date ?? wibDate()
+    const startTime = opStartTime(spentOn, new Date(Date.now() - spentMin * 60000))
 
     const res = await fetch(`${base}/api/v3/time_entries`, {
       method: 'POST',
@@ -46,6 +49,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         hours:   toISODuration(spentMin),
         spentOn,
+        startTime,
         comment: { format: 'plain', raw: title ?? '' },
         _links:  { workPackage: { href: `/api/v3/work_packages/${wpId}` } },
       }),

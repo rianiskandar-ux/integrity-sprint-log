@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { eq } from 'drizzle-orm'
 import { db, sessions as sessionsTable } from '@/lib/db'
-import { getSession, updateSession } from '@/lib/session-store'
+import { getSession, getSessionBySessionId, updateSession } from '@/lib/session-store'
 import { getRequestContext } from '@/lib/request-auth'
 
 export const runtime = 'nodejs'
@@ -19,12 +19,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params
     const ctx     = await getRequestContext()
-    const session = await getSession(id)
+    // Terima BAIK primary key (`sl-<ts>-<rand>`) MAUPUN sessionId (UUID Claude Code).
+    // Bug 2026-08-19: route ini hanya memakai getSession(id) yang mencari sessions.id,
+    // sementara hook Stop (refreshSessionRecord) selalu mengirim session_id. Akibatnya
+    // refresh sesi panjang SELALU 404 dan tidak pernah berhasil sekali pun — padahal
+    // fitur itu justru ada untuk mencegah sesi panjang "beku di snapshot pertama".
+    // getSessionBySessionId sudah tersedia di lib/session-store.ts, hanya tidak dipakai.
+    const session = (await getSession(id)) ?? (await getSessionBySessionId(id))
     if (!session) return NextResponse.json({ error: 'not found' }, { status: 404 })
     if (ctx?.uid && session.userId != null && session.userId !== ctx.uid)
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     const body    = await req.json()
-    const updated = await updateSession(id, body)
+    // updateSession memakai primary key, jadi pakai id hasil resolusi — bukan id dari URL.
+    const updated = await updateSession(session.id, body)
     return NextResponse.json({ ok: true, session: updated })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

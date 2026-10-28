@@ -310,7 +310,7 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white dark:bg-gray-900 w-full sm:max-w-2xl sm:rounded-2xl shadow-2xl flex flex-col my-4" style={{ maxHeight: '92vh' }}>
+      <div className="bg-white dark:bg-gray-900 w-full sm:w-[92vw] sm:max-w-6xl sm:rounded-2xl shadow-2xl flex flex-col my-0 sm:my-4" style={{ height: '90vh', maxHeight: '90vh' }}>
 
         {/* Header */}
         <div className="flex items-start gap-3 px-5 py-3 border-b border-gray-100 dark:border-gray-800"
@@ -545,21 +545,21 @@ export default function OpTaskModal({ wpId, opUrl, onClose, onSaved, onChat }: {
             </div>
 
             {d.description && (
-              <details className="text-[11px]">
-                <summary className="cursor-pointer text-gray-400 font-semibold">Deskripsi OP</summary>
-                <p className="mt-1 whitespace-pre-wrap text-gray-600 dark:text-gray-300">{d.description.slice(0, 1500)}</p>
+              <details open className="text-[13px]">
+                <summary className="cursor-pointer text-[11px] text-gray-400 font-bold uppercase tracking-widest">Deskripsi OP</summary>
+                <p className="mt-1.5 whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-300">{d.description}</p>
               </details>
             )}
 
             {d.comments.length > 0 && (
               <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Activity ({d.comments.length})</p>
-                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {d.comments.slice(-6).map((c, i) => (
-                    <div key={i} className="text-[11px] border-l-2 border-gray-100 dark:border-gray-700 pl-2">
-                      <span className="font-semibold text-gray-600 dark:text-gray-300">{c.user}</span>
-                      <span className="text-gray-400 text-[9px] ml-1">{c.at.slice(0, 10)}</span>
-                      <p className="text-gray-500 dark:text-gray-400 whitespace-pre-wrap">{c.text}</p>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Activity ({d.comments.length})</p>
+                <div className="space-y-3">
+                  {d.comments.map((c, i) => (
+                    <div key={i} className="text-[13px] border-l-2 border-gray-200 dark:border-gray-700 pl-3">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">{c.user}</span>
+                      <span className="text-gray-400 text-[10px] ml-1.5">{c.at.slice(0, 16).replace('T', ' ')}</span>
+                      <p className="mt-0.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{c.text}</p>
                     </div>
                   ))}
                 </div>

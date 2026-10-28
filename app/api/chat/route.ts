@@ -310,7 +310,7 @@ function getDefaultModel(provider: string): string {
     mistral:    'mistral-small-latest',
     together:   'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
     ollama:     process.env.OLLAMA_CHAT_MODEL || 'qwen2.5:3b',
-    '9router':  'claude-sonnet-4-6',
+    '9router':  'gemini/gemini-3.5-flash-lite',   // JANGAN model Claude via 9Router (air-gap) — dulu claude-sonnet-4-6
     tokenrouter:'MiniMax-M3',
     openmodel:  'deepseek-v4-flash',
     custom:     '',  // model is required in personal settings for custom

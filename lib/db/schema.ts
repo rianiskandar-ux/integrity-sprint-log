@@ -445,3 +445,47 @@ export const events = pgTable('events', {
   index('events_user_idx').on(t.userId, t.occurredAt),
   index('events_agent_idx').on(t.agentId, t.occurredAt),
 ])
+
+// ── ticket_drafts ──────────────────────────────────────────────────────────────
+// Rencana tiket MILIK KITA (Rian 2026-10-16). Dirancang & diubah bebas di ISL (tab Sprint);
+// baru lahir di OP saat "Fix → Push" — judul final sejak lahir, jadi nol rename / judul dicoret
+// di jurnal OP. Tiket buatan orang lain tidak lewat sini (boleh diedit langsung).
+export const ticketDrafts = pgTable('ticket_drafts', {
+  id:            text('id').primaryKey(),                 // td-<ts36>-<rand>
+  userId:        integer('user_id').notNull(),
+  sprintId:      integer('sprint_id'),                     // OP version id; null = tanpa sprint
+  parentId:      integer('parent_id'),                     // OP WP induk (User Story / Feature)
+  typeId:        integer('type_id').notNull().default(1),  // 1 = Task
+  subject:       text('subject').notNull(),
+  description:   text('description'),
+  estimatedMins: integer('estimated_mins'),
+  status:        text('status').notNull().default('draft'), // draft | pushed | discarded
+  opWpId:        integer('op_wp_id'),                       // terisi setelah push
+  // new = rencana | in_progress = sedang dikerjakan | closed = sudah selesai → push sekali jalan:
+  // tiket lahir → time entry → In progress (% otomatis) → Closed
+  targetStatus:  text('target_status').notNull().default('new'),
+  // origDate = tanggal asli dari sumber (git/Arka) saat draf disusun Claude → badge "Tanggal diubah"
+  // extra = waktu kerja di luar sesi yang terekam (uji manual, rapat, koordinasi) — diisi Rian
+  // src = potongan sesi yang di-capture hook (sessionId@mulai|tanggal) → capture ulang mengganti, tak menggandakan
+  timeLogs:      jsonb('time_logs').$type<{ date: string; mins: number; origDate?: string; extra?: boolean; src?: string }[]>().notNull().default([]),
+  // aktivitas = poin kerja per potongan sesi → dikirim sbg komentar Work Log di tiket OP saat push
+  activity:      jsonb('activity').$type<{ date: string; src?: string; bullets: string[] }[]>().notNull().default([]),
+  // true = tiket dicocokkan otomatis (kata kunci) dari sesi, bukan !ticket:ID → tanda ⚠ saat review
+  autoMatched:   boolean('auto_matched').notNull().default(false),
+  // create = tiket baru lahir saat push | update = tiket yang SUDAH ada di OP (targetWpId): push hanya
+  // menambah time entry + langkah status, tanpa mengubah judul/estimate (jurnal OP tetap ramping)
+  kind:          text('kind').notNull().default('create'),
+  targetWpId:    integer('target_wp_id'),
+  targetSnapshot: jsonb('target_snapshot').$type<{ subject: string; status: string; statusId: number; estMins: number; spentMins: number; authorId: number | null; mine: boolean; versionId?: number | null }>(),
+  // hasil cek penuh terakhir (aturan kita + OP /form). true = wadah ② "ISL Close", false = ① "ISL Progress".
+  // Di-reset & dicek ulang tiap draf dibuat/diubah, jadi pindah wadah terjadi otomatis.
+  checkOk:       boolean('check_ok').notNull().default(false),
+  checkIssues:   jsonb('check_issues').$type<{ level: 'error' | 'warn'; msg: string }[]>().notNull().default([]),
+  checkedAt:     timestamp('checked_at'),
+  pushError:     text('push_error'),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+  updatedAt:     timestamp('updated_at').defaultNow().notNull(),
+  pushedAt:      timestamp('pushed_at'),
+}, (t) => [
+  index('ticket_drafts_user_sprint_idx').on(t.userId, t.sprintId, t.status),
+])

@@ -20,7 +20,7 @@ export const DEFAULT_MODELS: Record<LLMProvider, string> = {
   mistral:      'mistral-small-latest',
   together:     'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
   ollama:       'llama3.2',
-  '9router':    'gemini/gemini-2.0-flash-lite',
+  '9router':    'gemini/gemini-3.5-flash-lite',   // 8 Okt 2026: 2.0-flash-lite dimatikan Google
   'claude-cli': 'claude',
   custom:       '',
 }

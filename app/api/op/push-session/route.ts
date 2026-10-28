@@ -5,6 +5,7 @@ import { getRequestContext } from '@/lib/request-auth'
 import { db, agentEvents, arkaCorrections } from '@/lib/db'
 import { upsertEmbedding } from '@/lib/embeddings'
 import { suggestTaskTitle } from '@/lib/task-title'
+import { wibDate, opStartTime } from '@/lib/op-time'
 
 // ── Arka Correction Loop v1 ───────────────────────────────────────────────────
 // This route is the single choke point where a session's opTaskId — already
@@ -198,7 +199,8 @@ export async function POST(req: Request) {
     Authorization: 'Basic ' + Buffer.from(`apikey:${OP_TOKEN}`).toString('base64'),
     'Content-Type': 'application/json',
   }
-  const date    = (session.startedAt ?? new Date().toISOString()).slice(0, 10)
+  // tanggal kerja dalam WIB (slice UTC menjatuhkan kerja 00:00–07:00 WIB ke kemarin)
+  const date    = wibDate(session.startedAt ? new Date(session.startedAt) : new Date())
   // Worklog (spent time) logged to OP. User's explicit choice (estimate/actual) wins;
   // else fall back to actual-if-measured, then estimate.
   // Use `|| null` so loggedMins=0 (timer not running) falls through to estimatedMins.
@@ -250,7 +252,7 @@ export async function POST(req: Request) {
     const teRes = await fetch(`${OP_BASE}/api/v3/time_entries`, {
       method: 'POST', headers,
       body: JSON.stringify({
-        hours: toISODuration(mins), spentOn: date,
+        hours: toISODuration(mins), spentOn: date, startTime: opStartTime(date, session.startedAt),
         comment: { format: 'markdown', raw: `**${session.title}**\n\n⏱ ${durLabel(mins)} | 🤖 ISL Push Queue` },
         _links: { workPackage: { href: `/api/v3/work_packages/${taskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
       }),

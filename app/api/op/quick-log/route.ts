@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { saveSession, createSessionId } from '@/lib/session-store'
 import { getRequestContext } from '@/lib/request-auth'
+import { wibDate, opStartTime } from '@/lib/op-time'
 
 function toISODuration(minutes: number): string {
   const h = Math.floor(minutes / 60), m = minutes % 60
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     }
 
     const { title, durationMins, opTaskId, note } = body
-    const date = body.date ?? new Date().toISOString().slice(0, 10)
+    const date = body.date ?? wibDate()
 
     if (!title?.trim()) return NextResponse.json({ error: 'title required' }, { status: 400 })
     if (!durationMins || durationMins <= 0) return NextResponse.json({ error: 'durationMins must be > 0' }, { status: 400 })
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           hours:   toISODuration(durationMins),
           spentOn: date,
+          startTime: opStartTime(date, new Date(Date.now() - durationMins * 60000)),   // wajib OP sejak Okt 2026
           comment: { format: 'markdown', raw: `**${title.trim()}**\n\n${note?.trim() ? note.trim() + '\n\n' : ''}⏱ ${durLabel} | ✍️ ISL Quick Log` },
           _links: { workPackage: { href: `/api/v3/work_packages/${opTaskId}` }, activity: { href: '/api/v3/time_entries/activities/1' } },
         }),

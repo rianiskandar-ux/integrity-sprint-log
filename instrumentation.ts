@@ -24,6 +24,45 @@ export async function register() {
         USING gin(to_tsvector('simple', title || ' ' || COALESCE(bullets::text, '')));
     `)
   } catch { /* non-fatal — indexes already exist or DB not ready yet */ }
+
+  // ticket_drafts (Okt 2026) dibuat dengan drizzle-kit push di mesin Rian — tidak ada migrasinya, dan
+  // docker/init-db.sql hanya jalan saat volume Postgres pertama kali dibuat. Instalasi tim yang
+  // update lewat `git pull` + `docker compose up -d --build` tidak akan punya tabel ini → tab Sprint
+  // (draf tiket) 500. DDL di bawah = salinan persis tabel live; aman diulang tiap startup.
+  // Blok terpisah: kegagalan indeks FTS di atas tidak boleh mencegah tabel ini dibuat.
+  try {
+    const { db } = await import('./lib/db')
+    const { sql } = await import('drizzle-orm')
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS ticket_drafts (
+        id text PRIMARY KEY,
+        user_id integer NOT NULL,
+        sprint_id integer,
+        parent_id integer,
+        type_id integer NOT NULL DEFAULT 1,
+        subject text NOT NULL,
+        description text,
+        estimated_mins integer,
+        status text NOT NULL DEFAULT 'draft',
+        op_wp_id integer,
+        push_error text,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        pushed_at timestamp,
+        target_status text NOT NULL DEFAULT 'new',
+        time_logs jsonb NOT NULL DEFAULT '[]'::jsonb,
+        check_ok boolean NOT NULL DEFAULT false,
+        check_issues jsonb NOT NULL DEFAULT '[]'::jsonb,
+        checked_at timestamp,
+        kind text NOT NULL DEFAULT 'create',
+        target_wp_id integer,
+        target_snapshot jsonb,
+        activity jsonb NOT NULL DEFAULT '[]'::jsonb,
+        auto_matched boolean NOT NULL DEFAULT false
+      );
+      CREATE INDEX IF NOT EXISTS ticket_drafts_user_sprint_idx ON ticket_drafts (user_id, sprint_id, status);
+    `)
+  } catch { /* non-fatal — DB belum siap; dicoba lagi di startup berikutnya */ }
 }
 
 export async function onRequestError(

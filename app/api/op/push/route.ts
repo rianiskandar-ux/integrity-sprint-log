@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server'
 import { getRequestContext } from '@/lib/request-auth'
+import { opStartTime } from '@/lib/op-time'
 
 interface PushPayload {
   title: string
@@ -189,6 +190,7 @@ export async function POST(req: Request) {
         const teBody = {
           hours:   toISODuration(spentMin),
           spentOn: date,
+          startTime: opStartTime(date, new Date(Date.now() - spentMin * 60000)),   // wajib OP sejak Okt 2026
           comment: { format: 'plain', raw: `Session: ${title}` },
           _links:  {
             workPackage: { href: `/api/v3/work_packages/${task.id}` },
